@@ -8,3 +8,6 @@ coverage/
 .shopify/
 *.log
 .DS_Store
+
+# Shopify CLI extension build output
+extensions/*/manifest.json

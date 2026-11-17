@@ -1,0 +1,19 @@
+{
+  "name": "@serialis/shopify-sim",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "graphql": "^16.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "vitest": "~4.1.0"
+  }
+}

@@ -57,3 +57,14 @@ describe('unit status triggers (copy of transitions.ts)', () => {
     });
   });
 });
+
+describe('embedded app entry', () => {
+  it('serves the App Bridge shell with the app client id and a frame-ancestors policy', async () => {
+    const res = await SELF.fetch('https://staging.serialis.dev/?shop=demo-shop.myshopify.com');
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('<meta name="shopify-api-key" content="03fd014d5ce8c5b37ed75e6effaae74f">');
+    expect(html).toContain('app-bridge.js');
+    expect(res.headers.get('Content-Security-Policy')).toContain('admin.shopify.com');
+  });
+});

@@ -13,6 +13,10 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (request.method === 'GET' && url.pathname === '/') {
+      return appShell(env);
+    }
+
     if (request.method === 'GET' && url.pathname === '/healthz') {
       return Response.json({ ok: true, environment: env.ENVIRONMENT });
     }
@@ -24,6 +28,33 @@ export default {
     return new Response('Not found', { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * Embedded app entry (lot 0 placeholder): loads App Bridge so the app opens inside the Shopify admin.
+ * Session-token authentication and the real home screen (15.4) come with the installation flow.
+ */
+function appShell(env: Env): Response {
+  const html = `<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="shopify-api-key" content="${env.SHOPIFY_API_KEY}">
+<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+<title>Serialis</title>
+</head>
+<body style="font-family: system-ui, sans-serif; padding: 24px">
+<h1 style="font-size: 20px">Serialis</h1>
+<p>Installation en cours de construction (${env.ENVIRONMENT}).</p>
+</body>
+</html>`;
+  return new Response(html, {
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      // The admin frames the app: allow Shopify domains only.
+      'Content-Security-Policy': 'frame-ancestors https://*.myshopify.com https://admin.shopify.com',
+    },
+  });
+}
 
 async function handleWebhook(request: Request, env: Env): Promise<Response> {
   const raw = await request.arrayBuffer();

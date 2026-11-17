@@ -9,7 +9,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
   "observability": { "enabled": true },
-  "vars": { "ENVIRONMENT": "development" },
+  "vars": { "ENVIRONMENT": "development", "SHOPIFY_API_KEY": "03fd014d5ce8c5b37ed75e6effaae74f" },
   "durable_objects": { "bindings": [{ "name": "SHOP_STORE", "class_name": "ShopStore" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ShopStore"] }],
   "d1_databases": [{ "binding": "REGISTRY", "database_name": "serialis-registry-dev", "database_id": "TODO", "migrations_dir": "db/registry" }],
@@ -19,7 +19,7 @@
   "env": {
     "staging": {
       "name": "serialis-web-staging",
-      "vars": { "ENVIRONMENT": "staging" },
+      "vars": { "ENVIRONMENT": "staging", "SHOPIFY_API_KEY": "03fd014d5ce8c5b37ed75e6effaae74f" },
       "routes": [{ "pattern": "staging.serialis.dev", "custom_domain": true }],
       "durable_objects": { "bindings": [{ "name": "SHOP_STORE", "class_name": "ShopStore" }] },
       "d1_databases": [{ "binding": "REGISTRY", "database_name": "serialis-registry-staging", "database_id": "40ab202c-3387-4920-ac65-763c66726893", "migrations_dir": "db/registry" }],
@@ -28,7 +28,7 @@
     },
     "pilot": {
       "name": "serialis-web-pilot",
-      "vars": { "ENVIRONMENT": "pilot" },
+      "vars": { "ENVIRONMENT": "pilot", "SHOPIFY_API_KEY": "TODO" },
       "routes": [{ "pattern": "pilot.serialis.dev", "custom_domain": true }],
       "durable_objects": { "bindings": [{ "name": "SHOP_STORE", "class_name": "ShopStore" }] },
       "d1_databases": [{ "binding": "REGISTRY", "database_name": "serialis-registry-pilot", "database_id": "TODO", "migrations_dir": "db/registry" }],
@@ -37,7 +37,7 @@
     },
     "production": {
       "name": "serialis-web-production",
-      "vars": { "ENVIRONMENT": "production" },
+      "vars": { "ENVIRONMENT": "production", "SHOPIFY_API_KEY": "TODO" },
       "routes": [
         { "pattern": "app.serialis.dev", "custom_domain": true },
         { "pattern": "api.serialis.dev", "custom_domain": true },

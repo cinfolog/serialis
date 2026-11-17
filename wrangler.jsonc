@@ -23,7 +23,7 @@
       "routes": [{ "pattern": "staging.serialis.dev", "custom_domain": true }],
       "durable_objects": { "bindings": [{ "name": "SHOP_STORE", "class_name": "ShopStore" }] },
       "d1_databases": [{ "binding": "REGISTRY", "database_name": "serialis-registry-staging", "database_id": "40ab202c-3387-4920-ac65-763c66726893", "migrations_dir": "db/registry" }],
-      "kv_namespaces": [{ "binding": "SHOP_ROUTING", "id": "TODO" }],
+      "kv_namespaces": [{ "binding": "SHOP_ROUTING", "id": "3bb8730f95934861b50992a03267c0c7" }],
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "serialis-files-staging" }]
     },
     "pilot": {

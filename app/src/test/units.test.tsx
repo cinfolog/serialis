@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/client';
 import { MockClient } from '../api/mock';
-import { button, choose, field, findButton, findField, pageHeading, press, renderApp, screen, typeIn, waitFor, text, flush } from './utils';
+import { button, choose, field, findField, pageHeading, press, renderApp, screen, typeIn, waitFor, text, flush } from './utils';
 
 describe('Unités : liste', () => {
   it('lists units with state badges and location names, and filters from the URL', async () => {
@@ -70,7 +70,7 @@ describe('Ajout de refs par collage (T-UX-02)', () => {
 
     const before = mock.units.length;
     press(button('Valider 47 refs'));
-    await findButton('Valider 47 refs', document.querySelector('s-modal') ?? document);
+    await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
     expect(document.querySelector('s-modal')?.textContent).toContain('Shopify passera de 8 à 55 en stock à Entrepôt Bordeaux (47 unités reçues).');
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(screen.getByTestId('refs-result')).toBeInTheDocument());

@@ -323,7 +323,7 @@ export class MockClient implements ApiClient {
     const allShown = Object.values(this.extensions).every(Boolean);
     const tracked = this.trackedItems.length > 0;
     const refsDone = tracked && this.trackedItems.every((t) => t.stock.length === 0 || t.stock.some((s) => s.registeredUnits > 0));
-    const step: Me['onboarding']['step'] = !tracked ? 'products' : !refsDone ? 'refs' : !allShown ? 'blocks' : 'done';
+    const step: Me['onboarding']['step'] = !tracked ? 'products' : allShown ? 'done' : !refsDone ? 'refs' : 'blocks';
     return {
       shop: 'velos-demo.myshopify.com',
       installed: true,

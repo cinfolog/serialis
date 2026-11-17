@@ -4,13 +4,14 @@ import { common } from './messages/common';
 import { home } from './messages/home';
 import { refs } from './messages/refs';
 import { shell } from './messages/shell';
+import { tracked } from './messages/tracked';
 import { units } from './messages/units';
 import { wizard } from './messages/wizard';
 
-const modules = [common, shell, home, refs, wizard, units];
+const modules = [common, shell, home, refs, wizard, units, tracked];
 
-const fr = Object.assign({}, ...modules.map((m) => m.fr)) as typeof common.fr & typeof shell.fr & typeof home.fr & typeof refs.fr & typeof wizard.fr & typeof units.fr;
-const en = Object.assign({}, ...modules.map((m) => m.en)) as typeof common.en & typeof shell.en & typeof home.en & typeof refs.en & typeof wizard.en & typeof units.en;
+const fr = Object.assign({}, ...modules.map((m) => m.fr)) as typeof common.fr & typeof shell.fr & typeof home.fr & typeof refs.fr & typeof wizard.fr & typeof units.fr & typeof tracked.fr;
+const en = Object.assign({}, ...modules.map((m) => m.en)) as typeof common.en & typeof shell.en & typeof home.en & typeof refs.en & typeof wizard.en & typeof units.en & typeof tracked.en;
 
 export const dictionaries: Record<Locale, Record<string, string>> = { fr, en };
 

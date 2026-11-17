@@ -1,8 +1,8 @@
 # Shopify app configuration — dev (spec 10.4, 13.1, 13.2).
 # Deployed from CI: shopify app deploy --config dev --allow-updates --source-control-url <commit>
 # Never --allow-deletes automatically. client_id comes from the Dev Dashboard (one app per environment).
-client_id = "TODO"
-name = "Serialis (dev)"
+client_id = "03fd014d5ce8c5b37ed75e6effaae74f"
+name = "Serialis"
 application_url = "https://staging.serialis.dev"
 embedded = true
 

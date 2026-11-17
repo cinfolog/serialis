@@ -1,0 +1,52 @@
+// Serialis — Cloudflare configuration (spec 10.2 and 10.4).
+// Top level = local development (`wrangler dev`); named environments = staging, pilot, production.
+// Resource ids marked TODO are created once per environment (see README, "Mise en place").
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "serialis-web",
+  "main": "workers/src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
+  "observability": { "enabled": true },
+  "vars": { "ENVIRONMENT": "development", "SHOPIFY_API_KEY": "03fd014d5ce8c5b37ed75e6effaae74f" },
+  "durable_objects": { "bindings": [{ "name": "SHOP_STORE", "class_name": "ShopStore" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ShopStore"] }],
+  "d1_databases": [{ "binding": "REGISTRY", "database_name": "serialis-registry-dev", "database_id": "TODO", "migrations_dir": "db/registry" }],
+  "kv_namespaces": [{ "binding": "SHOP_ROUTING", "id": "TODO" }],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "serialis-files-dev" }],
+
+  "env": {
+    "staging": {
+      "name": "serialis-web-staging",
+      "vars": { "ENVIRONMENT": "staging", "SHOPIFY_API_KEY": "03fd014d5ce8c5b37ed75e6effaae74f" },
+      "routes": [{ "pattern": "staging.serialis.dev", "custom_domain": true }],
+      "durable_objects": { "bindings": [{ "name": "SHOP_STORE", "class_name": "ShopStore" }] },
+      "d1_databases": [{ "binding": "REGISTRY", "database_name": "serialis-registry-staging", "database_id": "40ab202c-3387-4920-ac65-763c66726893", "migrations_dir": "db/registry" }],
+      "kv_namespaces": [{ "binding": "SHOP_ROUTING", "id": "3bb8730f95934861b50992a03267c0c7" }],
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "serialis-files-staging" }]
+    },
+    "pilot": {
+      "name": "serialis-web-pilot",
+      "vars": { "ENVIRONMENT": "pilot", "SHOPIFY_API_KEY": "TODO" },
+      "routes": [{ "pattern": "pilot.serialis.dev", "custom_domain": true }],
+      "durable_objects": { "bindings": [{ "name": "SHOP_STORE", "class_name": "ShopStore" }] },
+      "d1_databases": [{ "binding": "REGISTRY", "database_name": "serialis-registry-pilot", "database_id": "TODO", "migrations_dir": "db/registry" }],
+      "kv_namespaces": [{ "binding": "SHOP_ROUTING", "id": "TODO" }],
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "serialis-files-pilot", "jurisdiction": "eu" }]
+    },
+    "production": {
+      "name": "serialis-web-production",
+      "vars": { "ENVIRONMENT": "production", "SHOPIFY_API_KEY": "TODO" },
+      "routes": [
+        { "pattern": "app.serialis.dev", "custom_domain": true },
+        { "pattern": "api.serialis.dev", "custom_domain": true },
+        { "pattern": "hooks.serialis.dev", "custom_domain": true }
+      ],
+      "durable_objects": { "bindings": [{ "name": "SHOP_STORE", "class_name": "ShopStore" }] },
+      "d1_databases": [{ "binding": "REGISTRY", "database_name": "serialis-registry-production", "database_id": "TODO", "migrations_dir": "db/registry" }],
+      "kv_namespaces": [{ "binding": "SHOP_ROUTING", "id": "TODO" }],
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "serialis-files-production", "jurisdiction": "eu" }]
+    }
+  }
+}

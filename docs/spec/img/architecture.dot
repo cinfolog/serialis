@@ -1,0 +1,44 @@
+digraph G {
+  rankdir=LR; nodesep=0.5; ranksep=0.9;
+  node [shape=box, style="rounded,filled", fontname="Arial", fontsize=11, fillcolor="#F4F6F8", color="#5C6AC4"];
+  edge [fontname="Arial", fontsize=9, color="#444444"];
+  subgraph cluster_shopify { label="Shopify"; fontname="Arial Bold"; style="rounded"; color="#95BF47";
+    admin [label="Admin Shopify\n(app intégrée + extensions)"];
+    pos [label="Caisse POS\n(extension)"];
+    wh [label="Webhooks HTTPS\n(abonnements de l'app)"];
+    api_sh [label="API GraphQL Admin\n(version 2026-10)"];
+  }
+  subgraph cluster_cf { label="Cloudflare (données : juridiction UE ou région proche du marchand, section 10.5)"; fontname="Arial Bold"; style="rounded"; color="#F38020";
+    waf [label="WAF et limitation\nde débit"];
+    web [label="Worker principal\napp admin · API publique\nréception des webhooks"];
+    mon [label="Worker de surveillance\n(chaque minute : alertes,\nréarmement)"];
+    cron [label="Worker planifié\n(chien de garde horaire,\nusage, contrôle des exports)"];
+    subgraph cluster_do { label="Un Durable Object par boutique"; fontname="Arial"; style="rounded,dashed"; color="#F38020";
+      shopA [label="ShopStore « boutique A »\nSQLite : unités · attributions · journal\ninbox · tâches · outbox · jetons Shopify\nclés d'API · alarme", shape=box3d, fillcolor="#FFF4E5"];
+      shopB [label="ShopStore « boutique B »", shape=box3d, fillcolor="#FFF4E5"];
+    }
+    d1 [label="D1 « registry » (UE)\nboutiques · emplacement\ndes objets · usage", shape=cylinder, fillcolor="#E8F0FE"];
+    kv [label="Workers KV\ncorrespondance\nboutique → objet", shape=cylinder, fillcolor="#E8F0FE"];
+    r2 [label="R2 (UE)\nimports · exports\nsauvegardes", shape=cylinder, fillcolor="#E8F0FE"];
+  }
+  ext [label="Systèmes du marchand\n(ERP, WMS, n8n, prestataire)", fillcolor="#FFF4E5", color="#E29100"];
+  obs [label="Observabilité\nWorkers Logs · Analytics Engine\nSentry · sonde externe"];
+  admin -> web [label="jeton de session"];
+  pos -> web [label="jeton de session"];
+  wh -> web [label="HMAC vérifié"];
+  ext -> waf [label="API REST v1\n(clé d'API)"];
+  waf -> web;
+  web -> shopA [label="appel interne\n(boutique authentifiée)"];
+  web -> shopB [style=dashed];
+  web -> kv [label="objet de\nla boutique"];
+  web -> d1 [label="secours,\nconfirmation", style=dashed];
+  cron -> shopA [label="réveil"];
+  cron -> d1;
+  shopA -> api_sh [label="lectures, écritures\nidempotentes (outbox)"];
+  shopA -> ext [label="webhooks sortants\nsignés"];
+  shopA -> r2 [label="export nocturne"];
+  mon -> obs [label="Analytics Engine\n(API SQL)", style=dotted];
+  mon -> shopA [label="réarmement", style=dashed];
+  shopA -> d1 [label="interrupteur global,\nrestauration", style=dotted];
+  web -> obs [style=dotted]; shopA -> obs [style=dotted];
+}

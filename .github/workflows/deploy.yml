@@ -1,0 +1,79 @@
+name: Deploy
+
+# Spec 10.4: the Worker is deployed first (backward compatible), then the Shopify app version.
+# - staging: manual run, or a push whose commit message contains [deploy:staging]
+# - pilot, production: manual run only. Production: version created with --no-release,
+#   checked on the test shop, then `shopify app release` by hand.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [staging, pilot, production]
+        required: true
+  push:
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deploy:staging]')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'staging' }}
+    timeout-minutes: 15
+    env:
+      TARGET: ${{ inputs.environment || 'staging' }}
+      HAS_SHOPIFY_TOKEN: ${{ secrets.SHOPIFY_CLI_TOKEN != '' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck && pnpm test
+
+      - name: Registry migrations (D1)
+        run: scripts/ci-run.sh "d1 migrations" pnpm exec wrangler d1 migrations apply REGISTRY --remote --env "$TARGET"
+
+      - name: Worker
+        run: scripts/ci-run.sh "wrangler deploy" pnpm exec wrangler deploy --env "$TARGET"
+
+      - name: Worker secrets
+        env:
+          SHOPIFY_API_SECRET: ${{ secrets.SHOPIFY_API_SECRET }}
+        run: printf '%s' "$SHOPIFY_API_SECRET" | pnpm exec wrangler secret put SHOPIFY_API_SECRET --env "$TARGET"
+
+      - name: Smoke test
+        run: |
+          case "$TARGET" in staging) HOST=staging.serialis.dev ;; pilot) HOST=pilot.serialis.dev ;; production) HOST=app.serialis.dev ;; esac
+          for i in 1 2 3 4 5 6; do
+            BODY=$(curl -s -m 10 "https://$HOST/healthz") && echo "$BODY" | grep -q '"ok":true' && { echo "::notice title=smoke $TARGET::https://$HOST/healthz -> $BODY"; exit 0; }
+            sleep 10
+          done
+          echo "::error title=smoke $TARGET::https://$HOST/healthz did not answer ok (last: $BODY)"; exit 1
+
+      - name: Shopify app version
+        if: env.HAS_SHOPIFY_TOKEN == 'true'
+        env:
+          # Token of a service account with the "App development" permission on this app (spec 10.4).
+          SHOPIFY_SERVICE_ACCOUNT_TOKEN: ${{ secrets.SHOPIFY_CLI_TOKEN }}
+        run: |
+          set -o pipefail
+          CONFIG=$([ "$TARGET" = "staging" ] && echo dev || echo "$TARGET")
+          EXTRA=$([ "$TARGET" = "production" ] && echo "--no-release" || echo "")
+          npx --yes @shopify/cli@latest app deploy \
+            --config "$CONFIG" \
+            --allow-updates \
+            --source-control-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA" \
+            $EXTRA 2>&1 | tee /tmp/shopify-deploy.log && CODE=0 || CODE=$?
+          # Box-drawing characters stripped so the CLI message stays readable in the annotation.
+          MSG=$(sed 's/\x1b\[[0-9;]*m//g' /tmp/shopify-deploy.log | sed 's/[│╭╮╰╯─]//g' | tr -s ' \n' ' ' | tail -c 900)
+          if [ $CODE -eq 0 ]; then echo "::notice title=shopify $TARGET::$MSG"; else echo "::error title=shopify $TARGET::$MSG"; fi
+          exit $CODE
+
+      - name: Shopify app version skipped
+        if: env.HAS_SHOPIFY_TOKEN != 'true'
+        run: echo "::warning title=shopify $TARGET::SHOPIFY_CLI_TOKEN missing, Shopify app version not deployed"

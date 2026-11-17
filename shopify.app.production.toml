@@ -1,0 +1,68 @@
+# Shopify app configuration — production (spec 10.4, 13.1, 13.2).
+# Deployed from CI: shopify app deploy --config production --allow-updates --source-control-url <commit>
+# Never --allow-deletes automatically. client_id comes from the Dev Dashboard (one app per environment).
+client_id = "TODO"
+name = "Serialis"
+application_url = "https://app.serialis.dev"
+embedded = true
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = false
+
+[access_scopes]
+# MVP scopes only (13.1). Other scopes arrive with the lot that needs them.
+# read_all_orders requires Shopify's approval (PV-18), requested at lot 0.
+scopes = "read_products,write_products,read_inventory,write_inventory,read_locations,read_orders,write_orders,read_all_orders,read_fulfillments,read_merchant_managed_fulfillment_orders,read_third_party_fulfillment_orders,read_returns"
+
+[auth]
+redirect_urls = ["https://app.serialis.dev/auth/callback"]
+
+[webhooks]
+api_version = "2026-10"
+
+  # MVP subset of 13.2. PV-1: `shopify app deploy` rejects unknown topics; the list is validated at lot 0.
+  # Not yet: draft_orders/* (lot 1), inventory_transfers/* and inventory_shipments/* (lot 2),
+  # fulfillment_orders/hold_released (no holds in the MVP), app_subscriptions/update (lot 5), returns/process (PV-1).
+  [[webhooks.subscriptions]]
+  topics = [
+    "orders/create",
+    "orders/updated",
+    "orders/edited",
+    "orders/cancelled",
+    "orders/delete",
+    "fulfillments/create",
+    "fulfillments/update",
+    "fulfillment_orders/moved",
+    "fulfillment_orders/cancelled",
+    "fulfillment_orders/split",
+    "fulfillment_orders/merged",
+    "fulfillment_orders/order_routing_complete",
+    "refunds/create",
+    "returns/request",
+    "returns/approve",
+    "returns/update",
+    "returns/close",
+    "returns/cancel",
+    "returns/decline",
+    "returns/reopen",
+    "reverse_fulfillment_orders/dispose",
+    "inventory_levels/update",
+    "inventory_items/update",
+    "products/update",
+    "products/delete",
+    "locations/create",
+    "locations/update",
+    "locations/deactivate",
+    "locations/delete",
+    "app/uninstalled",
+    "bulk_operations/finish"
+  ]
+  uri = "https://hooks.serialis.dev/webhooks/shopify"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  uri = "https://hooks.serialis.dev/webhooks/shopify"
+
+[pos]
+embedded = false

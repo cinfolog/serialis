@@ -1,0 +1,53 @@
+name: Deploy
+
+# Spec 10.4: the Worker is deployed first (backward compatible), then the Shopify app version.
+# Production: version created with --no-release, checked on the test shop, then `shopify app release` by hand.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [staging, pilot, production]
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck && pnpm test
+
+      - name: Registry migrations (D1)
+        run: pnpm exec wrangler d1 migrations apply REGISTRY --remote --env ${{ inputs.environment }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Worker
+        run: pnpm exec wrangler deploy --env ${{ inputs.environment }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Shopify app version
+        env:
+          # Token of a service account with the "App development" permission on this app (spec 10.4).
+          SHOPIFY_CLI_PARTNERS_TOKEN: ${{ secrets.SHOPIFY_CLI_TOKEN }}
+          ENV_NAME: ${{ inputs.environment }}
+        run: |
+          CONFIG=$([ "$ENV_NAME" = "staging" ] && echo dev || echo "$ENV_NAME")
+          EXTRA=$([ "$ENV_NAME" = "production" ] && echo "--no-release" || echo "")
+          npx --yes @shopify/cli@latest app deploy \
+            --config "$CONFIG" \
+            --allow-updates \
+            --source-control-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA" \
+            $EXTRA

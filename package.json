@@ -1,0 +1,21 @@
+{
+  "name": "serialis",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "gen:transitions": "pnpm --filter @serialis/core gen:transitions",
+    "dev": "wrangler dev",
+    "deploy:staging": "wrangler deploy --env staging"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261117.1",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.50.0"
+  }
+}

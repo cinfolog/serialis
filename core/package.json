@@ -1,0 +1,17 @@
+{
+  "name": "@serialis/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "gen:transitions": "node --experimental-strip-types ../scripts/gen-transitions.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "vitest": "~4.1.0"
+  }
+}

@@ -1,0 +1,13 @@
+digraph Q {
+  rankdir=TB; nodesep=0.3; ranksep=0.35;
+  node [shape=box, style="rounded,filled", fontname="Arial", fontsize=10, fillcolor="#F4F6F8", color="#5C6AC4", width=4.4];
+  edge [color="#555555"];
+  a [label="Webhook HTTPS (orders/create, fulfillments/…, returns/…)\nOU passe de réconciliation R1/R2 planifiée dans l'objet"];
+  b [label="Worker : vérification HMAC, puis objet de la boutique :\ninbox (dédoublonnage) + tâche sync_order regroupée 2 s\n(une transaction, réponse 200 ensuite)"];
+  c [label="Alarme de l'objet : lecture GraphQL de l'état à jour\n(commande, lignes, ordres d'expédition, expéditions, retours)"];
+  d [label="Calcul de l'état voulu par ligne et emplacement\n(unités à attribuer, expédiées, à retourner)"];
+  e [label="Transaction SQLite synchrone, sans appel réseau :\nattributions, unit_events, anomalies, lignes d'outbox"];
+  f [label="Outbox exécutée par l'alarme : mise en attente / levée,\nmetafield, stock (@idempotent + changeFromQuantity)"];
+  g [label="Webhooks sortants et métriques"];
+  a -> b -> c -> d -> e -> f -> g;
+}

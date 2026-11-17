@@ -8,6 +8,7 @@ embedded = true
 
 [build]
 include_config_on_deploy = true
+dev_store_url = "serialis-test.myshopify.com"
 automatically_update_urls_on_dev = true
 
 [access_scopes]

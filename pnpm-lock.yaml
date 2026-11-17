@@ -45,11 +45,23 @@ importers:
         specifier: ~4.1.0
         version: 4.1.12(@types/node@22.20.5)(vite@8.3.8(@types/node@22.20.5)(esbuild@0.28.2))
 
+  services/shopify:
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20261117.1
+        version: 5.20261117.1
+      vitest:
+        specifier: ~4.1.0
+        version: 4.1.12(@types/node@22.20.5)(vite@8.3.8(@types/node@22.20.5)(esbuild@0.28.2))
+
   workers:
     dependencies:
       '@serialis/core':
         specifier: workspace:*
         version: link:../core
+      '@serialis/shopify':
+        specifier: workspace:*
+        version: link:../services/shopify
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: ^1.8.4

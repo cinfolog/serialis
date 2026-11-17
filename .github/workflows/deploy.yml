@@ -44,7 +44,15 @@ jobs:
       - name: Worker secrets
         env:
           SHOPIFY_API_SECRET: ${{ secrets.SHOPIFY_API_SECRET }}
-        run: printf '%s' "$SHOPIFY_API_SECRET" | pnpm exec wrangler secret put SHOPIFY_API_SECRET --env "$TARGET"
+          # AES-256-GCM key(s) of the Shopify tokens at rest (spec 16): base64 of 32 bytes, or `2:<b64>,1:<b64>` during a rotation.
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+        run: |
+          printf '%s' "$SHOPIFY_API_SECRET" | pnpm exec wrangler secret put SHOPIFY_API_SECRET --env "$TARGET"
+          if [ -n "$TOKEN_ENCRYPTION_KEY" ]; then
+            printf '%s' "$TOKEN_ENCRYPTION_KEY" | pnpm exec wrangler secret put TOKEN_ENCRYPTION_KEY --env "$TARGET"
+          else
+            echo "::warning title=secret $TARGET::TOKEN_ENCRYPTION_KEY missing, Worker secret not updated (installation will fail until it is set)"
+          fi
 
       - name: Smoke test
         run: |

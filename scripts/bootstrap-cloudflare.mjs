@@ -10,8 +10,17 @@ if (!['staging', 'pilot', 'production'].includes(env)) {
 }
 const euData = env !== 'staging'; // pilot and production keep data in the EU (spec 10.5)
 
-const wrangler = (...args) =>
-  execFileSync('pnpm', ['exec', 'wrangler', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+const wrangler = (...args) => {
+  try {
+    return execFileSync('pnpm', ['exec', 'wrangler', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    // Surface wrangler's message as an annotation (the only output readable outside the job log).
+    const out = `${e.stderr ?? ''}${e.stdout ?? ''}`.replace(/\s+/g, ' ').slice(0, 600);
+    e.wranglerOutput = out;
+    console.log(`::error title=wrangler ${args.slice(0, 3).join(' ')}::${out}`);
+    throw e;
+  }
+};
 
 const notice = (msg) => console.log(`::notice title=bootstrap ${env}::${msg}`);
 
@@ -41,7 +50,6 @@ try {
   wrangler('r2', 'bucket', 'create', bucket, ...(euData ? ['--jurisdiction', 'eu'] : []));
   notice(`R2 ${bucket} created`);
 } catch (e) {
-  const out = `${e.stdout ?? ''}${e.stderr ?? ''}`;
-  if (!/already exists|10004/i.test(out)) throw e;
+  if (!/already exists|10004/i.test(e.wranglerOutput ?? '')) throw e;
   notice(`R2 ${bucket} already exists`);
 }

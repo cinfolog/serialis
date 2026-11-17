@@ -1,6 +1,6 @@
 // Creates the Cloudflare resources of one environment if missing (idempotent) and prints their ids
 // as GitHub annotations, readable from the check run (spec 10.4). Ids are not secrets.
-// Usage: node scripts/bootstrap-cloudflare.mjs <staging|pilot|production>
+// Usage: node scripts/bootstrap-cloudflare.mjs <staging|pilot|production> (rerun: 2026-11-17, new token)
 import { execFileSync } from 'node:child_process';
 
 const env = process.argv[2];

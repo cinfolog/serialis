@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DependencyList, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DependencyList, type RefObject } from 'react';
 
 /**
  * Subscribes to a DOM event of a custom element. Polaris web components emit their own events
@@ -13,7 +13,8 @@ export function useElementEvent<E extends Event = Event>(
   const latest = useRef(handler);
   latest.current = handler;
   const active = handler !== undefined;
-  useEffect(() => {
+  // Layout effect: the listener must be attached in the same commit as the element, never after paint.
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el || !active) return;
     const listener = (event: Event) => latest.current?.(event as E);

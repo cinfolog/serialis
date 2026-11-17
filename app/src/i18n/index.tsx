@@ -3,16 +3,17 @@ import { hasMessage, translate, type BaseKey, type Locale, type Params } from '.
 import { anomalies } from './messages/anomalies';
 import { common } from './messages/common';
 import { home } from './messages/home';
+import { imports } from './messages/imports';
 import { refs } from './messages/refs';
 import { shell } from './messages/shell';
 import { tracked } from './messages/tracked';
 import { units } from './messages/units';
 import { wizard } from './messages/wizard';
 
-const modules = [common, shell, home, refs, wizard, units, tracked, anomalies];
+const modules = [common, shell, home, refs, wizard, units, tracked, anomalies, imports];
 
-const fr = Object.assign({}, ...modules.map((m) => m.fr)) as typeof common.fr & typeof shell.fr & typeof home.fr & typeof refs.fr & typeof wizard.fr & typeof units.fr & typeof tracked.fr & typeof anomalies.fr;
-const en = Object.assign({}, ...modules.map((m) => m.en)) as typeof common.en & typeof shell.en & typeof home.en & typeof refs.en & typeof wizard.en & typeof units.en & typeof tracked.en & typeof anomalies.en;
+const fr = Object.assign({}, ...modules.map((m) => m.fr)) as typeof common.fr & typeof shell.fr & typeof home.fr & typeof refs.fr & typeof wizard.fr & typeof units.fr & typeof tracked.fr & typeof anomalies.fr & typeof imports.fr;
+const en = Object.assign({}, ...modules.map((m) => m.en)) as typeof common.en & typeof shell.en & typeof home.en & typeof refs.en & typeof wizard.en & typeof units.en & typeof tracked.en & typeof anomalies.en & typeof imports.en;
 
 export const dictionaries: Record<Locale, Record<string, string>> = { fr, en };
 

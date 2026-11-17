@@ -61,14 +61,18 @@ jobs:
           # Token of a service account with the "App development" permission on this app (spec 10.4).
           SHOPIFY_SERVICE_ACCOUNT_TOKEN: ${{ secrets.SHOPIFY_CLI_TOKEN }}
         run: |
+          set -o pipefail
           CONFIG=$([ "$TARGET" = "staging" ] && echo dev || echo "$TARGET")
           EXTRA=$([ "$TARGET" = "production" ] && echo "--no-release" || echo "")
           npx --yes @shopify/cli@latest app deploy \
             --config "$CONFIG" \
             --allow-updates \
             --source-control-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA" \
-            $EXTRA 2>&1 | tee /tmp/shopify-deploy.log
-          echo "::notice title=shopify $TARGET::$(tail -c 400 /tmp/shopify-deploy.log | tr '\n' ' ')"
+            $EXTRA 2>&1 | tee /tmp/shopify-deploy.log && CODE=0 || CODE=$?
+          # Box-drawing characters stripped so the CLI message stays readable in the annotation.
+          MSG=$(sed 's/\x1b\[[0-9;]*m//g' /tmp/shopify-deploy.log | sed 's/[│╭╮╰╯─]//g' | tr -s ' \n' ' ' | tail -c 900)
+          if [ $CODE -eq 0 ]; then echo "::notice title=shopify $TARGET::$MSG"; else echo "::error title=shopify $TARGET::$MSG"; fi
+          exit $CODE
 
       - name: Shopify app version skipped
         if: env.HAS_SHOPIFY_TOKEN != 'true'

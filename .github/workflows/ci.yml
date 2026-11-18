@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
   ui:
     # Browser tests (Playwright + axe) on the admin app built in mock mode. The Polaris CDN script is replaced by an
     # offline shim (tests/ui/fixtures/polaris-shim.js); set UI_TESTS_REAL_CDN=1 to run against the real components.
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

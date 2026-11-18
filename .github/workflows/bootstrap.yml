@@ -11,7 +11,7 @@ on:
 
 jobs:
   secrets:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.RUNS_ON || '"ubuntu-latest"') }}
     steps:
       - name: Required secrets are present (values never printed)
         env:
@@ -32,7 +32,7 @@ jobs:
           done
 
   cloudflare:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.RUNS_ON || '"ubuntu-latest"') }}
     strategy:
       matrix:
         environment: [staging]

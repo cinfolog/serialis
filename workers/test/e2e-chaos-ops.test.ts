@@ -33,6 +33,20 @@ async function waitFor(cond: () => boolean, ms = 5_000): Promise<void> {
   }
 }
 
+/**
+ * Holds the outbox task as if another execution were running it (valid lease): writes queued meanwhile set
+ * `rerun_requested` and arm no alarm, so the object cannot process them by itself. The returned function
+ * makes the task due again (the harness then runs it).
+ */
+async function holdOutbox(h: Harness): Promise<() => Promise<void>> {
+  expect(await h.query("SELECT key FROM tasks WHERE key = 'outbox'")).toEqual([]);
+  await h.run(
+    "INSERT INTO tasks (key, kind, payload, run_at, deadline_at, status, lease_until, lease_token, priority, created_at, updated_at) VALUES ('outbox', 'process_outbox', '{}', 0, 0, 'running', ?, 'held-by-test', 20, 0, 0)",
+    Date.now() + 3_600_000,
+  );
+  return () => h.run("UPDATE tasks SET status = 'pending', run_at = 0, lease_until = NULL, lease_token = NULL WHERE key = 'outbox' AND lease_token = 'held-by-test'");
+}
+
 function adjustWrites(h: Harness) {
   return h.sim.requests.filter((r) => r.operations.includes('inventoryAdjustQuantities'));
 }
@@ -60,7 +74,10 @@ describe('T-CH-05 — object evicted in the middle of a task', () => {
     };
     restores.push(() => ((h.sim as { fetch: typeof original }).fetch = original));
 
+    // Held so that the execution interrupted below is `first`, never the object's own alarm armed by the API call.
+    const releaseOutbox = await holdOutbox(h);
     await addRefs(h, variant, loc, ['E-1', 'E-2']);
+    await releaseOutbox();
     const first = h.step();
     await waitFor(() => gated === 1);
     expect(await h.query("SELECT status FROM outbox WHERE kind = 'inventory_adjust'")).toEqual([{ status: 'in_flight' }]);
@@ -153,16 +170,26 @@ describe('T-CH-07 — response of a token refresh lost', () => {
     const { h, loc, variant, item } = await setup('ch07', { sim: { enforceAuth: true } });
     await track(h, [variant]);
     await h.drain();
-    // Refs received: the stock write waits in the outbox.
+    // Refs received: the stock write waits in the outbox. It is held there explicitly: the API call arms the
+    // object's alarm for "now", and the object would otherwise run the outbox by itself, before or in the middle
+    // of the setup below (workers/DECISIONS.md, 68).
+    const releaseOutbox = await holdOutbox(h);
     await addRefs(h, variant, loc, ['O-1', 'O-2']);
+    expect(await h.query('SELECT status FROM outbox')).toEqual([{ status: 'pending' }]);
     // The access token expires; the next refresh (by the outbox) is applied by Shopify but its response is lost.
     h.sim.oauth.expireAccessTokens();
     await h.run('UPDATE shopify_token SET access_expires_at = ?', Date.now() - 1);
     const issuedBefore = h.sim.oauth.issued;
+    const mark = h.sim.requests.length;
     h.sim.faults.add({ operation: 'oauth', calls: h.sim.callCount('oauth') + 1, fault: { kind: 'timeout', applied: true } });
 
+    await releaseOutbox();
     await h.drain();
 
+    // The refreshes were made for the outbox write, before it was sent.
+    const after = h.sim.requests.slice(mark);
+    expect(after.slice(0, 2).map((r) => r.kind)).toEqual(['oauth', 'oauth']);
+    expect(after.findIndex((r) => r.operations.includes('inventoryAdjustQuantities'))).toBeGreaterThan(1);
     expect((await h.stub.status()).token).toBe('valid');
     expect(await anomalies(h, 'reconnect_required')).toEqual([]);
     // Two grants issued by the refresh grant: the lost one, then the retry with the same (old) refresh token.

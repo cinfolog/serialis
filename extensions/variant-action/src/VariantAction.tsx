@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'preact/hooks';
-import type { Gid, Location, TrackedItem } from '@serialis/contract';
+import type { Gid, Location, TrackedItem, Unit } from '@serialis/contract';
 import {
   ErrorBanner,
   IdempotencyKeeper,
@@ -12,6 +12,7 @@ import {
   gapAt,
   initialAddLocation,
   loadVariantData,
+  normalizeRef,
   summarizeBatch,
   toBatchRequest,
   useOnline,
@@ -22,6 +23,8 @@ import {
   type BatchOutcome,
   type Translate,
 } from '@serialis/extensions-shared';
+import { ExistingRefs, isoDay, type FormatDate } from './ExistingRefs';
+import { useRefCheck } from './refCheck';
 
 export interface VariantActionProps {
   api: ApiClient;
@@ -29,13 +32,15 @@ export interface VariantActionProps {
   variantGid: Gid;
   /** Closes the action modal. */
   close: () => void;
+  /** Date of a registered ref (Shopify `i18n.formatDate`); the ISO day by default. */
+  formatDate?: FormatDate;
 }
 
 /**
  * Variant action "Ajouter des refs" (spec 13.5, 15.5, 15.6): the add form opened from the variant block (or from
  * the "More actions" menu of the variant page). A modal has room for the form; the block keeps its compact summary.
  */
-export function VariantAction({ api, t, variantGid, close }: VariantActionProps) {
+export function VariantAction({ api, t, variantGid, close, formatDate = isoDay }: VariantActionProps) {
   const res = useResource((signal) => loadVariantData(api, variantGid, signal), [variantGid]);
   const online = useOnline();
   const ready = res.status === 'ready' ? res.data : null;
@@ -49,7 +54,9 @@ export function VariantAction({ api, t, variantGid, close }: VariantActionProps)
           variantGid={variantGid}
           item={ready.item}
           locations={ready.locations}
-          knownRefs={ready.units.map((u) => u.ref)}
+          units={ready.units}
+          truncated={ready.truncated}
+          formatDate={formatDate}
           online={online}
           reload={res.reload}
           close={close}
@@ -83,7 +90,9 @@ function AddRefsForm(p: {
   variantGid: Gid;
   item: TrackedItem;
   locations: Location[];
-  knownRefs: string[];
+  units: Unit[];
+  truncated: boolean;
+  formatDate: FormatDate;
   online: boolean;
   reload: () => void;
   close: () => void;
@@ -101,7 +110,32 @@ function AddRefsForm(p: {
   const [outcome, setOutcome] = useState<BatchOutcome | null>(null);
   const keeper = useMemo(() => new IdempotencyKeeper(), []);
 
-  const plan = useMemo(() => buildAddPlan({ text, knownRefs: p.knownRefs, kind, gap }), [text, p.knownRefs, kind, gap]);
+  const [added, setAdded] = useState<Unit[]>([]);
+
+  // Duplicates: first against the variant's loaded units, then the server check for the shop (decision 3).
+  const unitByRef = useMemo(() => new Map(p.units.map((u) => [normalizeRef(u.ref), u] as const)), [p.units]);
+  const localPlan = useMemo(() => buildAddPlan({ text, knownRefs: unitByRef.keys(), kind, gap }), [text, unitByRef, kind, gap]);
+  const check = useRefCheck(p.api, p.variantGid, locationId, localPlan.readyRefs);
+  const plan = useMemo(
+    () => (check.known.length === 0 && check.invalid.length === 0
+      ? localPlan
+      : buildAddPlan({ text, knownRefs: [...unitByRef.keys(), ...check.known], invalidRefs: check.invalid, kind, gap })),
+    [localPlan, check.known, check.invalid, text, unitByRef, kind, gap],
+  );
+  const stateLabel = (state: Unit['state']) => t(`states.${state}`);
+  /** Where a known ref is registered: « Entrepôt · Disponible », « autre variante · … », or nothing when unread. */
+  const knownDetail = (ref: string): string => {
+    const n = normalizeRef(ref);
+    const u = unitByRef.get(n) ?? check.units.get(n);
+    if (!u) return '';
+    const where = u.locationId ? (p.locations.find((l) => l.id === u.locationId)?.name ?? u.locationId) : null;
+    const parts = [
+      ...(u.variantGid !== p.variantGid ? [t('variantAction.otherVariant')] : []),
+      ...(where ? [where] : []),
+      stateLabel(u.state),
+    ];
+    return parts.join(' · ');
+  };
   const locationName = options.find((l) => l.id === locationId)?.name ?? locationId;
   const count = plan.readyRefs.length;
   const canSubmit = plan.blocked === null && p.online && !busy && locationId !== '';
@@ -128,6 +162,7 @@ function AddRefsForm(p: {
       keeper.done();
       const result = summarizeBatch(plan, res);
       setOutcome(result);
+      if (res.created.length > 0) setAdded((prev) => [...res.created, ...prev]);
       setText(result.remainingText);
       // Everything added: show the result and offer to close; refused refs stay in the field for correction.
       setStep(result.rejected.length === 0 ? 'done' : 'edit');
@@ -205,7 +240,7 @@ function AddRefsForm(p: {
               }}
             />
 
-            {plan.lines.length > 0 ? <LinePreview t={t} plan={plan} /> : null}
+            {plan.lines.length > 0 ? <LinePreview t={t} plan={plan} detail={knownDetail} checking={check.checking} /> : null}
             {blockedMessage ? (
               <s-banner tone="warning">
                 <s-text>{blockedMessage}</s-text>
@@ -228,6 +263,18 @@ function AddRefsForm(p: {
             {error ? <ErrorBanner t={t} error={error} /> : null}
           </>
         ) : null}
+
+        <ExistingRefs
+          api={p.api}
+          t={t}
+          variantGid={p.variantGid}
+          locationId={locationId}
+          locations={[...options, ...p.locations]}
+          units={p.units}
+          truncated={p.truncated}
+          added={added}
+          formatDate={p.formatDate}
+        />
       </s-stack>
 
       {step === 'edit' ? (
@@ -269,7 +316,7 @@ function AddRefsForm(p: {
 }
 
 /** Live count of the pasted lines and the lines that will not be sent (duplicate, known, invalid). */
-function LinePreview({ t, plan }: { t: Translate; plan: AddPlan }) {
+function LinePreview({ t, plan, detail, checking }: { t: Translate; plan: AddPlan; detail: (ref: string) => string; checking: boolean }) {
   const { counts } = plan;
   const flagged = plan.lines.filter((l) => l.status !== 'ready');
   return (
@@ -282,6 +329,7 @@ function LinePreview({ t, plan }: { t: Translate; plan: AddPlan }) {
           invalid: counts.invalid,
         })}
       </s-text>
+      {checking ? <s-text color="subdued">{t('variantAction.checking')}</s-text> : null}
       {flagged.length > 0 ? (
         <s-table>
           <s-table-header-row>
@@ -294,6 +342,7 @@ function LinePreview({ t, plan }: { t: Translate; plan: AddPlan }) {
                 <s-table-cell>{l.ref}</s-table-cell>
                 <s-table-cell>
                   <s-badge tone="warning">{t(`variantAction.line_${l.status}`)}</s-badge>
+                  {l.status === 'known' && detail(l.ref) ? ` — ${detail(l.ref)}` : ''}
                 </s-table-cell>
               </s-table-row>
             ))}

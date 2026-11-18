@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CreateUnitsBatchResponse } from '@serialis/contract';
 import { LOCATIONS, makeTrackedItem, makeUnit } from '../src/testing';
 import {
-  addLocationOptions, buildAddPlan, defaultKind, gapAt, initialAddLocation, summarizeBatch, toBatchRequest, unitsAppHref,
+  addLocationOptions, buildAddPlan, countByLocation, defaultKind, newFirst, gapAt, initialAddLocation, summarizeBatch, toBatchRequest, unitsAppHref,
 } from '../src/variant';
 
 describe('defaultKind', () => {
@@ -89,5 +89,24 @@ describe('location of the added refs', () => {
 
   it('unitsAppHref can open the add form of the Units screen', () => {
     expect(unitsAppHref('gid://shopify/ProductVariant/1001', { add: true })).toBe('app:units?variant=gid%3A%2F%2Fshopify%2FProductVariant%2F1001&add=1');
+  });
+});
+
+describe('refs already registered (decision 3)', () => {
+  it('countByLocation: here vs elsewhere (other locations or none)', () => {
+    const units = [makeUnit('A'), makeUnit('B', { locationId: 'loc-b' }), makeUnit('C', { locationId: null })];
+    expect(countByLocation(units, 'loc-a')).toEqual({ here: 1, elsewhere: 2 });
+  });
+
+  it('newFirst: added units first, without repeating them', () => {
+    const a = makeUnit('A');
+    const n = makeUnit('N');
+    expect(newFirst([n], [a, n]).map((u) => u.ref)).toEqual(['N', 'A']);
+  });
+
+  it('buildAddPlan: refs refused by the server check are invalid, refs it knows are known', () => {
+    const plan = buildAddPlan({ text: 'n1 X-9 BAD', knownRefs: ['x-9'], invalidRefs: ['bad'], kind: 'received', gap: null });
+    expect(plan.lines.map((l) => l.status)).toEqual(['ready', 'known', 'invalid']);
+    expect(plan.readyRefs).toEqual(['n1']);
   });
 });

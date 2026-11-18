@@ -6,7 +6,9 @@ import { VariantAction } from './VariantAction';
 export default async () => {
   const variantGid = shopify.data.selected[0]?.id ?? '';
   render(
-    <VariantAction api={createApiClient()} t={fromShopifyI18n(shopify.i18n)} variantGid={variantGid} close={() => shopify.close()} />,
+    <VariantAction api={createApiClient()} t={fromShopifyI18n(shopify.i18n)} variantGid={variantGid} close={() => shopify.close()}
+      formatDate={(iso) => shopify.i18n.formatDate(new Date(iso), { dateStyle: 'medium' })}
+    />,
     document.body,
   );
 };

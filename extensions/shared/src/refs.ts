@@ -40,17 +40,25 @@ export interface RefLine {
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 
 /**
- * Status of each pasted ref: `invalid` (too long or control characters), `duplicate` (same normalized
- * ref earlier in the list), `known` (already registered for this variant), otherwise `ready`.
+ * Status of each pasted ref: `invalid` (too long, control characters, or refused by the server check),
+ * `duplicate` (same normalized ref earlier in the list), `known` (already registered: for this variant, or for the
+ * shop when the server check said so), otherwise `ready`.
  */
-export function classifyRefs(refs: string[], knownRefs: Iterable<string>, opts: NormalizeOptions = {}): RefLine[] {
+export function classifyRefs(
+  refs: string[],
+  knownRefs: Iterable<string>,
+  opts: NormalizeOptions = {},
+  invalidRefs: Iterable<string> = [],
+): RefLine[] {
   const known = new Set<string>();
   for (const k of knownRefs) known.add(normalizeRef(k, opts));
+  const invalid = new Set<string>();
+  for (const k of invalidRefs) invalid.add(normalizeRef(k, opts));
   const seen = new Set<string>();
   return refs.map((ref, index) => {
     if (ref.length > MAX_REF_LENGTH || CONTROL_CHARS.test(ref)) return { index, ref, status: 'invalid' };
     const n = normalizeRef(ref, opts);
-    if (n.length === 0) return { index, ref, status: 'invalid' };
+    if (n.length === 0 || invalid.has(n)) return { index, ref, status: 'invalid' };
     if (seen.has(n)) return { index, ref, status: 'duplicate' };
     seen.add(n);
     if (known.has(n)) return { index, ref, status: 'known' };

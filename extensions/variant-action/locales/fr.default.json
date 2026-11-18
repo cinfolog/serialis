@@ -67,9 +67,9 @@
     "kindReceived": "Reçues maintenant (stock Shopify +1 par unité)",
     "addRefs": "Refs à ajouter",
     "addRefsHelp": "Une ref par ligne ; espaces, virgules et points-virgules sont aussi acceptés.",
-    "previewSummary": "{{ready}} prête(s), {{duplicate}} doublon(s) dans la liste, {{known}} déjà connue(s), {{invalid}} au format invalide.",
+    "previewSummary": "{{ready}} prête(s), {{duplicate}} doublon(s) dans la liste, {{known}} déjà enregistrée(s), {{invalid}} au format invalide.",
     "line_duplicate": "Doublon dans la liste",
-    "line_known": "Déjà connue",
+    "line_known": "Déjà enregistrée",
     "line_invalid": "Format invalide",
     "addNoGap": "Aucun écart dans Shopify : utilisez « Reçues » pour ajouter du stock.",
     "addTooMany": "1 000 refs au maximum par ajout : découpez la liste.",
@@ -112,6 +112,28 @@
       "other": "Confirmer l'ajout de {{count}} refs"
     },
     "addMore": "Ajouter d'autres refs",
-    "doneHint": "Le bloc de la variante se met à jour après la fermeture."
+    "doneHint": "Le bloc de la variante se met à jour après la fermeture.",
+    "checking": "Vérification des refs déjà enregistrées…",
+    "otherVariant": "autre variante",
+    "colState": "État",
+    "colLocation": "Emplacement",
+    "colRegistered": "Enregistrée le",
+    "existingHeading": "Déjà enregistrées à {{location}} ({{count}})",
+    "existingHeadingAll": "Déjà enregistrées, tous emplacements ({{count}})",
+    "existingElsewhere": {
+      "one": "+ {{count}} à d'autres emplacements",
+      "many": "+ {{count}} à d'autres emplacements",
+      "other": "+ {{count}} à d'autres emplacements"
+    },
+    "existingShowAll": "Voir tous les emplacements",
+    "existingOnlyHere": "Seulement {{location}}",
+    "existingShow": "Afficher",
+    "existingHide": "Masquer",
+    "existingFilter": "Filtrer par début de ref",
+    "existingMore": "Afficher plus",
+    "existingNone": "Aucune ref enregistrée pour l'instant.",
+    "existingNoneHere": "Aucune ref enregistrée à cet emplacement.",
+    "existingNoMatch": "Aucune ref ne commence ainsi.",
+    "existingNew": "nouvelle"
   }
 }

@@ -110,9 +110,9 @@
     "kindReceived": "Received now (Shopify stock +1 per unit)",
     "addRefs": "Refs to add",
     "addRefsHelp": "One ref per line; spaces, commas and semicolons are also accepted.",
-    "previewSummary": "{{ready}} ready, {{duplicate}} duplicate(s) in the list, {{known}} already known, {{invalid}} invalid format.",
+    "previewSummary": "{{ready}} ready, {{duplicate}} duplicate(s) in the list, {{known}} already registered, {{invalid}} with an invalid format.",
     "line_duplicate": "Duplicate in the list",
-    "line_known": "Already known",
+    "line_known": "Already registered",
     "line_invalid": "Invalid format",
     "addNoGap": "No gap in Shopify: use “Received” to add stock.",
     "addTooMany": "1,000 refs at most per add: split the list.",
@@ -149,7 +149,28 @@
       "other": "Confirm adding {{count}} refs"
     },
     "addMore": "Add more refs",
-    "doneHint": "The variant block updates once this window is closed."
+    "doneHint": "The variant block updates once this window is closed.",
+    "checking": "Checking for refs already registered…",
+    "otherVariant": "other variant",
+    "colState": "State",
+    "colLocation": "Location",
+    "colRegistered": "Registered on",
+    "existingHeading": "Already registered at {{location}} ({{count}})",
+    "existingHeadingAll": "Already registered, all locations ({{count}})",
+    "existingElsewhere": {
+      "one": "+ {{count}} at other locations",
+      "other": "+ {{count}} at other locations"
+    },
+    "existingShowAll": "Show all locations",
+    "existingOnlyHere": "Only {{location}}",
+    "existingShow": "Show",
+    "existingHide": "Hide",
+    "existingFilter": "Filter by start of ref",
+    "existingMore": "Show more",
+    "existingNone": "No ref registered yet.",
+    "existingNoneHere": "No ref registered at this location.",
+    "existingNoMatch": "No ref starts like this.",
+    "existingNew": "new"
   },
   "productBlock": {
     "heading": "Serialis refs",

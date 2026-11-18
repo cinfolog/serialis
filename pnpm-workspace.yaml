@@ -1,5 +1,6 @@
 packages:
   - api/*
+  - app
   - core
   - workers
   - services/*

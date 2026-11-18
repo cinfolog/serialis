@@ -110,8 +110,15 @@ export function defaultKind(gap: number | null, initializing: boolean): AddKind 
   return (gap !== null && gap > 0) || initializing ? 'already_counted' : 'received';
 }
 
-export function buildAddPlan(args: { text: string; knownRefs: Iterable<string>; kind: AddKind; gap: number | null }): AddPlan {
-  const lines = classifyRefs(parseRefList(args.text), args.knownRefs);
+export function buildAddPlan(args: {
+  text: string;
+  knownRefs: Iterable<string>;
+  /** Refs refused by the server check (type rules S-37), flagged as invalid. */
+  invalidRefs?: Iterable<string>;
+  kind: AddKind;
+  gap: number | null;
+}): AddPlan {
+  const lines = classifyRefs(parseRefList(args.text), args.knownRefs, {}, args.invalidRefs ?? []);
   const counts = countByStatus(lines);
   const readyRefs = lines.filter((l) => l.status === 'ready').map((l) => l.ref);
   const gap = args.gap ?? 0;
@@ -154,4 +161,21 @@ export function summarizeBatch(plan: AddPlan, res: CreateUnitsBatchResponse): Ba
     ...(r.detail ? { detail: r.detail } : {}),
   }));
   return { created: res.created.length, rejected, remainingText: rejected.map((r) => r.ref).join('\n') };
+}
+
+// ---------------------------------------------------------------------------
+// Refs already registered (variant action, decision 3)
+// ---------------------------------------------------------------------------
+
+/** Units of the variant at one location and elsewhere (other locations, or none). */
+export function countByLocation(units: Unit[], locationId: string): { here: number; elsewhere: number } {
+  let here = 0;
+  for (const u of units) if (u.locationId === locationId) here++;
+  return { here, elsewhere: units.length - here };
+}
+
+/** Units just added first (newest first), then the listed ones without them. */
+export function newFirst(added: Unit[], listed: Unit[]): Unit[] {
+  const ids = new Set(added.map((u) => u.id));
+  return [...added, ...listed.filter((u) => !ids.has(u.id))];
 }

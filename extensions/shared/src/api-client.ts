@@ -2,12 +2,14 @@ import {
   INTERNAL_BASE,
   type CreateAllocationRequest,
   type CreateUnitsBatchRequest,
+  type CheckUnitsBatchResponse,
   type CreateUnitsBatchResponse,
   type ErrorCode,
   type Gid,
   type ListLocationsResponse,
   type ListTrackedItemsQuery,
   type ListUnitsQuery,
+  type LookupResponse,
   type OrderAllocationsResponse,
   type Allocation,
   type Page,
@@ -151,6 +153,12 @@ export function createApiClient(options: ApiClientOptions = {}) {
     },
     createUnitsBatch: (req: CreateUnitsBatchRequest, call?: CallOptions) =>
       request<CreateUnitsBatchResponse>('POST', '/units/batch', req, call),
+    /** Row-by-row check of a batch, nothing written (`already_known` follows the uniqueness scope S-35). */
+    checkUnitsBatch: (req: CreateUnitsBatchRequest, call?: CallOptions) =>
+      request<CheckUnitsBatchResponse>('POST', '/units/batch/check', req, call),
+    /** Unit carrying an identifier (any variant of the shop), or null. */
+    lookup: (identifier: string, call?: CallOptions) =>
+      request<LookupResponse>('GET', `/lookup${queryString({ identifier })}`, undefined, call),
 
     // --- orders and allocations ----------------------------------------
     /** `orderGid` may be a GID or a bare numeric id: the route carries the numeric id (public API `{order_id}`). */

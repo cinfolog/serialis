@@ -22,6 +22,14 @@ const kinds = () => document.querySelector('s-choice-list')!;
 const kindValue = () => kinds().getAttribute('values');
 const selectValue = () => document.querySelector('s-select')!.getAttribute('value');
 
+/** Answer of `POST /units/batch/check`: every ref ready unless listed in `known`. */
+function checkAll(req: CreateUnitsBatchRequest, known: string[] = []) {
+  const rows = req.refs.map((ref, index) => ({ index, ref, status: known.includes(ref) ? 'already_known' : 'ready' }));
+  return { rows, ready: rows.filter((r) => r.status === 'ready').length, stockWrite: 0, gapBefore: null };
+}
+/** Calls of the « already registered » list (pages of 20), apart from the form's full load (pages of 250). */
+const listCalls = (m: ReturnType<typeof mockFetch>) => m.callsTo('GET /api/v1/units').filter((c) => c.query.get('limit') === '20');
+
 /** One location, gap 2 (5 in Shopify, 3 refs). */
 const ONE_LOCATION = makeTrackedItem({ stock: [{ locationId: 'loc-a', shopifyOnHand: 5, registeredUnits: 3, availableUnits: 3 }] });
 
@@ -37,6 +45,8 @@ function setup(opts: {
     'GET /api/v1/locations': () => page(opts.locations ?? [LOCATIONS[0]!]),
     'GET /api/v1/tracked-items': () => page(item ? [item] : []),
     'GET /api/v1/units': () => page([makeUnit('AB-001'), makeUnit('AB-002'), makeUnit('AB-003')]),
+    // server check: nothing more than what the client already knows
+    'POST /api/v1/units/batch/check': (c) => checkAll(c.body as CreateUnitsBatchRequest),
     ...opts.extra,
   });
   const close = vi.fn();
@@ -95,9 +105,9 @@ describe('VariantAction — form', () => {
     setup();
     await ready();
     typeInto(area(), 'NEW-1\nnew-1, NEW-2; AB-001\nTOO' + 'X'.repeat(200));
-    await see('2 prête(s), 1 doublon(s) dans la liste, 1 déjà connue(s), 1 au format invalide');
+    await see('2 prête(s), 1 doublon(s) dans la liste, 1 déjà enregistrée(s), 1 au format invalide');
     expect(text()).toContain('Doublon dans la liste');
-    expect(text()).toContain('Déjà connue');
+    expect(text()).toContain('Déjà enregistrée — Entrepôt · Disponible');
     expect(text()).toContain('Format invalide');
     expect(disabled(button('Ajouter 2 refs'))).toBe(false);
   });
@@ -266,5 +276,139 @@ describe('VariantAction — other states', () => {
     setup({ item: null });
     await see("n'est pas suivie par Serialis");
     expect(document.querySelector('s-text-area')).toBeNull();
+  });
+});
+
+describe('VariantAction — refs already registered', () => {
+  it('lists the refs at the selected location with state and date, count in the heading', async () => {
+    const { m } = setup();
+    await see('Déjà enregistrées à Entrepôt (3)');
+    await see('AB-003');
+    expect(text()).toContain('Disponible');
+    expect(text()).toContain('2026-03-01');
+    const q = listCalls(m)[0]!.query;
+    expect(q.get('variant')).toBe(VARIANT);
+    expect(q.get('location')).toBe('loc-a');
+    expect(document.querySelector('s-search-field')).toBeNull(); // 20 refs or fewer: no filter
+    // collapsible
+    fireEvent.click(button('Masquer'));
+    await waitFor(() => expect(text()).not.toContain('AB-003'));
+    fireEvent.click(button('Afficher'));
+    await see('AB-003');
+  });
+
+  it('no ref yet: one line, no list request', async () => {
+    const { m } = setup({ extra: { 'GET /api/v1/units': () => page([]) } });
+    await ready();
+    await see("Aucune ref enregistrée pour l'instant.");
+    expect(listCalls(m)).toHaveLength(0);
+  });
+
+  it('pages of 20 with « Afficher plus » (cursor), and a filter beyond 20 refs', async () => {
+    const all = Array.from({ length: 25 }, (_, i) => makeUnit(`AB-${String(i + 1).padStart(3, '0')}`));
+    const { m } = setup({
+      extra: {
+        'GET /api/v1/units': (c) => {
+          if (c.query.get('limit') !== '20') return page(all);
+          if (c.query.get('q')) return page(all.filter((u) => u.ref.startsWith(c.query.get('q')!)));
+          return c.query.get('cursor') === 'c1' ? page(all.slice(20)) : { items: all.slice(0, 20), nextCursor: 'c1' };
+        },
+      },
+    });
+    await see('Déjà enregistrées à Entrepôt (25)');
+    await see('AB-020');
+    expect(text()).not.toContain('AB-021');
+    fireEvent.click(button('Afficher plus'));
+    await see('AB-025');
+    expect(listCalls(m).at(-1)!.query.get('cursor')).toBe('c1');
+    expect(screen.queryByText('Afficher plus', { selector: 's-button' })).toBeNull();
+    // filter (prefix, sent to the server as q)
+    typeInto(document.querySelector('s-search-field')!, 'ab-02');
+    await waitFor(() => expect(listCalls(m).at(-1)!.query.get('q')).toBe('AB-02'));
+    await waitFor(() => expect(text()).not.toContain('AB-019'));
+    expect(text()).toContain('AB-024');
+  });
+
+  it('states the count at other locations in one line, and can show all locations', async () => {
+    const units = [makeUnit('AB-001'), makeUnit('AB-002'), makeUnit('BB-001', { locationId: 'loc-b', state: 'SHIPPED' }), makeUnit('BB-002', { locationId: 'loc-b' })];
+    const { m } = setup({
+      locations: LOCATIONS,
+      extra: {
+        'GET /api/v1/units': (c) => {
+          const loc = c.query.get('location');
+          return page(loc ? units.filter((u) => u.locationId === loc) : units);
+        },
+      },
+    });
+    await see('Déjà enregistrées à Entrepôt (2)');
+    expect(text()).toContain("+ 2 à d'autres emplacements");
+    expect(text()).not.toContain('BB-001');
+    fireEvent.click(button('Voir tous les emplacements'));
+    await see('Déjà enregistrées, tous emplacements (4)');
+    await see('BB-001');
+    expect(text()).toContain('Expédiée');
+    expect(text()).toContain('Boutique');
+    expect(listCalls(m).at(-1)!.query.get('location')).toBeNull();
+    fireEvent.click(button('Seulement Entrepôt'));
+    await see('Déjà enregistrées à Entrepôt (2)');
+  });
+
+  it('flags a typed ref already registered for the shop (server check), with its location and state, and leaves it out of the count', async () => {
+    const { m } = setup({
+      locations: LOCATIONS,
+      extra: {
+        'POST /api/v1/units/batch/check': (c) => checkAll(c.body as CreateUnitsBatchRequest, ['X-9']),
+        'GET /api/v1/lookup': () => ({ unit: makeUnit('X-9', { variantGid: 'gid://shopify/ProductVariant/2002', locationId: 'loc-b', state: 'HELD' }) }),
+      },
+    });
+    await ready();
+    typeInto(area(), 'NEW-1\nX-9\nAB-001');
+    // the variant's own ref is flagged at once, from the loaded list
+    await see('Déjà enregistrée — Entrepôt · Disponible');
+    await see('Déjà enregistrée — autre variante · Boutique · Réservée');
+    expect(disabled(button('Ajouter 1 ref'))).toBe(false);
+    // one check for the refs the client could not rule out, nothing written
+    const checks = m.callsTo('POST /api/v1/units/batch/check');
+    expect(checks).toHaveLength(1);
+    expect((checks[0]!.body as CreateUnitsBatchRequest).refs).toEqual(['NEW-1', 'X-9']);
+    expect(m.callsTo('GET /api/v1/lookup')[0]!.query.get('identifier')).toBe('X-9');
+    // a ref already checked is not sent again
+    typeInto(area(), 'NEW-1\nX-9\nAB-001\nNEW-2');
+    await waitFor(() => expect(m.callsTo('POST /api/v1/units/batch/check')).toHaveLength(2));
+    expect((m.callsTo('POST /api/v1/units/batch/check')[1]!.body as CreateUnitsBatchRequest).refs).toEqual(['NEW-2']);
+  });
+
+  it('a failed check flags nothing: the batch stays the final guard', async () => {
+    setup({ extra: { 'POST /api/v1/units/batch/check': () => problem(500, 'unknown') } });
+    await ready();
+    typeInto(area(), 'N1 N2');
+    await new Promise((r) => setTimeout(r, 700));
+    expect(disabled(button('Ajouter 2 refs'))).toBe(false);
+  });
+
+  it('after an add, the list is read again and shows the new refs first', async () => {
+    const { m } = setup({
+      extra: { 'POST /api/v1/units/batch': () => ({ created: [makeUnit('NEW-1', { id: 'unit-z1' }), makeUnit('NEW-2', { id: 'unit-z2' })], rejected: [] }) },
+    });
+    await see('AB-001');
+    const before = listCalls(m).length;
+    choose(kinds(), 'received');
+    typeInto(area(), 'NEW-1 NEW-2');
+    fireEvent.click(button('Ajouter 2 refs'));
+    await see("Confirmer l'ajout");
+    fireEvent.click(button("Confirmer l'ajout de 2 refs"));
+    await see('2 refs ajoutées');
+    await waitFor(() => expect(listCalls(m).length).toBeGreaterThan(before));
+    await see('NEW-1 · nouvelle');
+    const t2 = text();
+    expect(t2.indexOf('NEW-1 · nouvelle')).toBeLessThan(t2.indexOf('NEW-2 · nouvelle'));
+    expect(t2.indexOf('NEW-2 · nouvelle')).toBeLessThan(t2.indexOf('AB-001'));
+  });
+
+  it('is available in English', async () => {
+    setup({ lang: 'en' });
+    await see('Already registered at Entrepôt (3)');
+    await see('AB-003');
+    expect(text()).toContain('Available');
   });
 });

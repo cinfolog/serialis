@@ -43,7 +43,7 @@ Preact et composants web Polaris (`s-*`), un dossier par extension, code commun 
   dans l'extension quand l'écart Shopify est nul (message de 15.7), mais seulement signalé quand il dépasse l'écart (le serveur tranche).
 - **Ajout de refs** : `mode: 'per_item'` (T-UX-02 : les 47 valides sont créées, les 3 en erreur restent dans le champ avec leur motif).
   Format côté client : 128 caractères au plus, pas de caractère de contrôle (S-37 reste côté serveur). 1 000 refs au plus par envoi.
-  Les refs « déjà connues » ne sont détectées que pour la variante affichée ; les autres conflits reviennent en `identifier_conflict`.
+  Les refs « déjà enregistrées » sont détectées pour la variante affichée, puis pour la boutique par la vérification serveur (décision 3) ; le lot reste le dernier garde-fou (`identifier_conflict`).
 - **Clé d'idempotence (15.5)** : une clé par action, conservée tant que la charge utile est identique (nouvel essai après coupure),
   renouvelée après un succès ou un changement.
 - **Chargement (15.7)** : spinner Polaris et « Encore un instant » après 3 s (pas de squelette : la liste des composants admin n'en propose pas).
@@ -146,3 +146,40 @@ saisie de nombreuses refs n'a pas sa place dans un bloc limité à 300 px.
 - Taille des paquets (esbuild, minifié) : bloc variante 29 Ko, action variante 27 Ko.
 - **À vérifier dans l'admin réel** : la fenêtre s'ouvre depuis le bloc ; le bloc se met à jour après la fermeture (sinon, noter
   le délai observé) ; l'action apparaît aussi dans « Plus d'actions » de la variante.
+
+### 3. Action variante : refs déjà enregistrées et doublons signalés avant l'envoi
+
+Demande du marchand (admin réel) : voir, dans la fenêtre « Ajouter des refs », les refs déjà enregistrées pour la variante.
+
+- **Section « Refs déjà enregistrées »** sous le formulaire, visible aussi après un ajout. Titre avec le compte à
+  l'emplacement choisi (« Déjà enregistrées à Entrepôt (12) ») ; une ligne « + N à d'autres emplacements » et un bouton
+  « Voir tous les emplacements » (colonne Emplacement ajoutée, retour par « Seulement Entrepôt »). Une ligne par ref :
+  ref, badge d'état (libellés et tons de `StateBadge`), date d'enregistrement (`createdAt`, `shopify.i18n.formatDate`).
+  Toutes les refs de la variante, quel que soit l'état (vendues comprises) : c'est ce que le marchand ne peut plus
+  réenregistrer. Aucune ref : une seule ligne « Aucune ref enregistrée pour l'instant ».
+- **Lecture** : `GET /units?variant=&location=&limit=20`, puis « Afficher plus » avec `cursor` (ordre du serveur, par
+  identifiant, donc d'enregistrement). Au-delà de 20 refs, champ de filtre : recherche par début de ref (`q`, recherche
+  par préfixe du serveur), envoyée 300 ms après la dernière frappe. Les comptes viennent des unités déjà chargées pour le
+  formulaire (`loadVariantData`, 8 pages de 250) ; affichés « N+ » si cette lecture est tronquée.
+- **Repliable** : la liste des composants admin 2026-10 (`StandardComponents`) n'a ni `s-details` ni section repliable
+  (`s-section` n'a que `heading`, `padding`) ; un bouton tertiaire « Masquer / Afficher » (`aria-expanded`) replie la
+  section, dépliée à l'ouverture.
+- **Doublons en direct** : (1) contre les unités de la variante déjà chargées, immédiatement ; (2) pour la boutique,
+  `POST /units/batch/check` (même corps que le lot, n'écrit rien, applique la portée d'unicité S-35 et les règles de
+  format S-37) 500 ms après la dernière frappe, avec seulement les refs que le client n'a pas déjà écartées ni déjà
+  vérifiées (verdicts gardés pendant la vie de la fenêtre ; la portée ne dépend pas de l'emplacement). `already_known`
+  → « Déjà enregistrée », `invalid_format` → « Format invalide » ; ces lignes sortent du décompte « Ajouter N refs ».
+  L'emplacement et l'état d'une ref connue viennent de la liste chargée, sinon de `GET /lookup?identifier=` (5 au plus
+  par vérification) : « Déjà enregistrée — autre variante · Boutique · Réservée ». La vérification est faite avec
+  `alreadyCounted: false` (seul le doublon intéresse, l'écart est traité par le formulaire). Un échec de vérification ne
+  signale rien : le lot reste le dernier garde-fou (`identifier_conflict` par ref). Chaque vérification lit le niveau de
+  stock dans Shopify côté serveur : d'où l'attente après la frappe et le cache des verdicts, pas d'appel par touche.
+- **Après un ajout** : les unités renvoyées par le lot (`created`) s'affichent en tête avec « nouvelle », la première page
+  est relue et les comptes rechargés.
+- **Bloc variante** inchangé (règle des 300 px, lien « Voir les N refs »). La fenêtre n'est pas soumise à cette limite.
+- **Vérification** : tests de l'action (liste et compte, aucune ref, pages et curseur, filtre, autres emplacements et
+  bascule, doublon signalé par le serveur avec emplacement et état, ref vérifiée une seule fois, échec de vérification,
+  nouvelles refs en tête après l'ajout, anglais). Paquet de l'action : 33 Ko (esbuild, minifié), sous 64 Ko.
+- **À vérifier dans l'admin réel** (recette 3.11) : délai du signalement d'un doublon ; rendu du bouton « Masquer » et du
+  champ de filtre dans la fenêtre ; format de la date ; CORS de `POST /units/batch/check` et `GET /lookup` depuis
+  l'extension (mêmes en-têtes que les autres routes).

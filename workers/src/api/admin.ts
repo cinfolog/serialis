@@ -362,6 +362,15 @@ function concernedOrders(ctx: ApiContext, keys: string[]): Set<string> {
   return out;
 }
 
+/** Structural equality of two core setting values (scalars or plain objects such as S-36, S-40). */
+function sameCoreValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  const ka = Object.keys(a as object);
+  const kb = Object.keys(b as object);
+  return ka.length === kb.length && ka.every((k) => sameCoreValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
 export function patchSettings(ctx: ApiContext): ApiResult {
   const body = parseBody<PatchSettingsRequest & { values: Record<string, ApiValue | null> }>(ctx.call);
   checkIfMatch(ctx.call, settingsEtag(ctx));
@@ -381,7 +390,10 @@ export function patchSettings(ctx: ApiContext): ApiResult {
     const before = readValues(ctx, scope);
     for (const c of changes) {
       if (c.core) {
-        if (c.value === null) repo.deleteSetting(scope.type, scope.id, c.core.key);
+        // T-SET-06 / 6.6.1 « Mes choix »: at shop scope nothing sits between the shop value and the
+        // default, so a value equal to the default is not a choice: it is removed, never stored.
+        // Location and tracked-item values equal to the default stay (they override the shop value).
+        if (c.value === null || (scope.type === 'shop' && sameCoreValue(c.core.value, SETTINGS[c.core.key].default))) repo.deleteSetting(scope.type, scope.id, c.core.key);
         else repo.putSetting({ scopeType: scope.type, scopeId: scope.id, key: c.core.key, value: c.core.value, updatedBy: actor.id, now });
         continue;
       }

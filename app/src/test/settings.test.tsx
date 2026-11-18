@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { actOnFirstAppearance, choose, navLink, field, pageHeading, press, renderApp, screen, text, typeIn, waitFor, within } from './utils';
 
 async function openSettings(options: Parameters<typeof renderApp>[1] = {}) {
@@ -45,6 +45,38 @@ describe('Réglages (MVP)', () => {
     await waitFor(() => expect(screen.getByTestId('save-bar')).toBeInTheDocument());
     press(screen.getByTestId('save-bar-save'));
     await waitFor(() => expect(mock.settings['S-05']).toBe('fifo'));
+    await waitFor(() => expect(screen.getByTestId('mine-empty')).toBeInTheDocument());
+  });
+
+  it('« Back to default » removes an explicit value equal to the default (browser recette, S-22 10 → 15 → 10)', async () => {
+    // A shop value of 10 min stored explicitly (Worker before decision 73, or any older row): the
+    // effective value is the default, but it is still a choice listed in « Mes choix ».
+    const rendered = renderApp('/settings', { extensionsShown: true });
+    rendered.mock.settingsMeta.set('S-22', { origin: 'shop', by: 'Camille' });
+    const patch = vi.spyOn(rendered.mock, 'patchSettings');
+    await waitFor(() => expect(screen.getByTestId('mine-list').textContent).toContain('10 min'));
+    press(screen.getByTestId('revert-S-22'));
+    await waitFor(() => expect(screen.getByTestId('save-bar')).toBeInTheDocument());
+    press(screen.getByTestId('save-bar-save'));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(patch.mock.calls[0]![0].values).toEqual({ 'S-22': null });
+    await waitFor(() => expect(screen.getByTestId('mine-empty')).toBeInTheDocument());
+    expect(rendered.mock.settingsMeta.has('S-22')).toBe(false);
+  });
+
+  it('« Back to default » sends null (removal), not the default value, for a value different from the default', async () => {
+    const { mock } = await openSettings();
+    const patch = vi.spyOn(mock, 'patchSettings');
+    typeIn(field('Délai de grâce avant qu’un écart devienne une anomalie (en minutes)'), '7');
+    await waitFor(() => expect(screen.getByTestId('save-bar')).toBeInTheDocument());
+    press(screen.getByTestId('save-bar-save'));
+    await waitFor(() => expect(screen.getByTestId('mine-list').textContent).toContain('7 min'));
+    press(screen.getByTestId('revert-S-22'));
+    await waitFor(() => expect(screen.getByTestId('save-bar')).toBeInTheDocument());
+    expect((field('Délai de grâce avant qu’un écart devienne une anomalie (en minutes)') as unknown as { value: string }).value).toBe('10');
+    press(screen.getByTestId('save-bar-save'));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(2));
+    expect(patch.mock.calls[1]![0].values).toEqual({ 'S-22': null });
     await waitFor(() => expect(screen.getByTestId('mine-empty')).toBeInTheDocument());
   });
 

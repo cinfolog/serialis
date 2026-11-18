@@ -15,10 +15,13 @@ import { EmergencyStopSection } from './EmergencyStopSection';
 import { HealthLinkSection } from './Health';
 import { UsersSection } from './UsersSection';
 
-const same = (a: SettingValueType | undefined, b: SettingValueType | undefined) => a === b;
+/** `null` in the draft or in a saved batch = back to the default: the stored value is removed (T-SET-06). */
+type DraftValue = SettingValueType | null;
+
+const same = (a: DraftValue | undefined, b: DraftValue | undefined) => a === b;
 
 interface Review {
-  values: Record<string, SettingValueType>;
+  values: Record<string, DraftValue>;
   simulation: SettingsSimulation | null;
   warnings: string[];
 }
@@ -33,7 +36,7 @@ export function Settings() {
   const locations = useLocations();
   const server = useAsync(() => client.getSettings('shop'), [client]);
 
-  const [draft, setDraft] = useState<Record<string, SettingValueType>>({});
+  const [draft, setDraft] = useState<Record<string, DraftValue>>({});
   const [minutesText, setMinutesText] = useState<string | null>(null);
   const [review, setReview] = useState<Review | null>(null);
   const [saving, setSaving] = useState(false);
@@ -46,8 +49,23 @@ export function Settings() {
   // that shows the loaded values, so a change made in between was silently overwritten (decision 29).
   // The draft is cleared only where the server values are replaced on purpose (`persist`, `discard`).
 
-  const valueOf = (def: SettingDef): SettingValueType => draft[def.key] ?? serverByKey.get(def.key)?.value ?? def.default;
-  const changedKeys = SETTINGS.filter((d) => draft[d.key] !== undefined && !same(draft[d.key], serverByKey.get(d.key)?.value ?? d.default)).map((d) => d.key);
+  const explicit = (key: string) => {
+    const origin = serverByKey.get(key)?.origin;
+    return origin !== undefined && origin !== 'default' && origin !== 'fixed';
+  };
+  const valueOf = (def: SettingDef): SettingValueType => {
+    const d = draft[def.key];
+    if (d === null) return def.default;
+    return d ?? serverByKey.get(def.key)?.value ?? def.default;
+  };
+  // A reset (`null`) is a change only while a value is stored, even one equal to the default: comparing
+  // the default with the effective value hid the reset of such a value (browser recette, decision 32).
+  const changedKeys = SETTINGS.filter((d) => {
+    const v = draft[d.key];
+    if (v === undefined) return false;
+    if (v === null) return explicit(d.key);
+    return !same(v, serverByKey.get(d.key)?.value ?? d.default);
+  }).map((d) => d.key);
   const dirty = changedKeys.length > 0 || minutesText !== null;
 
   const labelOf = (def: SettingDef, value: SettingValueType): string => {
@@ -62,6 +80,16 @@ export function Settings() {
   function setValue(def: SettingDef, value: SettingValueType) {
     setError(null);
     setDraft((d) => ({ ...d, [def.key]: value }));
+  }
+
+  /** « Revenir au défaut » (Mes choix): removes the stored value at the next save, never stores the default. */
+  function revert(def: SettingDef) {
+    setError(null);
+    if (def.kind === 'minutes') {
+      setMinutesText(null);
+      setMinutesError(null);
+    }
+    setDraft((d) => ({ ...d, [def.key]: null }));
   }
 
   function onMinutes(def: Extract<SettingDef, { kind: 'minutes' }>, text: string) {
@@ -97,7 +125,7 @@ export function Settings() {
     setError(null);
   }
 
-  async function persist(values: Record<string, SettingValueType>, simulationId?: string) {
+  async function persist(values: Record<string, DraftValue>, simulationId?: string) {
     setSaving(true);
     setError(null);
     try {
@@ -123,10 +151,10 @@ export function Settings() {
 
   async function save() {
     if (minutesError || patternInvalid) return;
-    const values = Object.fromEntries(changedKeys.map((k) => [k, draft[k] as SettingValueType]));
+    const values = Object.fromEntries(changedKeys.map((k) => [k, draft[k] as DraftValue]));
     const needsSimulation = changedKeys.some((k) => serverByKey.get(k)?.changeRule === 'simulation');
     const warnings = changedKeys
-      .map((k) => weakeningOf(SETTINGS.find((d) => d.key === k) as SettingDef, values[k]))
+      .map((k) => (values[k] === null ? null : weakeningOf(SETTINGS.find((d) => d.key === k) as SettingDef, values[k] as SettingValueType)))
       .filter((w): w is string => w !== null)
       .map((w) => tMaybe(w) ?? w);
     if (needsSimulation) {
@@ -259,7 +287,7 @@ export function Settings() {
                 <li key={def.key}>
                   {t('settings.mine.line', { name: def.kind === 'choice' || def.kind === 'minutes' ? t(`settings.${def.key}.question` as MessageKey) : def.key, value: labelOf(def, value.value) })}{' '}
                   {canAdmin ? (
-                    <Button variant="tertiary" onPress={() => setValue(def, def.default)} testId={`revert-${def.key}`}>
+                    <Button variant="tertiary" onPress={() => revert(def)} disabled={draft[def.key] === null} testId={`revert-${def.key}`}>
                       {t('settings.mine.revert')}
                     </Button>
                   ) : null}

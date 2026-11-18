@@ -89,7 +89,8 @@ Ces contrôles restent à Thomas :
 | 1.3 | Sur chaque écran, appuyer une fois sur Tab. | Un lien d'évitement (« Aller au contenu ») apparaît ; Entrée place le focus dans la zone principale. |
 | 1.4 | Réglages : changer un choix sans enregistrer, puis « Annuler ». | Une barre d'enregistrement apparaît ; « Annuler » rétablit la valeur. Remarque si Shopify affiche **aussi** sa propre barre en haut (doublon). |
 | 1.5 | Réglages : modifier un champ texte, une liste et une case à cocher, enregistrer, recharger. | Les trois valeurs sont conservées après rechargement. Remettre ensuite les valeurs d'origine (notées avant). |
-| 1.6 | Réglages › Sécurité et exploitation › « Activer l'arrêt d'urgence » : ouvrir la confirmation, puis Échap. | Dialogue avec fond grisé, focus enfermé dedans ; Échap ferme **sans rien activer**. Vérifier que le bandeau d'arrêt d'urgence n'apparaît pas. |
+| 1.6 | Réglages › Sécurité et exploitation › « Activer l'arrêt d'urgence » : ouvrir la confirmation, puis Échap ; recommencer avec le focus sur chacun des boutons du dialogue (Tab), puis sur sa croix. | Dialogue avec fond grisé, focus enfermé dedans ; Échap ferme **sans rien activer**, quel que soit le bouton qui a le focus. Vérifier que le bandeau d'arrêt d'urgence n'apparaît pas et que le focus revient sur « Activer l'arrêt d'urgence ». |
+| 1.6b | Fermer une confirmation par « Annuler », par Échap, après une révocation de clé d'API confirmée, après l'activation puis la reprise de l'arrêt d'urgence (depuis le bandeau). Après chaque fermeture, cliquer un lien du menu de gauche de Shopify **sans F5**. | La barre du haut et le menu de Shopify ne restent jamais grisés ; le clic dans le menu navigue. Si l'un reste grisé, noter le chemin de fermeture exact. |
 | 1.7 | Articles suivis › « Suivre des articles ». | Le sélecteur de variantes de Shopify s'ouvre. Le fermer sans rien choisir. |
 | 1.8 | Depuis l'app, cliquer un lien vers un produit ou une commande Shopify. | La page Shopify s'ouvre dans l'admin, pas dans l'iframe de l'app ni dans un onglet vide. |
 
@@ -193,6 +194,7 @@ Ces contrôles restent à Thomas :
 |---|---|---|
 | 11.1 | Réglages : relever la liste des réglages affichés, et ceux en lecture seule avec leur raison. 📸 | Liste à recopier dans le rapport. |
 | 11.2 | Changer un réglage qui propose une simulation : simuler, puis enregistrer. Remettre ensuite la valeur d'origine. | La simulation est exigée et décrit l'effet. La valeur et son origine s'affichent, et « Mes choix » la liste. |
+| 11.3 | S-22 (« Grace period… ») : 10 → 15 → 10 en enregistrant à chaque fois, puis F5. Ensuite 15, enregistrer, « Back to default » dans « Mes choix », enregistrer, F5. | Après 15 → 10 : « Mes choix » affiche « No setting changed ». « Back to default » fait apparaître la barre d'enregistrement ; après l'enregistrement et F5, la ligne n'est plus listée et la valeur vaut 10. |
 | 11.3a | Réglages › Utilisateurs. | Le compte de Thomas apparaît avec « You », « Owner », « Administrator », sa date de première visite, et aucune adresse e-mail. Aucun bouton sur sa ligne. |
 | 11.4 | Réglages › Sécurité et exploitation › « Activer l'arrêt d'urgence » › confirmer. Passer une commande admin de 1 × M. 📸 | Un bandeau permanent s'affiche sur tous les écrans de l'app. La commande n'est **pas** attribuée et n'est pas mise en attente. |
 | 11.5 | « Reprendre l'automatisation » › confirmer. **Ne pas oublier cette étape.** | Le bandeau disparaît et la commande de 11.4 reçoit son unité (≤ 60 s). |

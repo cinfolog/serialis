@@ -63,6 +63,23 @@ function anomalyFor(v: InvariantViolation): AnomalyType {
   return v.actual > v.expected ? 'stock_mismatch_missing_units' : 'stock_mismatch_extra_units';
 }
 
+/** I1, I3 and I5 on the stored level of one location. */
+function levelViolations(ctx: DomainContext, item: TrackedItemRow, locationId: string): InvariantViolation[] {
+  const { repo } = ctx;
+  const level = repo.cachedLevel(item.id, locationId);
+  if (!level) return [];
+  const units = repo.unitsAt(item.id, locationId);
+  const explained = repo.explainedFor(item.id, locationId);
+  // 8.1: a gap covered by units to verify is explained (Shopify may have restocked them), up to their number.
+  const toVerify = units.filter((u) => u.status === 'TO_VERIFY').length;
+  if (toVerify > 0) {
+    explained.push({ sourceType: 'to_verify_restocked', sourceRef: `to_verify|${item.id}|${locationId}`, trackedItemId: item.id, locationId, inventoryState: 'available', direction: 'deficit', quantity: toVerify, status: 'open' });
+  }
+  return checkInvariants({ levels: [level], units, uncovered: repo.uncoveredFor(item.id, locationId), explained }).filter(
+    (v) => v.invariant === 'I1' || v.invariant === 'I3' || v.invariant === 'I5',
+  );
+}
+
 /**
  * Checks the stored level against the units (synchronous, inside a transaction). Returns when the
  * check must run again (grace period, writes in flight), or null.
@@ -73,19 +90,7 @@ export function evaluateLevel(ctx: DomainContext, item: TrackedItemRow, location
   if (!level) return null;
   if (repo.pendingStockWrites(item.inventoryItemGid, locationId) > 0) return now + IN_FLIGHT_RECHECK_MS;
 
-  const units = repo.unitsAt(item.id, locationId);
-  const explained = repo.explainedFor(item.id, locationId);
-  // 8.1: a gap covered by units to verify is explained (Shopify may have restocked them), up to their number.
-  const toVerify = units.filter((u) => u.status === 'TO_VERIFY').length;
-  if (toVerify > 0) {
-    explained.push({ sourceType: 'to_verify_restocked', sourceRef: `to_verify|${item.id}|${locationId}`, trackedItemId: item.id, locationId, inventoryState: 'available', direction: 'deficit', quantity: toVerify, status: 'open' });
-  }
-  const violations = checkInvariants({
-    levels: [level],
-    units,
-    uncovered: repo.uncoveredFor(item.id, locationId),
-    explained,
-  }).filter((v) => v.invariant === 'I1' || v.invariant === 'I3' || v.invariant === 'I5');
+  const violations = levelViolations(ctx, item, locationId);
   const live = repo.liveAnomaliesOfLevel(item.id, locationId, LEVEL_ANOMALIES);
   const closeAll = (keep: Set<string>) => {
     for (const a of live) if (!keep.has(a.fingerprint)) repo.closeAnomaly(a.id, 'auto_resolved', { by: 'level_check' }, now);
@@ -94,7 +99,8 @@ export function evaluateLevel(ctx: DomainContext, item: TrackedItemRow, location
   if (item.initializing) {
     // EF-01: gaps are shown as units to register, without anomaly.
     const settings = repo.storedSettings();
-    const i1 = !violations.some((v) => v.invariant === 'I1');
+    // The phase belongs to the item: it ends when I1 holds at every location it is stocked at.
+    const i1 = repo.levelsOfItem(item.id).every((l) => !levelViolations(ctx, item, l.locationId).some((v) => v.invariant === 'I1'));
     if (initializationShouldEnd(resolveSetting('S-25', { trackedItemId: item.id }, settings), i1, false)) repo.setItemInitializing(item.id, false, now);
     repo.setGapSince(item.id, locationId, null);
     closeAll(new Set());

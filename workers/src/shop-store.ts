@@ -12,6 +12,7 @@ import { recordOrderEdit, shouldSchedule } from './domain/ingest.js';
 import { runInventoryLevelCheck } from './domain/levels.js';
 import { ensureReconciliation, runReconcile, type Pass } from './domain/reconcile.js';
 import { DomainRepo } from './domain/repo.js';
+import { ensureMaintenance, runPurge } from './domain/maintenance.js';
 import { requestOrderSync, runSyncOrder } from './domain/sync-order.js';
 import { domainOutboxHooks } from './domain/writes.js';
 import { shopifyFetch } from './shopify-fetch.js';
@@ -155,6 +156,7 @@ export class ShopStore extends DurableObject<Env> {
       this.migrate();
       this.tasks.recoverExpiredLeases();
       this.outbox.recoverExpiredLeases();
+      if (this.shopState() !== 'uninstalled') ctx.storage.transactionSync(() => ensureMaintenance(this.domain));
       await this.tasks.syncAlarm(this.shopState() === 'active');
     });
   }
@@ -198,6 +200,7 @@ export class ShopStore extends DurableObject<Env> {
         this.setMeta('installed_at', String(now));
         // Idempotency keys must never repeat across databases of the same shop (reinstall after redaction).
         this.setMeta('outbox_key_prefix', crypto.randomUUID());
+        ensureMaintenance(this.domain, now);
       });
       logEvent('info', 'shop.installed', { shop: input.shopDomain });
     } else {
@@ -435,6 +438,8 @@ export class ShopStore extends DurableObject<Env> {
         return (ctx) => runReconcile(this.domain, String(ctx.payload.pass) as Pass);
       case 'resolve':
         return (ctx) => this.resolveSubject(String(ctx.payload.gid));
+      case 'purge':
+        return () => runPurge(this.domain);
       default:
         return undefined;
     }

@@ -11,3 +11,7 @@ coverage/
 
 # Shopify CLI extension build output
 extensions/*/manifest.json
+
+# Playwright (tests/ui)
+playwright-report/
+test-results/

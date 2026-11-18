@@ -33,7 +33,7 @@ pnpm dev         # wrangler dev
    wrangler secret put SHOPIFY_API_SECRET --env staging
    ```
 2. **Shopify** : créer l'app dans le Dev Dashboard de l'organisation Serialis (une par environnement), reporter `client_id` dans le `shopify.app.*.toml` correspondant.
-3. **GitHub** : secrets d'environnement `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `SHOPIFY_CLI_TOKEN` (compte de service avec la permission « App development »).
+3. **GitHub** : secrets d'environnement `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `SHOPIFY_CLI_TOKEN` (compte de service avec la permission « App development »). Secrets copiés dans le Worker à chaque déploiement : `SHOPIFY_API_SECRET`, `TOKEN_ENCRYPTION_KEY` et `API_KEY_SEAL_SECRET_V1` (scellement des clés de l'API publique, `openssl rand -base64 32` ; rotation par un nouveau secret `API_KEY_SEAL_SECRET_V2`, l'ancien restant en place tant que des clés l'utilisent).
 4. Déployer : action **Deploy** (manuelle), environnement `staging`.
 
 ## Lot 0 — reste à faire

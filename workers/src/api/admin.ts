@@ -343,6 +343,19 @@ export function simulateSettings(ctx: ApiContext): ApiResult {
   return json(response, 201);
 }
 
+/** Orders whose synchronization a "simulation" setting changes (same sets as the simulation, 14.2). */
+function concernedOrders(ctx: ApiContext, keys: string[]): Set<string> {
+  const { sql } = ctx.d;
+  const out = new Set<string>();
+  if (keys.includes('S-38')) {
+    for (const r of sql.exec<{ order_gid: string }>("SELECT DISTINCT order_gid FROM allocations WHERE status IN ('active', 'fulfilled')").toArray()) out.add(r.order_gid);
+  }
+  if (keys.includes('S-11')) {
+    for (const r of sql.exec<{ order_gid: string }>("SELECT order_gid FROM order_sync WHERE status IN ('ok', 'short', 'pending')").toArray()) out.add(r.order_gid);
+  }
+  return out;
+}
+
 export function patchSettings(ctx: ApiContext): ApiResult {
   const body = parseBody<PatchSettingsRequest & { values: Record<string, ApiValue | null> }>(ctx.call);
   checkIfMatch(ctx.call, settingsEtag(ctx));
@@ -396,6 +409,8 @@ export function patchSettings(ctx: ApiContext): ApiResult {
     }
     repo.setMeta('settings_version', String(Number(repo.meta('settings_version') ?? '0') + 1));
     repo.audit(actor, 'settings.update', before, { scope: scope.scope, values: body.values }, now);
+    // 6.6.1: a "simulation" setting is applied to what is in progress: each concerned order is synchronized now.
+    for (const orderGid of concernedOrders(ctx, simulated.map((c) => c.key))) requestOrderSync(ctx.d, orderGid, 0, now);
   });
   const response: SettingsResponse = { scope: scope.scope, values: readValues(ctx, scope) };
   return json(response, 200, { ETag: settingsEtag(ctx) });

@@ -131,12 +131,20 @@ describe('settings catalogue — spec 6.6 and 19.4', () => {
     expect(isValidSettingValue('S-40', { recipients: [], outgoingWebhook: true, dailyDigest: false })).toBe(false);
   });
 
-  it('T-SET-08 — every non-default value references a test that exists in the suite', () => {
-    const dir = fileURLToPath(new URL('.', import.meta.url));
-    const sources = readdirSync(dir)
-      .filter((f) => f.endsWith('.test.ts'))
-      .map((f) => readFileSync(`${dir}/${f}`, 'utf8'))
-      .join('\n');
+  it('T-SET-08 — every non-default value references a test that exists, runs and is not skipped in the suite', () => {
+    // Suites run by `pnpm test` (and in CI, where any failing test fails the job): a referenced test
+    // that exists once, is neither skipped nor marked todo or failing, in a suite file without `.only`,
+    // is therefore a passing test of the suite (6.6.1, workers/DECISIONS.md 55).
+    const root = fileURLToPath(new URL('../../', import.meta.url));
+    const SUITES = ['core/test/', 'workers/test/'];
+    const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const resolve = (ref: string): { file: string; name: string } => {
+      const at = ref.indexOf('::');
+      return at < 0 ? { file: 'core/test/', name: ref } : { file: ref.slice(0, at), name: ref.slice(at + 2) };
+    };
+    const filesOf = (path: string): string[] =>
+      path.endsWith('/') ? readdirSync(`${root}${path}`).filter((f) => f.endsWith('.test.ts')).map((f) => `${path}${f}`) : [path];
+    const checked: string[] = [];
     for (const k of SETTING_KEYS) {
       const def = SETTINGS[k] as SettingDefinition;
       if (def.fixedInMvp !== undefined) continue;
@@ -151,8 +159,26 @@ describe('settings catalogue — spec 6.6 and 19.4', () => {
       for (const v of nonDefault) {
         const ref = def.testRefs[v];
         expect(ref, `${k} = ${v} has no test reference`).toBeTypeOf('string');
-        expect(sources.includes(`it('${ref}'`), `${k} = ${v}: test "${ref}" not found`).toBe(true);
+        const { file, name } = resolve(ref!);
+        expect(SUITES.some((s) => file.startsWith(s)) && (file.endsWith('/') || file.endsWith('.test.ts')), `${k} = ${v}: ${file} is not in a test suite`).toBe(true);
+        const files = filesOf(file);
+        const quoted = `\\(\\s*(?<q>['"\`])${escape(name)}\\k<q>`;
+        const runnable = new RegExp(`(^|[^.\\w])(it|test)${quoted}`, 'g');
+        const disabled = new RegExp(`(it|test|describe)\\.(skip|todo|fails|only)${quoted}`);
+        let found = 0;
+        for (const f of files) {
+          const source = readFileSync(`${root}${f}`, 'utf8');
+          const n = [...source.matchAll(runnable)].length;
+          if (n === 0) continue;
+          found += n;
+          expect(disabled.test(source), `${k} = ${v}: "${name}" is disabled in ${f}`).toBe(false);
+          expect(/\b(describe|it|test)\.(skip|only)\(/.test(source), `${k} = ${v}: ${f} skips or isolates tests`).toBe(false);
+        }
+        expect(found, `${k} = ${v}: test "${name}" found ${found} times in ${file}`).toBe(1);
+        checked.push(`${k}=${v}`);
       }
     }
+    // The MVP settings with a non-default value (19.4) are all covered, including the Worker-level S-38.
+    expect(checked).toEqual(expect.arrayContaining(['S-05=fefo', 'S-05=manual', 'S-38=false', 'S-25=on_decision', 'S-22=other']));
   });
 });

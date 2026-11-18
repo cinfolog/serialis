@@ -13,6 +13,7 @@ import { choiceFor, FIXED_SETTINGS, SETTINGS, THEMES, weakeningOf, type SettingD
 import { ApiKeysSection } from './ApiKeysSection';
 import { EmergencyStopSection } from './EmergencyStopSection';
 import { HealthLinkSection } from './Health';
+import { UsersSection } from './UsersSection';
 
 const same = (a: SettingValueType | undefined, b: SettingValueType | undefined) => a === b;
 
@@ -297,6 +298,8 @@ export function Settings() {
           ))}
         </Stack>
       </Section>
+
+      <UsersSection />
 
       <HealthLinkSection />
 

@@ -108,7 +108,12 @@ describe('Garde-fous de l’interface (T-UX-07)', () => {
 
   it('no view reads or shows customer data (P8: order number and link only)', () => {
     for (const { file, source } of sources) {
-      expect(source, file).not.toMatch(/\b(customerName|customerEmail|shippingAddress|billingAddress|firstName|lastName|phoneNumber)\b/);
+      // Settings › Users shows the first name of the shop's staff (`AppUser.firstName`, 15.8 « donnée du
+      // personnel de la boutique, jamais d'un client »): the only file allowed to read that field.
+      const forbidden = file.endsWith('UsersSection.tsx')
+        ? /\b(customerName|customerEmail|shippingAddress|billingAddress|lastName|phoneNumber)\b/
+        : /\b(customerName|customerEmail|shippingAddress|billingAddress|firstName|lastName|phoneNumber)\b/;
+      expect(source, file).not.toMatch(forbidden);
     }
   });
 

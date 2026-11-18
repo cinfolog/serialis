@@ -1,7 +1,7 @@
 /**
  * App users and access rights (spec 15.8): the user is known by the `sub` of the session token or of
  * the admin extensions' ID token; the first user seen by the shop's base is its owner and administrator
- * (workers/DECISIONS.md 57); administrators designate others among the users who already opened the app.
+ * (workers/DECISIONS.md 57); the owner designates administrators among the users who already opened the app.
  * The public API (14.1) maps the `admin` scope to the administration level.
  */
 import type { AppUser, AppUserRole, ListAppUsersResponse, PatchAppUserRequest } from '@serialis/contract';
@@ -61,6 +61,12 @@ export function roleOf(d: DomainContext, principal: Principal): AppUserRole {
   return userRow(d, principal.actor.id)?.is_admin === 1 ? 'admin' : 'operator';
 }
 
+/** True when the caller of an internal call is the shop's owner (15.8: the one who designates administrators). */
+export function isOwner(d: DomainContext, principal: Principal): boolean {
+  if (principal.surface !== 'internal' || principal.actor.type !== 'user' || !principal.actor.id) return false;
+  return userRow(d, principal.actor.id)?.is_owner === 1;
+}
+
 /** 403 problem+json for an operator on an administration action (15.8). */
 export function requireAdmin(ctx: Pick<ApiContext, 'd' | 'call'>): void {
   if (roleOf(ctx.d, ctx.call.principal) !== 'admin') throw new ApiError(403, 'forbidden', 'admin_required');
@@ -108,6 +114,8 @@ export function patchAppUser(ctx: ApiContext): ApiResult {
     let isAdmin = before.is_admin;
     let designatedBy = before.designated_by;
     if (body.role !== undefined) {
+      // 15.8: administrators are designated by the owner only (an administrator cannot designate others).
+      if (!isOwner(d, ctx.call.principal)) throw new ApiError(403, 'forbidden', 'owner_required');
       const wantAdmin = body.role === 'admin' ? 1 : 0;
       if (wantAdmin === 0 && before.is_owner === 1) throw new ApiError(422, 'validation_failed', 'owner_is_admin');
       if (wantAdmin === 0 && before.is_admin === 1) {

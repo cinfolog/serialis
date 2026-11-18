@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ApiError } from '../../api/client';
 import { useAnnounce, useClient, useSession } from '../../context';
 import { useI18n, type MessageKey } from '../../i18n';
-import { Badge, Banner, Button, Section, Stack } from '../../ui/components';
+import { Badge, Banner, Button, ConfirmDialog, Section, Stack } from '../../ui/components';
 import { useAsync } from '../../ui/hooks';
 import { Link } from '../../ui/Link';
 import { Page } from '../../ui/Page';
@@ -44,12 +44,22 @@ const RETRY_ERRORS: Record<string, MessageKey> = {
   write_not_dead: 'health.retry.error.not_dead',
 };
 
-type RetryTarget = { type: 'task'; key: string } | { type: 'write'; id: number };
+type RetryTarget = { type: 'task'; key: string } | { type: 'write'; id: number } | { type: 'abandon'; id: number };
+
+/** Busy key of a target: one action at a time in the whole screen. */
+const busyKey = (target: RetryTarget) => (target.type === 'task' ? `task:${target.key}` : `${target.type}:${target.id}`);
+
+const DONE_MESSAGES: Record<RetryTarget['type'], MessageKey> = {
+  task: 'health.retry.task_done',
+  write: 'health.retry.write_done',
+  abandon: 'health.abandon.done',
+};
 
 /**
  * « Relancer » of a dead task or given-up write (12.7): no confirmation (nothing is lost, the work is only
  * put back in the queue), busy state on the pressed button, toast on success then a fresh report, an
  * error banner in the list otherwise (also refreshed: the item may have been revived meanwhile).
+ * « Abandonner » a given-up write (12.4) goes through the same path, after its confirmation dialog.
  */
 function useRetry(onDone: () => void) {
   const { t } = useI18n();
@@ -59,26 +69,29 @@ function useRetry(onDone: () => void) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<{ target: 'task' | 'write'; message: string } | null>(null);
   const [done, setDone] = useState<{ target: 'task' | 'write'; message: string } | null>(null);
-  async function retry(target: RetryTarget) {
-    const id = target.type === 'task' ? `task:${target.key}` : `write:${target.id}`;
-    if (busy) return;
+  async function retry(target: RetryTarget): Promise<boolean> {
+    const id = busyKey(target);
+    if (busy) return false;
     setBusy(id);
     setError(null);
     setDone(null);
     try {
       if (target.type === 'task') await client.reviveTask(target.key);
-      else await client.retryWrite(target.id);
-      const message = t(target.type === 'task' ? 'health.retry.task_done' : 'health.retry.write_done');
+      else if (target.type === 'write') await client.retryWrite(target.id);
+      else await client.abandonWrite(target.id);
+      const message = t(DONE_MESSAGES[target.type]);
       // Toast in the admin (App Bridge), banner in the list everywhere (the row leaves it after the refresh).
       announce(message, { toast: true });
-      setDone({ target: target.type, message });
+      setDone({ target: target.type === 'task' ? 'task' : 'write', message });
       onDone();
+      return true;
     } catch (e) {
       const known = e instanceof ApiError && e.detail ? RETRY_ERRORS[e.detail] : undefined;
       const message = known ? t(known) : errorMessage(e);
-      setError({ target: target.type, message });
+      setError({ target: target.type === 'task' ? 'task' : 'write', message });
       announce(message);
       if (e instanceof ApiError && e.status === 404) onDone();
+      return false;
     } finally {
       setBusy(null);
     }
@@ -339,6 +352,8 @@ function DeadTasksSection({ report, retry }: { report: HealthResponse; retry: Re
 
 function DeadWritesSection({ report, retry }: { report: HealthResponse; retry: Retry }) {
   const { t, dateTime } = useI18n();
+  const [abandoning, setAbandoning] = useState<HealthResponse['deadWrites'][number] | null>(null);
+  const label = (w: HealthResponse['deadWrites'][number]) => `${w.kind} #${w.id}`;
   return (
     <Section heading={t('health.dead_writes.heading')}>
       <Stack gap="small">
@@ -364,22 +379,54 @@ function DeadWritesSection({ report, retry }: { report: HealthResponse; retry: R
                   </s-table-cell>
                   <s-table-cell>{dateTime(w.updatedAt)}</s-table-cell>
                   <s-table-cell>
-                    <Button
-                      variant="secondary"
-                      loading={retry.busy === `write:${w.id}`}
-                      disabled={retry.busy !== null && retry.busy !== `write:${w.id}`}
-                      onPress={() => void retry.retry({ type: 'write', id: w.id })}
-                      accessibilityLabel={t('health.retry.write_accessibility', { write: `${w.kind} #${w.id}` })}
-                      testId={`health-retry-write-${w.id}`}
-                    >
-                      {t('health.retry')}
-                    </Button>
+                    <Stack direction="inline" gap="small">
+                      <Button
+                        variant="secondary"
+                        loading={retry.busy === `write:${w.id}`}
+                        disabled={retry.busy !== null && retry.busy !== `write:${w.id}`}
+                        onPress={() => void retry.retry({ type: 'write', id: w.id })}
+                        accessibilityLabel={t('health.retry.write_accessibility', { write: label(w) })}
+                        testId={`health-retry-write-${w.id}`}
+                      >
+                        {t('health.retry')}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        tone="critical"
+                        loading={retry.busy === `abandon:${w.id}`}
+                        disabled={retry.busy !== null && retry.busy !== `abandon:${w.id}`}
+                        onPress={() => setAbandoning(w)}
+                        accessibilityLabel={t('health.abandon.accessibility', { write: label(w) })}
+                        testId={`health-abandon-write-${w.id}`}
+                      >
+                        {t('health.abandon')}
+                      </Button>
+                    </Stack>
                   </s-table-cell>
                 </s-table-row>
               ))}
             </s-table-body>
           </s-table>
         )}
+        <ConfirmDialog
+          open={abandoning !== null}
+          heading={t('health.abandon.heading', { write: abandoning ? label(abandoning) : '' })}
+          confirmLabel={t('health.abandon.confirm')}
+          cancelLabel={t('common.cancel')}
+          tone="critical"
+          busy={abandoning !== null && retry.busy === `abandon:${abandoning.id}`}
+          onConfirm={() => {
+            if (!abandoning) return;
+            const target = abandoning;
+            void retry.retry({ type: 'abandon', id: target.id }).finally(() => setAbandoning(null));
+          }}
+          onClose={() => setAbandoning(null)}
+        >
+          <Stack gap="small">
+            <s-paragraph>{t('health.abandon.body_shopify')}</s-paragraph>
+            <s-paragraph>{t('health.abandon.body_reconcile')}</s-paragraph>
+          </Stack>
+        </ConfirmDialog>
       </Stack>
     </Section>
   );

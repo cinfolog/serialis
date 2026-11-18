@@ -25,6 +25,9 @@ import {
   type CreateUnitsBatchResponse,
   type ErrorCode,
   type HealthResponse,
+  type AppUser,
+  type ListAppUsersResponse,
+  type PatchAppUserRequest,
   type HomeStatsResponse,
   type ImportReport,
   type ImportReportExtras,
@@ -112,6 +115,17 @@ export interface ApiClient {
   reviveTask(key: string, opts?: WriteOptions): Promise<void>;
   /** Retries a given-up write (12.7 `outbox_dead`, administrators): 204; 404 when not dead; 409 frozen or reconnect required. */
   retryWrite(id: number, opts?: WriteOptions): Promise<void>;
+  /**
+   * Abandons a given-up write (12.4, 12.7 `outbox_dead`, administrators): Shopify will not receive it, the
+   * following writes of the same object go on and the object is reconciled. 204; 404 when not dead; 409
+   * frozen or reconnect required.
+   */
+  abandonWrite(id: number, opts?: WriteOptions): Promise<void>;
+
+  /** App users (15.8, administrators): users who opened the app, owner and administrators. */
+  listAppUsers(): Promise<ListAppUsersResponse>;
+  /** Designates or withdraws an administrator (owner only, 403 `owner_required` otherwise). */
+  patchAppUser(req: PatchAppUserRequest): Promise<AppUser>;
 }
 
 /** Contract route used by each client method (checked by `client.contract.test.ts`). */
@@ -143,6 +157,9 @@ export const CLIENT_ROUTES = {
   health: 'health',
   reviveTask: 'reviveTask',
   retryWrite: 'retryWrite',
+  abandonWrite: 'abandonWrite',
+  listAppUsers: 'listAppUsers',
+  patchAppUser: 'patchAppUser',
 } as const satisfies Record<keyof ApiClient, InternalRouteName>;
 
 // ---------------------------------------------------------------------------
@@ -371,6 +388,15 @@ export class HttpClient implements ApiClient {
   }
   retryWrite(id: number, opts: WriteOptions = {}) {
     return this.call<void>('retryWrite', { pathParams: { id: String(id) }, body: {}, idempotencyKey: opts.idempotencyKey });
+  }
+  abandonWrite(id: number, opts: WriteOptions = {}) {
+    return this.call<void>('abandonWrite', { pathParams: { id: String(id) }, body: {}, idempotencyKey: opts.idempotencyKey });
+  }
+  listAppUsers() {
+    return this.call<ListAppUsersResponse>('listAppUsers');
+  }
+  patchAppUser(req: PatchAppUserRequest) {
+    return this.call<AppUser>('patchAppUser', { body: req });
   }
 }
 

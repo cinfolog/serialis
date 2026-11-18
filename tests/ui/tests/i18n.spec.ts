@@ -18,6 +18,8 @@ const SCREENS: Array<{ name: string; path: string; heading: string }> = [
   { name: 'imports', path: '/imports', heading: 'imports.heading' },
   { name: 'settings', path: '/settings', heading: 'settings.heading' },
   { name: 'settings-health', path: '/settings/health?mock_health=degraded', heading: 'health.heading' },
+  { name: 'settings-designated-admin', path: '/settings?mock_role=admin', heading: 'settings.heading' },
+  { name: 'settings-operator', path: '/settings?mock_role=operator', heading: 'settings.heading' },
   { name: 'wizard', path: '/start', heading: 'wizard.heading' },
   { name: 'not-found', path: '/nope', heading: 'shell.not_found.heading' },
 ];
@@ -82,6 +84,24 @@ for (const locale of ['fr', 'en'] as const) {
       await page.getByTestId('designation-input').locator('input').fill('SN-UR');
       await expect(page.getByTestId('designation-suggestions')).toBeVisible();
       text = await visibleText(page);
+      expect(untranslatedTokens(text)).toEqual([]);
+      expect(foreign.filter((v) => text.includes(v))).toEqual([]);
+    });
+
+    test('dialogs: abandon a given-up write, designate an administrator', async ({ page }) => {
+      await open(page, '/settings/health?mock_health=stopped', { locale });
+      await page.getByTestId('health-abandon-write-42').getByRole('button').click();
+      await expect(page.getByTestId('dialog-confirm')).toBeVisible();
+      let text = await visibleText(page);
+      expect(text).toContain(t('health.abandon.body_shopify'));
+      expect(untranslatedTokens(text)).toEqual([]);
+      expect(foreign.filter((v) => text.includes(v))).toEqual([]);
+
+      await open(page, '/settings', { locale });
+      await page.getByTestId('user-grant-70004').getByRole('button').click();
+      await expect(page.getByTestId('dialog-confirm')).toBeVisible();
+      text = await visibleText(page);
+      expect(text).toContain(t('users.grant.heading', { name: 'Inès' }));
       expect(untranslatedTokens(text)).toEqual([]);
       expect(foreign.filter((v) => text.includes(v))).toEqual([]);
     });

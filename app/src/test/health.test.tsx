@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../api/client';
 import { MockClient } from '../api/mock';
-import { pageHeading, press, renderApp, screen, text, waitFor } from './utils';
+import { pageHeading, press, renderApp, screen, text, waitFor, within } from './utils';
 
 describe('Réglages › Santé (17.1, 17.2)', () => {
   it('is reached from the settings and shows a healthy shop with empty lists', async () => {
@@ -184,5 +184,51 @@ describe('Réglages › Santé (17.1, 17.2)', () => {
     expect(text(screen.getByTestId('health-retry-write-42'))).toBe('Retry');
     press(screen.getByTestId('health-retry-write-42'));
     await waitFor(() => expect(text(screen.getByTestId('health-retry-write-done'))).toContain('Write retried'));
+  });
+
+  it('abandons a given-up write after a confirmation that names the effect (12.4)', async () => {
+    const mock = new MockClient({ health: 'stopped' });
+    renderApp('/settings/health', { mock });
+    await waitFor(() => expect(screen.getByTestId('health-dead-writes')).toBeInTheDocument());
+    const abandon = screen.getByTestId('health-abandon-write-42');
+    expect(text(abandon)).toBe('Abandonner');
+    expect(abandon.getAttribute('accessibilityLabel')).toBe('Abandonner l’écriture inventory_adjust #42');
+    expect(abandon.getAttribute('tone')).toBe('critical');
+
+    // Cancel: nothing is sent.
+    press(abandon);
+    await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
+    const dialog = document.querySelector('s-modal')!;
+    expect(dialog.getAttribute('heading')).toBe('Abandonner l’écriture inventory_adjust #42 ?');
+    expect(within(dialog as HTMLElement).getByText(/Shopify ne recevra jamais cette écriture/)).toBeInTheDocument();
+    expect(within(dialog as HTMLElement).getByText(/réconciliation suivra pour réaligner le stock/)).toBeInTheDocument();
+    press(screen.getByTestId('dialog-cancel'));
+    await waitFor(() => expect(document.querySelector('s-modal')).toBeNull());
+    expect(mock.postLog).toEqual([]);
+
+    // Confirm: the write leaves the list, success announced, the task list is untouched.
+    press(screen.getByTestId('health-abandon-write-42'));
+    await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
+    press(screen.getByTestId('dialog-confirm'));
+    await waitFor(() => expect(screen.getByTestId('health-dead-writes-empty')).toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector('s-modal')).toBeNull());
+    expect(text(screen.getByTestId('health-retry-write-done'))).toContain('Écriture abandonnée');
+    expect(screen.getByTestId('live-region').textContent).toContain('Écriture abandonnée');
+    expect(mock.postLog.map((p) => p.name)).toEqual(['abandonWrite']);
+    expect(mock.abandonedWrites.has(42)).toBe(true);
+    expect(screen.getByTestId('health-dead-tasks')).toBeInTheDocument();
+  });
+
+  it('explains a refused abandon (409 reconnect_required) and keeps the row', async () => {
+    renderApp('/settings/health', { health: 'degraded', locale: 'en' });
+    await waitFor(() => expect(screen.getByTestId('health-dead-writes')).toBeInTheDocument());
+    expect(text(screen.getByTestId('health-abandon-write-42'))).toBe('Abandon');
+    press(screen.getByTestId('health-abandon-write-42'));
+    await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
+    expect(document.querySelector('s-modal')!.getAttribute('heading')).toBe('Abandon the inventory_adjust #42 write?');
+    press(screen.getByTestId('dialog-confirm'));
+    await waitFor(() => expect(screen.getByTestId('health-retry-write-error')).toBeInTheDocument());
+    expect(text(screen.getByTestId('health-retry-write-error'))).toContain('access to Shopify must first be restored');
+    expect(screen.getByTestId('health-dead-writes')).toBeInTheDocument();
   });
 });

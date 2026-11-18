@@ -11,12 +11,13 @@ import { settings } from './messages/settings';
 import { shell } from './messages/shell';
 import { tracked } from './messages/tracked';
 import { units } from './messages/units';
+import { users } from './messages/users';
 import { wizard } from './messages/wizard';
 
-const modules = [common, shell, home, refs, wizard, units, tracked, anomalies, imports, settings, apikeys, health];
+const modules = [common, shell, home, refs, wizard, units, tracked, anomalies, imports, settings, apikeys, health, users];
 
-const fr = Object.assign({}, ...modules.map((m) => m.fr)) as typeof common.fr & typeof shell.fr & typeof home.fr & typeof refs.fr & typeof wizard.fr & typeof units.fr & typeof tracked.fr & typeof anomalies.fr & typeof imports.fr & typeof settings.fr & typeof apikeys.fr & typeof health.fr;
-const en = Object.assign({}, ...modules.map((m) => m.en)) as typeof common.en & typeof shell.en & typeof home.en & typeof refs.en & typeof wizard.en & typeof units.en & typeof tracked.en & typeof anomalies.en & typeof imports.en & typeof settings.en & typeof apikeys.en & typeof health.en;
+const fr = Object.assign({}, ...modules.map((m) => m.fr)) as typeof common.fr & typeof shell.fr & typeof home.fr & typeof refs.fr & typeof wizard.fr & typeof units.fr & typeof tracked.fr & typeof anomalies.fr & typeof imports.fr & typeof settings.fr & typeof apikeys.fr & typeof health.fr & typeof users.fr;
+const en = Object.assign({}, ...modules.map((m) => m.en)) as typeof common.en & typeof shell.en & typeof home.en & typeof refs.en & typeof wizard.en & typeof units.en & typeof tracked.en & typeof anomalies.en & typeof imports.en & typeof settings.en & typeof apikeys.en & typeof health.en & typeof users.en;
 
 export const dictionaries: Record<Locale, Record<string, string>> = { fr, en };
 

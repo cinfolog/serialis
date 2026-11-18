@@ -9,6 +9,9 @@ import type { DomainContext } from '../domain/context.js';
 import { iso, json, noContent, problem, type ApiResult } from './http.js';
 import { logEvent } from '../log.js';
 import type { ApiContext } from './present.js';
+import type { StoredPayload } from '../outbox.js';
+import { requestLevelCheck, requestOrderSync } from '../domain/sync-order.js';
+import type { MetafieldIntent, StockIntent } from '../domain/writes.js';
 
 export const TASK_OVERDUE_MS = 2 * 60_000;
 export const OUTBOX_STUCK_MS = 3_600_000;
@@ -114,7 +117,7 @@ export function reviveTask(ctx: ApiContext, info: HealthInfo, key: string): ApiR
   return noContent();
 }
 
-/** POST /health/writes/{id}/retry (admin): `outbox_dead` « Relancer » (12.4, 12.7). */
+/** POST /outbox/{id}/retry (admin): `outbox_dead` « Relancer » (12.4, 12.7). */
 export function retryWrite(ctx: ApiContext, info: HealthInfo, rawId: string): ApiResult {
   const { d, now } = ctx;
   const id = /^\d{1,15}$/.test(rawId) ? Number(rawId) : NaN;
@@ -137,5 +140,67 @@ export function retryWrite(ctx: ApiContext, info: HealthInfo, rawId: string): Ap
   });
   if (!retried) return problem(404, 'not_found', 'write_not_dead');
   logEvent('info', 'outbox.retried', { id, kind: row.kind, by: 'operator' });
+  return noContent();
+}
+
+/** Object reconciled after an abandon (12.4): the level of a stock write, or the order of a metafield write. */
+type Reconciliation = { type: 'level'; inventoryItemGid: string; locationId: string } | { type: 'order'; orderGid: string };
+
+function reconciliationOf(payload: StoredPayload): Reconciliation | null {
+  const intent = payload.intent as (Partial<StockIntent> & Partial<MetafieldIntent> & { type?: string }) | undefined;
+  if (intent?.type === 'stock' && intent.inventoryItemGid && intent.locationId) return { type: 'level', inventoryItemGid: intent.inventoryItemGid, locationId: intent.locationId };
+  if (intent?.type === 'metafield' && intent.orderGid) return { type: 'order', orderGid: intent.orderGid };
+  return null;
+}
+
+function requestReconciliation(d: DomainContext, r: Reconciliation, now: number): void {
+  // Due at once: the level check itself waits while the app's own writes on the level are in flight
+  // (rows behind the abandoned one), then compares units and Shopify (I1 to I3) and corrects or opens
+  // the anomaly; the order sync recomputes the metafield and writes it again if needed.
+  if (r.type === 'level') requestLevelCheck(d, r.inventoryItemGid, r.locationId, 0, now);
+  else requestOrderSync(d, r.orderGid, 0, now);
+}
+
+/**
+ * POST /outbox/{id}/abandon (admin): `outbox_dead` « abandonner » (12.4, 12.7). The `dead` row becomes
+ * final without being sent (`failed` + `abandoned_at`), the rows behind it on its serial key run again,
+ * the object it targeted is reconciled (level check of the item and location, or order sync for the
+ * metafield; also for a row that depended on it), its `outbox_dead` anomaly is resolved and the action
+ * journaled. Same 403 / 404 (`write_not_dead`) / 409 answers as the retry: the reconciliation promised
+ * by 12.4 cannot run while the shop is frozen or without Shopify access.
+ */
+export function abandonWrite(ctx: ApiContext, info: HealthInfo, rawId: string): ApiResult {
+  const { d, now } = ctx;
+  const id = /^\d{1,15}$/.test(rawId) ? Number(rawId) : NaN;
+  const exists = Number.isSafeInteger(id) && d.sql.exec("SELECT 1 FROM outbox WHERE id = ? AND status = 'dead'", id).toArray().length > 0;
+  if (!exists) return problem(404, 'not_found', 'write_not_dead');
+  const blocked = retryBlocked(info);
+  if (blocked) return blocked;
+  const actor = ctx.call.principal.actor;
+  const outcome = d.storage.transactionSync(() => {
+    const row = d.abandonOutbox(id, actor.id ?? null, now);
+    if (!row) return null;
+    const reconciliations: Reconciliation[] = [];
+    const own = reconciliationOf(row.payload);
+    if (own) reconciliations.push(own);
+    // A row that depended on it will be failed by the executor (12.4 two-step writes): its object too.
+    for (const dep of d.sql.exec<{ payload: string }>("SELECT payload FROM outbox WHERE depends_on = ? AND status = 'pending'", id).toArray()) {
+      const r = reconciliationOf(JSON.parse(dep.payload) as StoredPayload);
+      if (r && !reconciliations.some((x) => JSON.stringify(x) === JSON.stringify(r))) reconciliations.push(r);
+    }
+    for (const r of reconciliations) requestReconciliation(d, r, now);
+    const live = d.repo.liveAnomalyByKey(`outbox_dead|outbox=${id}`);
+    if (live) d.repo.closeAnomaly(live.id, 'resolved', { action: 'abandon', by: actor.id ?? null }, now);
+    d.repo.audit(
+      actor,
+      'outbox.abandon',
+      { id, kind: row.kind, status: 'dead', revision: row.revision, lastError: row.last_error },
+      { id, status: 'failed', abandoned: true, reconciliation: reconciliations },
+      now,
+    );
+    return { row, reconciliations };
+  });
+  if (!outcome) return problem(404, 'not_found', 'write_not_dead');
+  logEvent('info', 'outbox.abandoned_by_operator', { id, kind: outcome.row.kind, reconciliations: outcome.reconciliations.length });
   return noContent();
 }

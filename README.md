@@ -46,7 +46,7 @@ pnpm dev         # wrangler dev
 | `@serialis/workers` (`workers/`) | Worker Cloudflare et objet `ShopStore` (SQLite) par boutique : installation et jetons, webhooks, tâches et alarmes, outbox, `sync_order`, réconciliations R1 à R4, purge, gel, API interne `/api/v1`, API publique à clés (`/v1` sur `api.`, `/public/v1` ailleurs), service de l'app |
 | `@serialis/contract` (`api/contract/`) | Contrat d'API partagé : types, tables de routes, portées, document OpenAPI 3.1 |
 | `@serialis/shopify` (`services/shopify/`) | Client Shopify : GraphQL, limiteur par coût, idempotence, reprises, erreurs typées |
-| `@serialis/admin` (`app/`) | App d'administration embarquée (React, composants web Polaris) : accueil, assistant, unités, articles suivis, anomalies, imports, réglages, clés d'API, santé |
+| `@serialis/admin` (`app/`) | App d'administration embarquée (React, composants web Polaris) : accueil, assistant, unités, articles suivis, anomalies, imports, réglages (dont utilisateurs), clés d'API, santé (relance et abandon) |
 | `extensions/*` | Blocs admin variante, produit, commande et action de commande |
 | `db/shop/`, `db/registry/` | Migrations SQL additives (base de boutique, annuaire D1) |
 | `@serialis/shopify-sim` (`tests/sim/`) | Simulateur de l'API Shopify (GraphQL, OAuth, webhooks signés, pannes injectables) |
@@ -91,4 +91,5 @@ Secrets GitHub (par environnement) :
 - **Contrôles qui demandent le vrai CDN Polaris** : contrastes, libellés et anneaux de focus internes des composants, Web Vitals (LCP, CLS) — suite `UI_TESTS_REAL_CDN=1` à passer avant la publication, avec la grille d'audit manuelle WCAG 2.2 AA.
 - **Observabilité** : journaux structurés et écran Santé seulement ; ni Sentry ni Analytics Engine (`workers/DECISIONS.md`, 63).
 - **Reconnexion** : l'anomalie `reconnect_required` et les bandeaux sont en place, mais aucun e-mail n'invite le marchand à rouvrir l'app.
+- Spec à mettre à jour (orchestrateur) : `POST /health/tasks/{key}/revive` à lister ; statut d'une écriture abandonnée (`failed` + `abandoned_at`, `workers/DECISIONS.md` 70) à reporter dans 11.2.
 - Points notés dans les décisions : réveil horaire du Worker planifié pour les boutiques gelées (64), réservations expirées, transits trop longs et photographie `daily_stats` de R4 (60), utilisateurs sans échange de jeton en ligne (57, PV-9).

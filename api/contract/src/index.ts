@@ -337,6 +337,10 @@ export type ExtensionKey = 'variant_block' | 'product_block' | 'order_block' | '
 export interface MeResponseAdminExtras {
   /** 15.8: "admin" for the owner and designated admins, "operator" otherwise. Default "admin" when absent. */
   role?: 'admin' | 'operator';
+  /** 15.8: true for the shop's owner, the only user who designates administrators (`PATCH /app-users` role). */
+  owner?: boolean;
+  /** Shopify user id of the caller (`sub` of the session token), to mark its own line in Settings › Users. */
+  userId?: string | null;
   /** Persistent banners other than the emergency stop (that one is `emergencyStop`). */
   banners?: StatusBanner[];
   /** True once each extension has been rendered at least once in the Shopify admin. */

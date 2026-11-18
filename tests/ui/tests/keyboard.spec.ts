@@ -130,6 +130,35 @@ test.describe('keyboard: navigation and focus', () => {
     expect(await focusInfo(page)).not.toBeNull();
   });
 
+  test('health: a given-up write is abandoned from the keyboard, through its confirmation (12.4)', async ({ page }) => {
+    await open(page, '/settings/health?mock_health=stopped');
+    await tabTo(page, 'health-abandon-write-42');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('dialog-confirm')).toBeVisible();
+    // The dialog takes the focus; Tab stays inside it until the confirmation.
+    const inDialog = await focusInfo(page);
+    if (!inDialog?.chain.includes('dialog-confirm')) await tabTo(page, 'dialog-confirm', 10);
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('health-retry-write-done')).toContainText(t('health.abandon.done'));
+    await expect(page.getByTestId('live-region')).toContainText(t('health.abandon.done'));
+    expect(await mockState(page, (m) => m.postLog.map((p: { name: string }) => p.name) as string[])).toEqual(['abandonWrite']);
+    await page.keyboard.press('Tab');
+    expect(await focusInfo(page)).not.toBeNull();
+  });
+
+  test('settings users: the owner designates an administrator from the keyboard (15.8)', async ({ page }) => {
+    await open(page, '/settings');
+    await tabTo(page, 'user-grant-70004', 250);
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('dialog-confirm')).toBeVisible();
+    const inDialog = await focusInfo(page);
+    if (!inDialog?.chain.includes('dialog-confirm')) await tabTo(page, 'dialog-confirm', 10);
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('user-revoke-70004')).toBeVisible();
+    await expect(page.getByTestId('live-region')).toContainText(t('users.granted', { name: 'Inès' }));
+    expect(await mockState(page, (m) => m.appUsers.find((u: { userId: string }) => u.userId === '70004').role as string)).toBe('admin');
+  });
+
   test('global search: a ref typed then Enter opens the unit sheet', async ({ page }) => {
     await open(page, '/');
     await tabTo(page, 'global-search');

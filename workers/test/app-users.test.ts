@@ -1,6 +1,6 @@
 /**
  * Access rights (spec 15.8): app users known by the `sub` of the session token, the first user is the
- * owner and administrator, administrators designate others; administration routes answer 403
+ * owner and administrator, the owner designates others; administration routes answer 403
  * problem+json to an operator.
  */
 import { afterEach, describe, expect, it } from 'vitest';
@@ -82,6 +82,36 @@ describe('app users and roles (15.8)', () => {
     await json(await h.api('PATCH', '/app-users', { userId: '200', role: 'admin' }, owner), 200);
     expect(await json(await h.api('PATCH', '/app-users', { userId: '200', role: 'operator' }, owner), 200)).toMatchObject({ role: 'operator', designatedBy: null });
     expect(await json(await h.api('PATCH', '/app-users', { userId: '200', role: 'superuser' }, owner), 422)).toMatchObject({ code: 'validation_failed' });
+  });
+
+  it('only the owner designates or withdraws administrators (15.8); /me tells the owner and the user id', async () => {
+    const { h } = await setup('users-owner-only');
+    const owner = await as(h, '7');
+    expect(await json(await h.api('GET', '/me', undefined, owner), 200)).toMatchObject({ role: 'admin', owner: true, userId: '7' });
+    const admin = await as(h, '200');
+    expect(await json(await h.api('GET', '/me', undefined, admin), 200)).toMatchObject({ role: 'operator', owner: false, userId: '200' });
+    await h.api('GET', '/me', undefined, await as(h, '300'));
+    await json(await h.api('PATCH', '/app-users', { userId: '200', role: 'admin' }, owner), 200);
+
+    // A designated administrator sees the list but cannot change roles, neither for others nor for the owner.
+    expect((await json(await h.api('GET', '/app-users', undefined, admin), 200)).items).toHaveLength(3);
+    for (const body of [
+      { userId: '300', role: 'admin' },
+      { userId: '200', role: 'operator' },
+      { userId: '7', role: 'operator' },
+    ]) {
+      const res = await h.api('PATCH', '/app-users', body, admin);
+      expect(res.status).toBe(403);
+      expect(res.headers.get('Content-Type')).toContain('application/problem+json');
+      expect(await res.json()).toMatchObject({ code: 'forbidden', detail: 'owner_required' });
+    }
+    expect(await h.query("SELECT shopify_user_id, is_admin FROM app_users ORDER BY shopify_user_id")).toEqual([
+      { shopify_user_id: '200', is_admin: 1 },
+      { shopify_user_id: '300', is_admin: 0 },
+      { shopify_user_id: '7', is_admin: 1 },
+    ]);
+    // The first name stays editable by an administrator (history, 15.8).
+    expect(await json(await h.api('PATCH', '/app-users', { userId: '300', firstName: 'Lou' }, admin), 200)).toMatchObject({ firstName: 'Lou', role: 'operator' });
   });
 
   it('a stock-writing anomaly resolution is refused to an operator; one without stock write is allowed', async () => {

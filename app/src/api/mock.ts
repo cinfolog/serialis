@@ -7,6 +7,7 @@
  * (same key = same answer, never applied twice), simulation id required for "simulation" settings.
  */
 import type {
+  AppUser,
   ApiKey,
   ApiScope,
   CreateApiKeyRequest,
@@ -20,6 +21,8 @@ import type {
   ExtensionKey,
   HealthResponse,
   HomeStatsResponse,
+  ListAppUsersResponse,
+  PatchAppUserRequest,
   ListUnitsQuery,
   ListLocationsResponse,
   ListTrackedItemsQuery,
@@ -102,8 +105,16 @@ export interface MockOptions {
    * (a retry then answers 409 `reconnect_required`, like the Worker).
    */
   health?: 'ok' | 'stopped' | 'degraded';
+  /**
+   * The current user is the shop's owner (default for an administrator); false = an administrator
+   * designated by the owner, who sees Settings › Users read-only (15.8, URL `?mock_role=admin`).
+   */
+  owner?: boolean;
   now?: () => Date;
 }
+
+/** Shopify user ids of the fixtures (fictional): owner, designated administrator, operators. */
+export const MOCK_USER_IDS = { owner: '70001', admin: '70002', operator: '70003', operator2: '70004' } as const;
 
 const FIXED_NOW = new Date('2026-11-17T09:30:00.000Z');
 const normalize = (ref: string) => ref.replace(/\s+/g, '').toUpperCase();
@@ -134,6 +145,39 @@ export class MockClient implements ApiClient {
       order_action: options.extensionsShown ?? false,
     };
     if (!options.empty) this.seed();
+    this.appUsers = this.seedUsers();
+  }
+
+  /** Current user of the scenario (15.8): owner by default, designated administrator, or operator. */
+  get currentUserId(): string {
+    if (this.options.role === 'operator') return MOCK_USER_IDS.operator;
+    return this.options.owner === false ? MOCK_USER_IDS.admin : MOCK_USER_IDS.owner;
+  }
+
+  private seedUsers(): AppUser[] {
+    const user = (userId: string, firstName: string | null, role: AppUser['role'], owner: boolean, designatedBy: string | null, firstSeen: number, lastSeen: number): AppUser => ({
+      userId,
+      firstName,
+      role,
+      owner,
+      designatedBy,
+      firstSeenAt: this.iso(firstSeen),
+      lastSeenAt: this.iso(lastSeen),
+    });
+    const owner = user(MOCK_USER_IDS.owner, 'Camille', 'admin', true, null, 60 * 24 * 30, 1);
+    // Empty shop: nobody else opened the app yet, except the current user of the scenario.
+    if (this.options.empty) {
+      const users = [owner];
+      if (this.currentUserId === MOCK_USER_IDS.admin) users.push(user(MOCK_USER_IDS.admin, 'Nicolas', 'admin', false, MOCK_USER_IDS.owner, 60 * 24 * 2, 0));
+      if (this.currentUserId === MOCK_USER_IDS.operator) users.push(user(MOCK_USER_IDS.operator, null, 'operator', false, null, 60, 0));
+      return users;
+    }
+    return [
+      owner,
+      user(MOCK_USER_IDS.admin, 'Nicolas', 'admin', false, MOCK_USER_IDS.owner, 60 * 24 * 21, 60 * 3),
+      user(MOCK_USER_IDS.operator, null, 'operator', false, null, 60 * 24 * 9, 60 * 26),
+      user(MOCK_USER_IDS.operator2, 'Inès', 'operator', false, null, 60 * 24 * 2, 45),
+    ];
   }
 
   private now(): Date {
@@ -347,6 +391,8 @@ export class MockClient implements ApiClient {
       emergencyStop: this.emergencyStop,
       locale: this.options.locale ?? 'fr',
       role: this.options.role ?? 'admin',
+      owner: this.options.role !== 'operator' && this.options.owner !== false,
+      userId: this.currentUserId,
       banners: [],
       extensionsShown: { ...this.extensions },
     };
@@ -725,6 +771,46 @@ export class MockClient implements ApiClient {
     });
   }
 
+  /** Given-up writes abandoned by `abandonWrite` (they leave the report; the Worker reconciles the object). */
+  readonly abandonedWrites = new Set<number>();
+
+  async abandonWrite(id: number, opts: WriteOptions = {}): Promise<void> {
+    await this.tick();
+    this.adminOnly();
+    return this.idempotent('abandonWrite', opts.idempotencyKey, () => {
+      if (!this.healthReport().deadWrites.some((w) => w.id === id)) throw new ApiError({ status: 404, code: 'not_found', detail: 'write_not_dead' });
+      this.retryAllowed();
+      this.abandonedWrites.add(id);
+      return undefined;
+    });
+  }
+
+  // -- App users (15.8) --------------------------------------------------------
+
+  appUsers: AppUser[];
+
+  async listAppUsers(): Promise<ListAppUsersResponse> {
+    await this.tick();
+    this.adminOnly();
+    return { items: structuredClone(this.appUsers), nextCursor: null };
+  }
+
+  /** Same rules as the Worker (`workers/src/api/users.ts`): owner only for roles, owner never withdrawn. */
+  async patchAppUser(req: PatchAppUserRequest): Promise<AppUser> {
+    await this.tick();
+    this.adminOnly();
+    const user = this.appUsers.find((u) => u.userId === req.userId);
+    if (!user) throw new ApiError({ status: 404, code: 'not_found', detail: 'user_never_opened_the_app' });
+    if (req.role !== undefined) {
+      if (this.options.owner === false) throw new ApiError({ status: 403, code: 'forbidden', detail: 'owner_required' });
+      if (req.role === 'operator' && user.owner) throw new ApiError({ status: 422, code: 'validation_failed', detail: 'owner_is_admin' });
+      if (req.role !== user.role) user.designatedBy = req.role === 'admin' ? this.currentUserId : null;
+      user.role = req.role;
+    }
+    if (req.firstName !== undefined) user.firstName = req.firstName === null ? null : req.firstName.trim().slice(0, 50) || null;
+    return structuredClone(user);
+  }
+
   /** Same refusals as the Worker (`workers/src/api/health.ts`): pointless while frozen or without Shopify access. */
   private retryAllowed(): void {
     const report = this.healthReport();
@@ -742,7 +828,7 @@ export class MockClient implements ApiClient {
   healthReport(): HealthResponse {
     const report = this.baseHealthReport();
     const deadTasks = report.deadTasks.filter((t) => !this.revivedTasks.has(t.key));
-    const deadWrites = report.deadWrites.filter((w) => !this.retriedWrites.has(w.id));
+    const deadWrites = report.deadWrites.filter((w) => !this.retriedWrites.has(w.id) && !this.abandonedWrites.has(w.id));
     const counters = { ...report.counters, tasksDead: deadTasks.length, outboxDead: deadWrites.length };
     const alerts = report.alerts.filter((a) => (a === 'task_dead' ? deadTasks.length > 0 : a === 'outbox_dead' ? deadWrites.length > 0 : true));
     return { ...report, counters, alerts, deadTasks, deadWrites };

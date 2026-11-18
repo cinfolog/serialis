@@ -35,6 +35,8 @@ export interface TokenManagerConfig {
   apiKey: string;
   apiSecret: string;
   encryptionKey: string | undefined;
+  /** Outbound fetch for the OAuth endpoint (tests inject the simulator). */
+  fetch?: (input: string, init: RequestInit) => Promise<Response>;
 }
 
 export class TokenManager {
@@ -170,7 +172,12 @@ export class TokenManager {
   }
 
   private oauthOptions() {
-    return { shop: this.config.shop(), apiKey: this.config.apiKey, apiSecret: this.config.apiSecret };
+    return {
+      shop: this.config.shop(),
+      apiKey: this.config.apiKey,
+      apiSecret: this.config.apiSecret,
+      ...(this.config.fetch ? { fetch: this.config.fetch as typeof fetch } : {}),
+    };
   }
 
   /** One token operation at a time; a failed operation does not block the next ones. */

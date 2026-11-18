@@ -5,6 +5,8 @@ export interface Env {
   REGISTRY: D1Database;
   SHOP_ROUTING: KVNamespace;
   FILES: R2Bucket;
+  /** Static files of the embedded admin app (`app/dist`, wrangler `assets`, run_worker_first). */
+  ASSETS: Fetcher;
   ENVIRONMENT: 'development' | 'staging' | 'pilot' | 'production';
   /** Public client id of the Shopify app of this environment (shopify.app.<env>.toml). */
   SHOPIFY_API_KEY: string;

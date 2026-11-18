@@ -1,7 +1,6 @@
 /**
- * Pluggable task handlers. The domain engine (core/, built in parallel) registers its own handlers
- * later; until then the webhook-driven kinds get a logging no-op so that the pipeline
- * (inbox → task → alarm) runs end to end. `process_outbox` is built into the shop object.
+ * Pluggable task handlers. The shop object runs the domain handlers itself; a handler registered
+ * here takes precedence (tests, later lots). `process_outbox` is built into the shop object.
  */
 import { logEvent } from './log.js';
 import type { TaskHandler } from './tasks.js';
@@ -28,6 +27,8 @@ function loggingNoop(kind: string): TaskHandler {
   };
 }
 
-for (const kind of ['sync_order', 'resolve', 'sync_inventory_level', 'sync_inventory_item', 'sync_product', 'sync_location']) {
+// The domain handlers (sync_order, sync_inventory_level, reconcile, resolve) live in the shop object;
+// a handler registered here replaces them (tests). The kinds below have no domain handler yet.
+for (const kind of ['sync_inventory_item', 'sync_product', 'sync_location']) {
   registerTaskHandler(kind, loggingNoop(kind));
 }

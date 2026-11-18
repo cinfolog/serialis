@@ -3,13 +3,24 @@ import { DurableObject } from 'cloudflare:workers';
 import m0001 from '../../db/shop/0001_init.sql';
 import m0002 from '../../db/shop/0002_allowed_transitions.sql';
 import m0003 from '../../db/shop/0003_platform.sql';
+import m0004 from '../../db/shop/0004_domain.sql';
+import { handleApiCall } from './api/router.js';
+import type { ApiCall, ApiResult } from './api/http.js';
+import type { DomainContext } from './domain/context.js';
+import { recordOrderEdit, shouldSchedule } from './domain/ingest.js';
+import { runInventoryLevelCheck } from './domain/levels.js';
+import { ensureReconciliation, runReconcile, type Pass } from './domain/reconcile.js';
+import { DomainRepo } from './domain/repo.js';
+import { requestOrderSync, runSyncOrder } from './domain/sync-order.js';
+import { domainOutboxHooks } from './domain/writes.js';
+import { shopifyFetch } from './shopify-fetch.js';
 import type { Env } from './env.js';
 import { taskHandler } from './handlers.js';
 import { errorMessage, logEvent } from './log.js';
 import { Outbox, type OutboxEnqueueInput } from './outbox.js';
 import { OUTBOX_TASK_KEY, TASK_PRIORITY } from './task-kinds.js';
 import { ALARM_BUDGET_MS, TaskQueue, type EnqueueTaskInput, type TaskHandler } from './tasks.js';
-import { TokenManager, type TokenStatus } from './tokens.js';
+import { ReconnectRequiredError, TokenManager, type TokenStatus } from './tokens.js';
 import { minimalCompliancePayload, topicAction, WEBHOOK_TASK_DELAY_MS, type TopicAction } from './topics.js';
 
 /** Ordered shop schema migrations; the version is stored in `meta.schema_version` (spec 10.4). */
@@ -17,6 +28,7 @@ const MIGRATIONS: ReadonlyArray<{ version: number; sql: string }> = [
   { version: 1, sql: m0001 },
   { version: 2, sql: m0002 },
   { version: 3, sql: m0003 },
+  { version: 4, sql: m0004 },
 ];
 
 export type ShopState = 'active' | 'frozen' | 'uninstalled';
@@ -59,6 +71,15 @@ export interface ShopStatus {
   token: TokenStatus;
 }
 
+function parseBody(payload: string): Record<string, unknown> {
+  try {
+    const v = JSON.parse(payload) as unknown;
+    return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 /** Budget of the outbox inside one alarm run (the alarm has 25 s of work in total, spec 12.2). */
 const OUTBOX_BUDGET_MS = 20_000;
 
@@ -74,18 +95,43 @@ export class ShopStore extends DurableObject<Env> {
   private readonly tokens: TokenManager;
   private readonly throttle = new CostThrottle();
   private client: AdminGraphqlClient | null = null;
+  private readonly repo: DomainRepo;
+  private readonly domain: DomainContext;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.tasks = new TaskQueue(ctx.storage);
-    this.outbox = new Outbox(ctx.storage, () => this.meta('outbox_key_prefix') ?? 'serialis');
+    this.repo = new DomainRepo(this.sql);
+    this.outbox = new Outbox(
+      ctx.storage,
+      () => this.meta('outbox_key_prefix') ?? 'serialis',
+      Math.random,
+      domainOutboxHooks({
+        sql: this.sql,
+        repo: this.repo,
+        onMetafieldFailed: (orderGid) => requestOrderSync(this.domain, orderGid, 5_000),
+      }),
+    );
     this.tokens = new TokenManager(ctx.storage, {
       shop: () => this.meta('shop_domain') ?? '',
       apiKey: env.SHOPIFY_API_KEY,
       apiSecret: env.SHOPIFY_API_SECRET,
       encryptionKey: env.TOKEN_ENCRYPTION_KEY,
+      fetch: (input, init) => shopifyFetch()(input, init),
     });
+    const self = this;
+    this.domain = {
+      sql: this.sql,
+      storage: ctx.storage,
+      repo: this.repo,
+      get shopDomain() {
+        return self.meta('shop_domain') ?? '';
+      },
+      client: () => this.shopifyClient(),
+      queueOutbox: (input, now) => this.queueOutbox(input, now),
+      enqueueTask: (input, now) => this.tasks.enqueue(input, now),
+    };
     // Pending migrations run before any other call (blockConcurrencyWhile, 30 s limit), then
     // interrupted work is released and the alarm re-armed (spec 12.2 "Baux", "Réarmement").
     ctx.blockConcurrencyWhile(async () => {
@@ -230,9 +276,14 @@ export class ShopStore extends DurableObject<Env> {
 
   private applyAction(action: TopicAction, input: IngestInput, now: number): void {
     switch (action.type) {
-      case 'task':
+      case 'task': {
+        const body = parseBody(input.payload);
+        if (input.topic === 'orders/edited') recordOrderEdit(this.domain, body, now);
+        // 12.1: a task only when the event may concern a tracked item.
+        if (!shouldSchedule(this.domain, action, input.topic, body, now)) return;
         this.tasks.enqueue({ key: action.key, kind: action.kind, priority: action.priority, payload: action.payload, delayMs: WEBHOOK_TASK_DELAY_MS }, now);
         return;
+      }
       case 'compliance':
         // Processing (data request export, deferred redaction, shop/redact) comes with lot 5 / F14.
         this.sql.exec(
@@ -329,7 +380,82 @@ export class ShopStore extends DurableObject<Env> {
         return { rescheduleAt: nextAt };
       };
     }
-    return taskHandler(kind);
+    // A handler registered in the registry (tests, later lots) replaces the domain one.
+    const registered = taskHandler(kind);
+    if (registered) return registered;
+    const domain = this.domainHandler(kind);
+    if (!domain) return undefined;
+    return async (ctx) => {
+      try {
+        return await domain(ctx);
+      } catch (error) {
+        // No usable token: wait for the merchant to open the app, without burning attempts (13.9).
+        if (error instanceof ReconnectRequiredError) return { rescheduleAt: Date.now() + 5 * 60_000 };
+        throw error;
+      }
+    };
+  }
+
+  /** Domain task handlers (spec 12.2, 12.3, 12.5). */
+  private domainHandler(kind: string): TaskHandler | undefined {
+    switch (kind) {
+      case 'sync_order':
+        return (ctx) => runSyncOrder(this.domain, String(ctx.payload.orderGid), ctx);
+      case 'sync_inventory_level':
+        return (ctx) => runInventoryLevelCheck(this.domain, ctx.payload, ctx);
+      case 'reconcile':
+        return (ctx) => runReconcile(this.domain, String(ctx.payload.pass) as Pass);
+      case 'resolve':
+        return (ctx) => this.resolveSubject(String(ctx.payload.gid));
+      default:
+        return undefined;
+    }
+  }
+
+  /** `resolve:<gid>` (12.1): finds the order of a fulfillment order or return, then synchronizes it. */
+  private async resolveSubject(gid: string): Promise<void> {
+    const known =
+      this.sql.exec<{ order_gid: string }>('SELECT order_gid FROM fulfillment_orders WHERE fo_gid = ?', gid).toArray()[0] ??
+      this.sql.exec<{ order_gid: string }>('SELECT order_gid FROM return_map WHERE return_gid = ?', gid).toArray()[0];
+    let orderGid = known?.order_gid ?? null;
+    if (!orderGid && (gid.includes('/FulfillmentOrder/') || gid.includes('/Return/'))) {
+      const field = gid.includes('/FulfillmentOrder/') ? 'fulfillmentOrder' : 'return';
+      const { data } = await this.shopifyClient().request<Record<string, { order: { id: string } | null } | null>>(
+        `query SerialisResolve($id: ID!) { ${field}(id: $id) { order { id } } }`,
+        { variables: { id: gid }, estimatedCost: 2 },
+      );
+      orderGid = data[field]?.order?.id ?? null;
+    }
+    if (!orderGid) return;
+    const target = orderGid;
+    this.ctx.storage.transactionSync(() => requestOrderSync(this.domain, target));
+  }
+
+  // ---------------------------------------------------------------- API (spec 14)
+
+  /**
+   * Runs an authenticated API call (internal `/api/v1` or public API, spec 14.1): the caller has
+   * verified the session token or API key and chosen this object from it.
+   */
+  async api(call: ApiCall): Promise<ApiResult> {
+    if (this.schemaVersion() === 0) return { status: 403, headers: { 'Content-Type': 'application/problem+json' }, body: JSON.stringify({ type: 'https://serialis.dev/problems/forbidden', title: 'Forbidden', status: 403, code: 'forbidden', detail: 'shop_not_installed' }) };
+    this.repo.setMeta('last_activity_at', String(Date.now()));
+    try {
+      return await handleApiCall(this.domain, call, () => ({
+        shop: this.meta('shop_domain') ?? '',
+        tokenStatus: this.tokens.status().status,
+        shopState: this.shopState(),
+      }));
+    } finally {
+      await this.tasks.syncAlarm(this.shopState() === 'active');
+    }
+  }
+
+  /** Schedules the reconciliation passes (installation, activation of tracking). */
+  async ensureReconciliation(): Promise<void> {
+    this.assertInstalled();
+    this.ctx.storage.transactionSync(() => ensureReconciliation(this.domain));
+    await this.tasks.syncAlarm(this.shopState() === 'active');
   }
 
   /** Admin client of this shop; the token comes from the token manager (refreshed when needed). */
@@ -337,6 +463,7 @@ export class ShopStore extends DurableObject<Env> {
     this.client ??= new AdminGraphqlClient({
       shop: this.meta('shop_domain') ?? '',
       accessToken: () => this.tokens.getAccessToken(),
+      fetch: (input, init) => shopifyFetch()(input, init),
       throttle: this.throttle,
       onEvent: (event) => {
         if (event.type === 'throttle_wait') logEvent('info', 'shopify.throttle_wait', { ms: event.ms, reason: event.reason });
@@ -348,6 +475,7 @@ export class ShopStore extends DurableObject<Env> {
 
   // ---------------------------------------------------------------- helpers
 
+  /** Test and support helper: runs a synchronous read on the shop base. */
   inboxCount(): number {
     if (this.schemaVersion() === 0) return 0;
     return Number(this.sql.exec('SELECT count(*) AS n FROM inbox').one().n);

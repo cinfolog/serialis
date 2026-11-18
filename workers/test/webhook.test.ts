@@ -35,7 +35,7 @@ describe('webhook reception (lot 0 exit criterion)', () => {
     expect(await retry.json()).toEqual({ stored: false, reason: 'duplicate', shopState: 'active' });
 
     expect(await stub.inboxCount()).toBe(1);
-    expect(await stub.schemaVersion()).toBe(3);
+    expect(await stub.schemaVersion()).toBe(4);
   });
 
   it('acknowledges and ignores a webhook for an unknown shop without creating its database', async () => {
@@ -71,18 +71,21 @@ describe('unit status triggers (copy of transitions.ts)', () => {
 });
 
 describe('embedded app entry', () => {
-  it('serves the App Bridge shell with the app client id and a frame-ancestors policy', async () => {
+  it('serves the admin app index with the app client id, no cache and a frame-ancestors policy', async () => {
     const res = await SELF.fetch('https://staging.serialis.dev/?shop=example.myshopify.com');
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('<meta name="shopify-api-key" content="03fd014d5ce8c5b37ed75e6effaae74f">');
-    expect(html).toContain('app-bridge.js');
-    expect(html).toContain("fetch('/api/me')");
-    expect(res.headers.get('Content-Security-Policy')).toContain('admin.shopify.com');
-  });
-
-  it('answers the health check', async () => {
-    const res = await SELF.fetch('https://staging.serialis.dev/healthz');
-    expect(await res.json()).toEqual({ ok: true, environment: 'development' });
+    expect(html).toMatch(/<meta name="shopify-api-key" content="03fd014d5ce8c5b37ed75e6effaae74f"\s*\/?>/);
+    expect(html).not.toContain('%SHOPIFY_API_KEY%');
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    expect(res.headers.get('Content-Security-Policy')).toContain('frame-ancestors https://admin.shopify.com https://*.myshopify.com');
+    expect(res.headers.get('Content-Security-Policy')).toContain('https://cdn.shopify.com');
+    expect(res.headers.get('X-Frame-Options')).toBeNull();
+    // Every navigation route of the SPA answers with the same document.
+    for (const path of ['/units', '/units/abc', '/tracked-items', '/anomalies', '/imports', '/settings', '/start']) {
+      const r = await SELF.fetch(`https://staging.serialis.dev${path}`);
+      expect(r.status).toBe(200);
+      expect(r.headers.get('Cache-Control')).toBe('no-store');
+    }
   });
 });

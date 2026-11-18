@@ -39,11 +39,53 @@ export interface OutboxEnqueueInput {
   kind: OutboxKind;
   /** Shopify object concerned (fulfillment order, item-location pair…): rows of one key run in order. */
   serialKey: string;
+  /** Frozen request; empty when the row carries an `intent` prepared at the first send of each revision. */
   query: string;
   variables?: Record<string, unknown>;
+  /**
+   * Domain description of the write (stock change, metafield). The request is built by
+   * `OutboxHooks.prepare` just before the first send of each revision (spec 12.4: `changeFromQuantity`
+   * read just before sending, recomputed on a new revision), then frozen in the row.
+   */
+  intent?: Record<string, unknown>;
   dedupeKey?: string | null;
   dependsOn?: number | null;
 }
+
+export interface PreparedRequest {
+  query: string;
+  variables: Record<string, unknown>;
+}
+
+export type PrepareResult = { send: PreparedRequest } | { skip: string };
+
+/** Domain plug-ins of the generic executor (registered by the shop object). */
+export interface OutboxHooks {
+  /** Builds the request of a row with an intent (reads the level, recomputes the write; may decide it is useless). */
+  prepare?(row: OutboxRow, intent: Record<string, unknown>, client: AdminGraphqlClient): Promise<PrepareResult>;
+  /**
+   * After the 20 h window of a revision (12.4): re-reads the level. `applied` = the write took place,
+   * `retry` = nothing applied (new revision), `conflict` = ambiguous gap (row failed, anomaly by the hook).
+   */
+  verifyExpired?(row: OutboxRow, intent: Record<string, unknown>, sent: PreparedRequest, client: AdminGraphqlClient): Promise<'applied' | 'retry' | 'conflict'>;
+  /** Called once a row reaches a final status (`done`, `failed`, `dead`). Synchronous. */
+  onFinished?(row: Pick<OutboxRow, 'id' | 'kind' | 'serial_key'> & { payload: StoredPayload }, status: 'done' | 'failed' | 'dead', detail: { result?: string; error?: string }): void;
+}
+
+/** Stored payload: the frozen request, plus the intent and its preparation state. */
+export interface StoredPayload {
+  query: string;
+  variables?: Record<string, unknown>;
+  intent?: Record<string, unknown>;
+  /** True once the request of the current revision is frozen. */
+  prepared?: boolean;
+  /** Set when the 20 h window expired: the next run re-reads the level instead of resending. */
+  windowExpired?: boolean;
+}
+
+/** Revisions refused for a stale quantity go on for 10 minutes, and at least three times (12.4). */
+export const STALE_REVISIONS_MS = 10 * 60_000;
+export const STALE_MIN_REVISIONS = 3;
 
 export type OutboxRow = {
   id: number;
@@ -61,6 +103,7 @@ export type OutboxRow = {
   next_attempt_at: number;
   last_error: string | null;
   result: string | null;
+  stale_since: number | null;
 };
 
 /** Transient user errors of stock mutations: retry with the same key (spec 12.4). */
@@ -71,6 +114,7 @@ export class Outbox {
     private readonly storage: DurableObjectStorage,
     private readonly keyPrefix: () => string,
     private readonly random: () => number = Math.random,
+    private readonly hooks: OutboxHooks = {},
   ) {}
 
   private get sql(): SqlStorage {
@@ -87,7 +131,12 @@ export class Outbox {
       const existing = this.sql.exec<{ id: number }>('SELECT id FROM outbox WHERE dedupe_key = ?', input.dedupeKey).toArray()[0];
       if (existing) return { id: existing.id, created: false };
     }
-    const payload = JSON.stringify({ query: input.query, variables: input.variables ?? {} });
+    const stored: StoredPayload = { query: input.query, variables: input.variables ?? {} };
+    if (input.intent) {
+      stored.intent = input.intent;
+      stored.prepared = false;
+    }
+    const payload = JSON.stringify(stored);
     const { id } = this.sql
       .exec<{ id: number }>(
         `INSERT INTO outbox (kind, serial_key, depends_on, dedupe_key, payload, idempotency_key, status, next_attempt_at, created_at, updated_at)
@@ -186,11 +235,33 @@ export class Outbox {
     const attempts = row.attempts + 1;
     const revisionStartedAt = row.revision_started_at ?? now;
 
-    const request = JSON.parse(row.payload) as { query: string; variables?: Record<string, unknown> };
-    const variables = { ...(request.variables ?? {}) };
-    if (request.query.includes('$idempotencyKey')) variables.idempotencyKey = row.idempotency_key;
+    let request = JSON.parse(row.payload) as StoredPayload;
 
     try {
+      if (request.intent && request.windowExpired && request.prepared && this.hooks.verifyExpired) {
+        const verdict = await this.hooks.verifyExpired(row, request.intent, { query: request.query, variables: request.variables ?? {} }, client());
+        if (verdict === 'applied') {
+          this.finish(row.id, 'done', { result: JSON.stringify({ verified: 'applied_before_window_end' }) });
+        } else if (verdict === 'retry') {
+          this.nextRevision(row, 'revision_window_expired: not applied');
+        } else {
+          this.finish(row.id, 'failed', { error: 'inventory_write_conflict: ambiguous level after the revision window' });
+        }
+        return;
+      }
+      if (request.intent && !request.prepared) {
+        if (!this.hooks.prepare) throw new Error(`no preparer for outbox kind ${row.kind}`);
+        const prepared = await this.hooks.prepare(row, request.intent, client());
+        if ('skip' in prepared) {
+          this.finish(row.id, 'done', { result: JSON.stringify({ skipped: prepared.skip }) });
+          return;
+        }
+        // Frozen for every retry of this revision (12.4 "charge figée").
+        request = { ...request, query: prepared.send.query, variables: prepared.send.variables, prepared: true };
+        this.sql.exec('UPDATE outbox SET payload = ?, updated_at = ? WHERE id = ?', JSON.stringify(request), Date.now(), row.id);
+      }
+      const variables = { ...(request.variables ?? {}) };
+      if (request.query.includes('$idempotencyKey')) variables.idempotencyKey = row.idempotency_key;
       const response = await client().request(request.query, { variables, estimatedCost: 10 });
       const userErrors = firstUserErrors(response.data);
       if (userErrors.length === 0) {
@@ -203,7 +274,10 @@ export class Outbox {
         .join('; ')
         .slice(0, 500);
       if (codes.some((c) => TRANSIENT_USER_ERRORS.has(c))) {
-        this.retry(row.id, attempts, revisionStartedAt, summary);
+        this.retry(row, attempts, revisionStartedAt, summary);
+      } else if (codes.includes('CHANGE_FROM_QUANTITY_STALE') && request.intent) {
+        // The level moved between the read and the write: new revision, level re-read and write recomputed (12.4).
+        this.staleRevision(row, summary);
       } else if (codes.includes('IDEMPOTENCY_KEY_PARAMETER_MISMATCH')) {
         // Can only come from a code defect (spec 12.4).
         this.finish(row.id, 'dead', { error: summary });
@@ -211,8 +285,7 @@ export class Outbox {
         // Nothing was applied: next revision, new key, at once.
         this.nextRevision(row, summary);
       } else {
-        // Definitive business error (CHANGE_FROM_QUANTITY_STALE included until the domain plugs its
-        // recompute, see DECISIONS.md): no retry.
+        // Definitive business error (a stale quantity on a frozen request without intent included): no retry.
         this.finish(row.id, 'failed', { error: summary });
       }
     } catch (error) {
@@ -222,19 +295,33 @@ export class Outbox {
         this.reschedule(row.id, Date.now() + FROZEN_RETRY_MS, errorMessage(error), true);
       } else if (error instanceof ShopifyError && error.kind === 'throttled') {
         this.reschedule(row.id, Date.now() + 1_000, errorMessage(error), true);
+      } else if (error instanceof ShopifyError && error.codes.includes('IDEMPOTENCY_PREVIOUS_ATTEMPT_FAILED')) {
+        // Shopify may report the idempotency outcomes as top-level errors: nothing was applied, next revision.
+        this.nextRevision(row, errorMessage(error));
+      } else if (error instanceof ShopifyError && error.codes.includes('IDEMPOTENCY_CONCURRENT_REQUEST')) {
+        this.retry(row, attempts, revisionStartedAt, errorMessage(error));
       } else if (error instanceof ShopifyError && error.kind === 'graphql') {
         // Invalid query or missing access: needs a fix, blocks the serial key.
         this.finish(row.id, 'dead', { error: errorMessage(error) });
       } else {
-        this.retry(row.id, attempts, revisionStartedAt, errorMessage(error));
+        this.retry(row, attempts, revisionStartedAt, errorMessage(error));
       }
     }
   }
 
-  private retry(id: number, attempts: number, revisionStartedAt: number, error: string): void {
+  private retry(row: OutboxRow, attempts: number, revisionStartedAt: number, error: string): void {
+    const id = row.id;
     const now = Date.now();
     if (now - revisionStartedAt > REVISION_WINDOW_MS) {
       // Beyond the window the write is not resent blindly; the domain re-reads the level (spec 12.4).
+      const stored = JSON.parse(row.payload) as StoredPayload;
+      const current = this.sql.exec<{ payload: string }>('SELECT payload FROM outbox WHERE id = ?', id).toArray()[0];
+      const latest = current ? (JSON.parse(current.payload) as StoredPayload) : stored;
+      if (latest.intent && latest.prepared && this.hooks.verifyExpired) {
+        this.sql.exec('UPDATE outbox SET payload = ? WHERE id = ?', JSON.stringify({ ...latest, windowExpired: true }), id);
+        this.reschedule(id, now, error, false);
+        return;
+      }
       this.finish(id, 'failed', { error: `revision_window_expired: ${error}` });
       return;
     }
@@ -255,18 +342,38 @@ export class Outbox {
     );
   }
 
-  private nextRevision(row: OutboxRow, error: string): void {
+  private nextRevision(row: OutboxRow, error: string, at = Date.now(), staleSince: number | null = row.stale_since): void {
     const revision = row.revision + 1;
+    const current = this.sql.exec<{ payload: string }>('SELECT payload FROM outbox WHERE id = ?', row.id).toArray()[0];
+    const stored = JSON.parse(current?.payload ?? row.payload) as StoredPayload;
+    // A row with an intent is prepared again (level re-read, write recomputed) under the new key.
+    const payload = stored.intent ? JSON.stringify({ ...stored, query: '', variables: {}, prepared: false, windowExpired: false }) : (current?.payload ?? row.payload);
     this.sql.exec(
-      `UPDATE outbox SET status = 'pending', lease_until = NULL, revision = ?, idempotency_key = ?, revision_started_at = NULL,
-         next_attempt_at = ?, last_error = ?, updated_at = ? WHERE id = ? AND status = 'in_flight'`,
+      `UPDATE outbox SET status = 'pending', lease_until = NULL, revision = ?, idempotency_key = ?, revision_started_at = NULL, payload = ?,
+         stale_since = ?, next_attempt_at = ?, last_error = ?, updated_at = ? WHERE id = ? AND status = 'in_flight'`,
       revision,
       Outbox.idempotencyKey(this.keyPrefix(), row.id, revision),
-      Date.now(),
+      payload,
+      staleSince,
+      at,
       error,
       Date.now(),
       row.id,
     );
+  }
+
+  /** CHANGE_FROM_QUANTITY_STALE: random wait of 1 to 5 s growing with the revisions, for 10 minutes and at least 3 times, then dead (12.4). */
+  private staleRevision(row: OutboxRow, error: string): void {
+    const now = Date.now();
+    const since = row.stale_since ?? now;
+    const staleRevisions = row.stale_since === null ? 0 : row.revision;
+    if (now - since > STALE_REVISIONS_MS && staleRevisions >= STALE_MIN_REVISIONS) {
+      this.finish(row.id, 'dead', { error: `stale_revisions_exhausted: ${error}` });
+      return;
+    }
+    const factor = Math.min(16, 2 ** Math.min(4, staleRevisions));
+    const delay = Math.round((1_000 + 4_000 * this.random()) * factor);
+    this.nextRevision(row, error, now + delay, since);
   }
 
   private finish(id: number, status: 'done' | 'failed' | 'dead', detail: { result?: string; error?: string }): void {
@@ -281,8 +388,17 @@ export class Outbox {
       id,
     );
     if (status !== 'done') {
-      // TODO(lot 0, observability): anomaly `outbox_dead` for dead rows, sync relaunch for failed ones (spec 12.4).
       logEvent(status === 'dead' ? 'error' : 'warn', `outbox.${status}`, { id, error: detail.error ?? null });
+    }
+    if (this.hooks.onFinished) {
+      const row = this.sql.exec<{ id: number; kind: OutboxKind; serial_key: string; payload: string }>('SELECT id, kind, serial_key, payload FROM outbox WHERE id = ?', id).toArray()[0];
+      if (row) {
+        try {
+          this.hooks.onFinished({ id: row.id, kind: row.kind, serial_key: row.serial_key, payload: JSON.parse(row.payload) as StoredPayload }, status, detail);
+        } catch (error) {
+          logEvent('error', 'outbox.on_finished_failed', { id, error: errorMessage(error) });
+        }
+      }
     }
   }
 }

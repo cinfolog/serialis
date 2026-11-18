@@ -6,10 +6,10 @@ App Shopify de gestion des stocks sérialisés : une ref par unité, liée à un
 
 | Dossier | Contenu | État |
 |---|---|---|
-| `core/` | Domaine pur : états, transitions, invariants, règles d'attribution | États et table des transitions |
-| `workers/` | Worker principal, objet `ShopStore` par boutique | Réception des webhooks (signature, idempotence), migrations de la base de boutique |
+| `core/` | Domaine pur : états, transitions, invariants, règles d'attribution | Moteur de synchronisation complet (MVP) |
+| `workers/` | Worker principal, objet `ShopStore` par boutique | Webhooks, tâches, outbox, `sync_order`, contrôle des niveaux, réconciliations R1 à R3, API `/api/v1`, service de l'app (`app/dist`) |
 | `db/shop/`, `db/registry/` | Migrations SQL (base de boutique, annuaire D1) | Socle |
-| `app/`, `extensions/`, `api/`, `services/`, `tests/` | App admin, extensions, API publique, client Shopify, tests longs | À venir |
+| `app/`, `extensions/`, `api/`, `services/`, `tests/` | App admin, extensions, contrat d'API, client Shopify, simulateur | MVP ; API publique à clés à venir |
 | `shopify.app.{dev,pilot,production}.toml` | Une configuration par app Shopify | Scopes et webhooks du MVP |
 | `wrangler.jsonc` | Environnements Cloudflare : dev, staging, pilot, production | Identifiants à renseigner |
 
@@ -17,7 +17,8 @@ App Shopify de gestion des stocks sérialisés : une ref par unité, liée à un
 
 ```sh
 pnpm install
-pnpm test        # core + workers (dans workerd)
+pnpm --filter @serialis/admin build   # app/dist, servie par le Worker
+pnpm test        # tous les paquets ; workers dans workerd, de bout en bout avec le simulateur Shopify
 pnpm typecheck
 pnpm dev         # wrangler dev
 ```

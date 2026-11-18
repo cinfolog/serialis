@@ -288,7 +288,10 @@ export class ShopifySim {
 
     const rootFields = collectRootFields(op.selectionSet, fragments);
     const names = rootFields.map((f) => f.name.value);
-    const idemDirective = op.directives?.find((d) => d.name.value === 'idempotent');
+    // Shopify places `@idempotent` on the mutation field (changelog 2025, 2026-04); the operation level is accepted too.
+    const idemDirective =
+      op.directives?.find((d) => d.name.value === 'idempotent') ??
+      rootFields.flatMap((f) => f.directives ?? []).find((d) => d.name.value === 'idempotent');
     const idemKey = idemDirective ? String(valueFromASTUntyped(idemDirective.arguments?.find((a) => a.name.value === 'key')?.value ?? { kind: Kind.NULL }, variables) ?? '') : undefined;
 
     const ctx: Ctx = {

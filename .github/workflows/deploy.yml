@@ -52,6 +52,19 @@ jobs:
           # API_KEY_SEAL_SECRET_V2 (new GitHub secret + one more block below); never remove a version still used by keys.
           API_KEY_SEAL_SECRET_V1: ${{ secrets.API_KEY_SEAL_SECRET_V1 }}
         run: |
+          # Secrets never contain whitespace: a pasted trailing newline or space would make every signature wrong
+          # (session tokens rejected with `bad_signature`), so it is stripped before reaching the Worker.
+          SHOPIFY_API_SECRET=$(printf '%s' "$SHOPIFY_API_SECRET" | tr -d '[:space:]')
+          TOKEN_ENCRYPTION_KEY=$(printf '%s' "$TOKEN_ENCRYPTION_KEY" | tr -d '[:space:]')
+          API_KEY_SEAL_SECRET_V1=$(printf '%s' "$API_KEY_SEAL_SECRET_V1" | tr -d '[:space:]')
+          if [ -z "$SHOPIFY_API_SECRET" ]; then
+            echo "::error title=secret $TARGET::SHOPIFY_API_SECRET missing (client secret of the Shopify app, Dev Dashboard > Settings)"
+            exit 1
+          fi
+          # Fingerprint only (length + first 8 hex of SHA-256), to compare with the Dev Dashboard value without revealing it:
+          #   printf '%s' '<client secret>' | shasum -a 256 | cut -c1-8
+          FP=$(printf '%s' "$SHOPIFY_API_SECRET" | sha256sum | cut -c1-8)
+          echo "::notice title=secret $TARGET::SHOPIFY_API_SECRET length ${#SHOPIFY_API_SECRET}, sha256 ${FP}… (must match the client secret of the app whose client_id is SHOPIFY_API_KEY)"
           printf '%s' "$SHOPIFY_API_SECRET" | pnpm exec wrangler secret put SHOPIFY_API_SECRET --env "$TARGET"
           if [ -n "$TOKEN_ENCRYPTION_KEY" ]; then
             printf '%s' "$TOKEN_ENCRYPTION_KEY" | pnpm exec wrangler secret put TOKEN_ENCRYPTION_KEY --env "$TARGET"

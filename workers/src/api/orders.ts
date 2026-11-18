@@ -20,6 +20,7 @@ import { stockWriteInput } from '../domain/writes.js';
 import { evaluateLevel, storeLevel } from '../domain/levels.js';
 import { allocationEtag, ApiError, checkIfMatch, decodeCursor, encodeCursor, iso, json, noContent, orderGidOf, pageLimit, parseBody, queryOne, type ApiResult } from './http.js';
 import { presentAllocation, presentAnomaly, type ApiContext } from './present.js';
+import { requireAdmin } from './users.js';
 
 /** Released units are kept out of automatic allocation for a while, so that "remove" is not undone by the next sync (D-25). */
 export const MANUAL_RELEASE_LOCK_MS = 15 * 60_000;
@@ -448,8 +449,11 @@ export async function resolveAnomaly(ctx: ApiContext, id: string): Promise<ApiRe
   const ref = typeof params.ref === 'string' ? params.ref : undefined;
   const s = a.subject;
   const actor = ctx.call.principal.actor;
-  const allowed = new Set(['dismiss', ...(presentAnomaly(ctx, a).actions.map((x) => x.action))]);
+  const actions = presentAnomaly(ctx, a).actions;
+  const allowed = new Set(['dismiss', ...actions.map((x) => x.action)]);
   if (!allowed.has(body.action)) throw new ApiError(422, 'validation_failed', `action ${body.action} is not a resolution of ${a.type}`);
+  // 15.8: resolutions that write the Shopify stock (or relaunch or abandon a write) are administration actions.
+  if (actions.some((x) => x.action === body.action && x.writesStock)) requireAdmin(ctx);
   switch (body.action) {
     case 'allocate':
     case 'designate':

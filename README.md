@@ -93,3 +93,7 @@ Secrets GitHub (par environnement) :
 - **Reconnexion** : l'anomalie `reconnect_required` et les bandeaux sont en place, mais aucun e-mail n'invite le marchand à rouvrir l'app.
 - Spec à mettre à jour (orchestrateur) : `POST /health/tasks/{key}/revive` à lister ; statut d'une écriture abandonnée (`failed` + `abandoned_at`, `workers/DECISIONS.md` 70) à reporter dans 11.2.
 - Points notés dans les décisions : réveil horaire du Worker planifié pour les boutiques gelées (64), réservations expirées, transits trop longs et photographie `daily_stats` de R4 (60), utilisateurs sans échange de jeton en ligne (57, PV-9).
+
+### Runner de la CI
+
+Les workflows tournent sur `ubuntu-latest` par défaut. Pour utiliser un runner auto-hébergé, créer la variable de dépôt (ou d'organisation) `RUNS_ON` au format JSON, par exemple `["self-hosted","serialis"]` ; la supprimer pour revenir aux runners GitHub. Le runner doit pouvoir installer les dépendances système de Chromium (`playwright install --with-deps`, donc root ou sudo) ; Docker n'est pas nécessaire.

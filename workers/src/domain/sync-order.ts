@@ -4,7 +4,7 @@
  * next, events, anomalies, uncovered lines, explained quantities), and queues the Shopify writes
  * in the outbox. Replaying it without change in Shopify writes nothing (T-IDEM-01).
  */
-import { planOrderSync, type OrderSnapshot, type ReturnIdentification, type SyncPlan, type SyncState } from '@serialis/core';
+import { checkAllocationConsistency, planOrderSync, type ConsistencyViolation, type OrderSnapshot, type ReturnIdentification, type SyncPlan, type SyncState } from '@serialis/core';
 import { TASK_PRIORITY } from '../task-kinds.js';
 import type { TaskContext, TaskResult } from '../tasks.js';
 import { logEvent } from '../log.js';
@@ -12,7 +12,35 @@ import type { DomainContext } from './context.js';
 import type { Cause } from './repo.js';
 import { readOrder, type OrderRead } from './shopify-read.js';
 import { hasPendingMetafieldWrite, metafieldWriteInput, stockWriteInput, type StockIntent } from './writes.js';
-import { newId, numericOf } from './util.js';
+import { chunks, newId, numericOf, placeholders } from './util.js';
+
+/**
+ * Raised inside the transaction of a plan application when the allocation ↔ unit rule of 11.2 does not
+ * hold at its end: the whole transaction rolls back (workers/DECISIONS.md 51).
+ */
+export class ConsistencyError extends Error {
+  override readonly name = 'ConsistencyError';
+  constructor(readonly violations: readonly ConsistencyViolation[]) {
+    super(`allocation/unit consistency violated for ${violations.length} unit(s)`);
+  }
+}
+
+/** End-of-transaction check of 11.2 on the given units (current rows of the transaction). */
+export function assertUnitsConsistent(ctx: Pick<DomainContext, 'sql'>, unitIds: Iterable<string>): void {
+  const ids = [...new Set(unitIds)];
+  const units: Array<{ id: string; status: string }> = [];
+  const allocations: Array<{ id: string; unit_id: string; status: string }> = [];
+  for (const part of chunks(ids)) {
+    const ph = placeholders(part.length);
+    units.push(...ctx.sql.exec<{ id: string; status: string }>(`SELECT id, status FROM units WHERE id IN (${ph})`, ...part).toArray());
+    allocations.push(...ctx.sql.exec<{ id: string; unit_id: string; status: string }>(`SELECT id, unit_id, status FROM allocations WHERE unit_id IN (${ph}) AND status IN ('active', 'fulfilled')`, ...part).toArray());
+  }
+  const violations = checkAllocationConsistency(
+    units.map((u) => ({ id: u.id, status: u.status as ConsistencyViolation['status'] })),
+    allocations.map((a) => ({ id: a.id, unitId: a.unit_id, status: a.status as 'active' | 'fulfilled' })),
+  );
+  if (violations.length > 0) throw new ConsistencyError(violations);
+}
 
 export function syncOrderTaskKey(orderGid: string): string {
   return `sync_order:${orderGid}`;
@@ -59,10 +87,18 @@ export async function runSyncOrder(ctx: DomainContext, orderGid: string, task: P
     return;
   }
   const now = Date.now();
-  const outcome = ctx.storage.transactionSync(() => {
-    if (!task.holdsLease()) return null; // another execution owns the task now (12.2 "Baux")
-    return applyOrderSync(ctx, read, now, { type: 'task', id: task.key });
-  });
+  let outcome: ReturnType<typeof applyOrderSync> | null;
+  try {
+    outcome = ctx.storage.transactionSync(() => {
+      if (!task.holdsLease()) return null; // another execution owns the task now (12.2 "Baux")
+      return applyOrderSync(ctx, read, now, { type: 'task', id: task.key });
+    });
+  } catch (error) {
+    if (!(error instanceof ConsistencyError)) throw error;
+    // Rolled back as a whole: nothing of the plan is kept; a critical anomaly asks for a fix, R2 retries the order.
+    recordConsistencyViolation(ctx, orderGid, error, now);
+    return;
+  }
   if (!outcome) return;
   for (const [item, loc] of outcome.levels) requestLevelCheck(ctx, item, loc);
   if (outcome.plan.rejected.length > 0) {
@@ -263,6 +299,16 @@ export function applyOrderSync(ctx: DomainContext, read: OrderRead, now: number,
 
   if (plan.metafield.write && !hasPendingMetafieldWrite(sql, orderGid)) ctx.queueOutbox(metafieldWriteInput(orderGid), now);
 
+  // 11.2: the plan passes through intermediate states; the rule must hold at the end of the transaction.
+  assertUnitsConsistent(ctx, [
+    ...orderAllocations.map((a) => a.unitId),
+    ...plan.unitTransitions.map((t) => t.unitId),
+    ...plan.allocationsToCreate.map((a) => a.unitId),
+    ...plan.allocationUpdates.map((u) => allocations.get(u.id)?.unitId).filter((id): id is string => typeof id === 'string'),
+  ]);
+  const inconsistency = repo.liveAnomaly('consistency_violation', { orderGid });
+  if (inconsistency) repo.closeAnomaly(inconsistency.id, 'auto_resolved', { by: 'sync' }, now);
+
   sql.exec(
     `INSERT INTO order_sync (order_gid, status, has_tracked_lines, last_synced_at, shopify_updated_at, order_created_at, attempts, last_error)
      VALUES (?, ?, ?, ?, ?, ?, 0, NULL)
@@ -277,6 +323,28 @@ export function applyOrderSync(ctx: DomainContext, read: OrderRead, now: number,
     snapshot.createdAt,
   );
   return { plan, levels: [...levels.values()] };
+}
+
+/** After a rolled-back plan: critical anomaly per order (11.2, R4 rule) and the order kept for R2. */
+export function recordConsistencyViolation(ctx: DomainContext, orderGid: string, error: ConsistencyError, now: number): void {
+  logEvent('error', 'sync_order.consistency_violation', { units: error.violations.length });
+  ctx.storage.transactionSync(() => {
+    ctx.repo.openAnomaly({
+      type: 'consistency_violation',
+      subject: { orderGid },
+      details: {
+        units: error.violations.map((v) => v.unitId).slice(0, 20),
+        rule: error.violations.map((v) => `${v.status}:${v.detail}`).slice(0, 20),
+        source: 'plan_application',
+      },
+      now,
+    });
+    ctx.sql.exec(
+      `INSERT INTO order_sync (order_gid, status, attempts, last_error) VALUES (?, 'error', 1, 'consistency_violation')
+       ON CONFLICT (order_gid) DO UPDATE SET status = 'error', attempts = order_sync.attempts + 1, last_error = 'consistency_violation'`,
+      orderGid,
+    );
+  });
 }
 
 function applyExplained(ctx: DomainContext, orderGid: string, plan: SyncPlan, now: number): void {

@@ -90,5 +90,6 @@ Secrets GitHub (par environnement) :
 - **Contrôles qui demandent l'admin Shopify réel** : App Bridge (`s-app-nav`, `shopify:navigate`, barre d'enregistrement contextuelle, sélecteur de variantes), noms d'événements et propriétés des composants Polaris, blocs et liens `shopify:admin/...`, iframe embarquée, bloc variante et écran Arrivage de T-UX-02 (`app/DECISIONS.md`, points « à vérifier dans l'admin réel »).
 - **Contrôles qui demandent le vrai CDN Polaris** : contrastes, libellés et anneaux de focus internes des composants, Web Vitals (LCP, CLS) — suite `UI_TESTS_REAL_CDN=1` à passer avant la publication, avec la grille d'audit manuelle WCAG 2.2 AA.
 - **Observabilité** : journaux structurés et écran Santé seulement ; ni Sentry ni Analytics Engine (`workers/DECISIONS.md`, 63).
+- **Écran Santé** : pas de relance d'une tâche arrêtée depuis l'écran, que 12.7 prévoit (aucune route dans le contrat ; `app/DECISIONS.md`, 27).
 - **Reconnexion** : l'anomalie `reconnect_required` et les bandeaux sont en place, mais aucun e-mail n'invite le marchand à rouvrir l'app.
 - Points notés dans les décisions : réveil horaire du Worker planifié pour les boutiques gelées (64), réservations expirées, transits trop longs et photographie `daily_stats` de R4 (60), utilisateurs sans échange de jeton en ligne (57, PV-9).

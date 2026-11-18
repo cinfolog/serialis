@@ -295,6 +295,11 @@ export class Outbox {
         this.reschedule(row.id, Date.now() + FROZEN_RETRY_MS, errorMessage(error), true);
       } else if (error instanceof ShopifyError && error.kind === 'throttled') {
         this.reschedule(row.id, Date.now() + 1_000, errorMessage(error), true);
+      } else if (error instanceof ShopifyError && error.codes.includes('IDEMPOTENCY_PREVIOUS_ATTEMPT_FAILED')) {
+        // Shopify may report the idempotency outcomes as top-level errors: nothing was applied, next revision.
+        this.nextRevision(row, errorMessage(error));
+      } else if (error instanceof ShopifyError && error.codes.includes('IDEMPOTENCY_CONCURRENT_REQUEST')) {
+        this.retry(row, attempts, revisionStartedAt, errorMessage(error));
       } else if (error instanceof ShopifyError && error.kind === 'graphql') {
         // Invalid query or missing access: needs a fix, blocks the serial key.
         this.finish(row.id, 'dead', { error: errorMessage(error) });

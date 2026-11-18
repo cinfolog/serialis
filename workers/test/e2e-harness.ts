@@ -50,6 +50,8 @@ export interface Harness {
   deliver(opts?: Partial<DeliveryOptions>): Promise<void>;
   /** Runs tasks and outbox (forcing their dates) and delivers the webhooks they cause, until nothing is left. */
   drain(opts?: { deliver?: Partial<DeliveryOptions>; rounds?: number }): Promise<void>;
+  /** One forced alarm run (tasks due within a minute and the outbox), without delivering webhooks. */
+  step(): Promise<void>;
   api(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<Response>;
   query<T = Record<string, unknown>>(sql: string, ...binds: SqlStorageValue[]): Promise<T[]>;
   run(sql: string, ...binds: SqlStorageValue[]): Promise<void>;
@@ -107,6 +109,14 @@ export async function createHarness(name: string, opts: { webhookOrigin?: string
         if (due.n > 0) await runDurableObjectAlarm(stub);
       }
       throw new Error('drain: work still pending after the maximum number of rounds');
+    },
+    async step() {
+      await runInDurableObject(stub, async (_s: ShopStore, state: DurableObjectState) => {
+        state.storage.sql.exec("UPDATE tasks SET run_at = 0 WHERE status = 'pending' AND key NOT LIKE 'recon:%' AND run_at <= ?", Date.now() + 60_000);
+        state.storage.sql.exec("UPDATE outbox SET next_attempt_at = 0 WHERE status = 'pending'");
+        await state.storage.setAlarm(Date.now() + 60_000);
+      });
+      await runDurableObjectAlarm(stub);
     },
     async api(method, path, body, headers = {}) {
       const init: RequestInit = {
@@ -175,7 +185,8 @@ export async function assertConsistent(h: Harness): Promise<void> {
         lv.locationId,
       );
       const surplus = explained.find((e) => e.direction === 'surplus')?.q ?? 0;
-      const deficit = explained.find((e) => e.direction === 'deficit')?.q ?? 0;
+      // 8.1: units to verify explain a gap where Shopify counts more (it may have restocked them).
+      const deficit = (explained.find((e) => e.direction === 'deficit')?.q ?? 0) + n(['TO_VERIFY']);
       const onHand = h.sim.shop.quantity(lv, 'on_hand');
       const units = n(['AVAILABLE', 'HELD', 'ALLOCATED', 'QUALITY_CONTROL', 'DAMAGED']);
       expect(Math.abs(onHand - units), `I1 at ${lv.locationId}: on_hand ${onHand}, units ${units}`).toBeLessThanOrEqual(onHand > units ? deficit : surplus);

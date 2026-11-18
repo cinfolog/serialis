@@ -73,11 +73,18 @@ export function evaluateLevel(ctx: DomainContext, item: TrackedItemRow, location
   if (!level) return null;
   if (repo.pendingStockWrites(item.inventoryItemGid, locationId) > 0) return now + IN_FLIGHT_RECHECK_MS;
 
+  const units = repo.unitsAt(item.id, locationId);
+  const explained = repo.explainedFor(item.id, locationId);
+  // 8.1: a gap covered by units to verify is explained (Shopify may have restocked them), up to their number.
+  const toVerify = units.filter((u) => u.status === 'TO_VERIFY').length;
+  if (toVerify > 0) {
+    explained.push({ sourceType: 'to_verify_restocked', sourceRef: `to_verify|${item.id}|${locationId}`, trackedItemId: item.id, locationId, inventoryState: 'available', direction: 'deficit', quantity: toVerify, status: 'open' });
+  }
   const violations = checkInvariants({
     levels: [level],
-    units: repo.unitsAt(item.id, locationId),
+    units,
     uncovered: repo.uncoveredFor(item.id, locationId),
-    explained: repo.explainedFor(item.id, locationId),
+    explained,
   }).filter((v) => v.invariant === 'I1' || v.invariant === 'I3' || v.invariant === 'I5');
   const live = repo.liveAnomaliesOfLevel(item.id, locationId, LEVEL_ANOMALIES);
   const closeAll = (keep: Set<string>) => {

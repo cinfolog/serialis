@@ -238,7 +238,7 @@ La valeur par défaut est citée en premier. Portées : B boutique, E emplacemen
 | S-22 | Délai de grâce avant qu'un écart devienne une anomalie | 10 min (par défaut ; 2 h sur un emplacement externe) · de 5 min à 24 h | B, E | Immédiat |
 | S-23 | Stock de l'emplacement écrit par un système externe (section 6.7) | Non (par défaut) · Oui : l'app n'écrit plus aucune quantité à cet emplacement | E | Avec simulation. Passage à « oui » refusé tant que des écritures de quantité vers cet emplacement attendent dans l'outbox. Passage à « non » : chaque réception ou sortie différée (`deferred_receipts`) est réévaluée, appliquée sans écriture s'il existe un déficit ou un excédent utilisable, sinon proposée comme réception ou sortie avec écriture après confirmation |
 | S-24 | Activation du suivi sur un article qui a des commandes ouvertes | Ne pas les bloquer : ventes antérieures au suivi à désigner (par défaut : bloquer des commandes déjà payées pour des lignes dont personne ne peut encore désigner l'unité arrêterait les expéditions du jour) · Les mettre en attente | A (choisi à l'activation, figé) | À l'activation seulement |
-| S-25 | Fin de la phase d'initialisation | Automatique dès que le stock concorde (I1) (par défaut) · Sur décision du marchand | A | Immédiat |
+| S-25 | Fin de la phase d'initialisation | Automatique dès que le stock concorde (I1) (par défaut) · Sur décision du marchand | B, A | Immédiat |
 
 **Réception et transferts**
 

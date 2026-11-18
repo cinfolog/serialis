@@ -160,32 +160,42 @@ export class TaskQueue {
     ).rowsWritten;
   }
 
-  /** Next time the alarm must fire: smallest pending run_at, or the end of a running lease. */
-  nextWakeUp(): number | null {
+  /**
+   * Next time the alarm must fire: smallest pending run_at, or the end of a running lease. `onlyKeys`
+   * restricts it to some tasks (a frozen shop only runs its daily probe, 12.2).
+   */
+  nextWakeUp(onlyKeys?: readonly string[]): number | null {
+    const filter = onlyKeys ? ` AND key IN (${onlyKeys.map(() => '?').join(', ') || "''"})` : '';
     const row = this.sql
       .exec<{ next: number | null }>(
-        "SELECT MIN(CASE WHEN status = 'pending' THEN run_at WHEN status = 'running' THEN lease_until END) AS next FROM tasks WHERE status IN ('pending', 'running')",
+        `SELECT MIN(CASE WHEN status = 'pending' THEN run_at WHEN status = 'running' THEN lease_until END) AS next FROM tasks WHERE status IN ('pending', 'running')${filter}`,
+        ...(onlyKeys ?? []),
       )
       .one();
     return row.next ?? null;
   }
 
-  /** Sets the alarm on the next wake-up; only touches it when the time changes (spec 12.2). */
-  async syncAlarm(active: boolean): Promise<void> {
-    const next = active ? this.nextWakeUp() : null;
+  /**
+   * Sets the alarm on the next wake-up; only touches it when the time changes (spec 12.2).
+   * `true`: every task; `false`: no alarm (uninstalled shop); a list: only those tasks (frozen shop).
+   */
+  async syncAlarm(mode: boolean | readonly string[]): Promise<void> {
+    const next = mode === false ? null : this.nextWakeUp(mode === true ? undefined : mode);
     const current = await this.storage.getAlarm();
     if (next === null) {
       if (current !== null) await this.storage.deleteAlarm();
       return;
     }
-    if (current !== next) await this.storage.setAlarm(next);
+    const at = Math.max(next, 1);
+    if (current !== at) await this.storage.setAlarm(at);
   }
 
   /**
    * Runs due tasks by priority within the time budget. Never throws: each task has its own error
    * block, so an error counts against the task, not against the alarm.
    */
-  async runDue(lookup: (kind: string) => TaskHandler | undefined, budgetMs = ALARM_BUDGET_MS): Promise<number> {
+  async runDue(lookup: (kind: string) => TaskHandler | undefined, budgetMs = ALARM_BUDGET_MS, onlyKeys?: readonly string[]): Promise<number> {
+    const filter = onlyKeys ? ` AND key IN (${onlyKeys.map(() => '?').join(', ') || "''"})` : '';
     const started = Date.now();
     let ran = 0;
     try {
@@ -197,7 +207,7 @@ export class TaskQueue {
       let row: TaskRow | undefined;
       try {
         row = this.sql
-          .exec<TaskRow>("SELECT * FROM tasks WHERE status = 'pending' AND run_at <= ? ORDER BY priority, run_at LIMIT 1", Date.now())
+          .exec<TaskRow>(`SELECT * FROM tasks WHERE status = 'pending' AND run_at <= ?${filter} ORDER BY priority, run_at LIMIT 1`, Date.now(), ...(onlyKeys ?? []))
           .toArray()[0];
       } catch (error) {
         logEvent('error', 'tasks.select_failed', { error: errorMessage(error) });

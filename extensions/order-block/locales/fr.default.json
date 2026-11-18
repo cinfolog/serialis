@@ -80,9 +80,6 @@
       "other": "{{count}} unités à attribuer"
     },
     "noUnits": "Aucune unité pour cette ligne.",
-    "colRef": "Ref",
-    "colState": "État",
-    "colOrigin": "Origine",
     "toAllocate": "À attribuer",
     "toConfirm": "À confirmer",
     "status_active": "Attribuée",
@@ -97,6 +94,17 @@
     "origin_api": "API",
     "origin_late": "Désignée après coup",
     "origin_migration": "Migration",
-    "edit": "Modifier les unités"
+    "edit": "Modifier les unités",
+    "moreUnits": {
+      "one": "+{{count}} autre unité",
+      "many": "+{{count}} autres unités",
+      "other": "+{{count}} autres unités"
+    },
+    "moreLines": {
+      "one": "+{{count}} autre ligne suivie",
+      "many": "+{{count}} autres lignes suivies",
+      "other": "+{{count}} autres lignes suivies"
+    },
+    "allAllocated": "Tout est attribué"
   }
 }

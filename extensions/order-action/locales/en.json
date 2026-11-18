@@ -78,9 +78,6 @@
       "other": "{{count}} units to allocate"
     },
     "noUnits": "No unit for this line.",
-    "colRef": "Ref",
-    "colState": "State",
-    "colOrigin": "Origin",
     "toAllocate": "To allocate",
     "toConfirm": "To confirm",
     "status_active": "Allocated",
@@ -95,7 +92,16 @@
     "origin_api": "API",
     "origin_late": "Designated afterwards",
     "origin_migration": "Migration",
-    "edit": "Edit units"
+    "edit": "Edit units",
+    "moreUnits": {
+      "one": "+{{count}} more unit",
+      "other": "+{{count}} more units"
+    },
+    "moreLines": {
+      "one": "+{{count}} more tracked line",
+      "other": "+{{count}} more tracked lines"
+    },
+    "allAllocated": "All allocated"
   },
   "orderAction": {
     "heading": "Edit units",

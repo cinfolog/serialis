@@ -90,6 +90,15 @@ export function buildRows(data: ProductData, untitled: string): VariantRow[] {
   return rows;
 }
 
+/** Variants listed in the block; the others are counted (essential content within 300 px, DECISIONS.md). */
+export const MAX_VARIANT_ROWS = 5;
+
+/** Tracked variants first (each group in Shopify's order), capped at `max`, with the number left out. */
+export function pickRows(rows: VariantRow[], max = MAX_VARIANT_ROWS): { shown: VariantRow[]; hidden: number } {
+  const ordered = [...rows.filter((r) => r.tracked), ...rows.filter((r) => !r.tracked)];
+  return { shown: ordered.slice(0, max), hidden: Math.max(0, ordered.length - max) };
+}
+
 // ---------------------------------------------------------------------------
 // Shopify Admin GraphQL (read-only, scope read_products)
 // ---------------------------------------------------------------------------

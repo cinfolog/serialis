@@ -68,28 +68,23 @@
     "untrackConfirmTitle": "Arrêter le suivi ?",
     "untrackEffect": "Les unités en stock passent hors suivi, sans aucune écriture : le stock Shopify ne change pas et la variante reste vendable. Impossible tant que des unités sont attribuées, en transit ou en retour attendu.",
     "untrackConfirm": "Arrêter le suivi",
-    "initializingTitle": "Phase d'initialisation",
-    "initializingBody": "Le stock existant se saisit en « déjà comptées » (sans écriture de stock). L'écart avec Shopify se réduit à mesure que vous enregistrez les refs.",
-    "truncated": "Seules les {{count}} premières refs sont chargées : les chiffres ci-dessous sont partiels. Ouvrez l'app Serialis pour la liste complète.",
+    "truncated": "Chiffres partiels : seules les {{count}} premières refs sont chargées.",
     "noStock": "Aucun stock ni aucune ref pour l'instant.",
-    "byLocation": "Par emplacement",
     "colLocation": "Emplacement",
     "colShopify": "Stock Shopify",
     "colRegistered": "Refs enregistrées",
     "colGap": "Écart",
-    "colStates": "Par état",
     "colRef": "Ref",
-    "colState": "État",
     "colStatus": "Statut",
     "noLocation": "Sans emplacement",
     "gapNone": "Aligné",
     "gapToRegister": "{{count}} à enregistrer",
-    "gapExtra": "{{count}} ref en trop",
-    "refsTitle": "Refs",
+    "gapExtra": {
+      "one": "{{count}} ref en trop",
+      "many": "{{count}} refs en trop",
+      "other": "{{count}} refs en trop"
+    },
     "refsEmpty": "Aucune ref enregistrée pour cette variante.",
-    "refsSearch": "Rechercher une ref",
-    "refsNoMatch": "Aucune ref ne correspond.",
-    "showMore": "Afficher {{count}} refs de plus",
     "addTitle": "Ajouter des refs",
     "addLocation": "Emplacement",
     "addKind": "Ces unités sont…",
@@ -134,7 +129,30 @@
       "one": "{{count}} ref refusée, laissée dans le champ pour correction :",
       "many": "{{count}} refs refusées, laissées dans le champ pour correction :",
       "other": "{{count}} refs refusées, laissées dans le champ pour correction :"
-    }
+    },
+    "initializingHint": "Initialisation : saisissez le stock existant en « déjà comptées ».",
+    "refsCount": {
+      "one": "{{count}} ref",
+      "many": "{{count}} refs",
+      "other": "{{count}} refs"
+    },
+    "locationLine": "{{location}} · Shopify {{onHand}} · {{refs}}",
+    "locationLineNoStock": "{{location}} · {{refs}}",
+    "otherLocations": {
+      "one": "+{{count}} autre emplacement",
+      "many": "+{{count}} autres emplacements",
+      "other": "+{{count}} autres emplacements"
+    },
+    "seeAllRefs": {
+      "one": "Voir la ref",
+      "many": "Voir les {{count}} refs",
+      "other": "Voir les {{count}} refs"
+    },
+    "collapsed": "{{refs}} · {{status}}",
+    "notTrackedShort": "Non suivie",
+    "moreActions": "Plus d'actions",
+    "addAt": "Emplacement : {{location}}",
+    "addBack": "Retour"
   },
   "productBlock": {
     "heading": "Refs Serialis",
@@ -142,22 +160,23 @@
     "variantsUnavailable": "Les variantes n'ont pas pu être lues dans Shopify : seules les variantes suivies sont affichées.",
     "empty": "Ce produit n'a aucune variante.",
     "summary": {
-      "one": "{{count}} variante suivie sur {{total}}.",
-      "many": "{{count}} variantes suivies sur {{total}}.",
-      "other": "{{count}} variantes suivies sur {{total}}."
+      "one": "{{count}} variante suivie sur {{total}}",
+      "many": "{{count}} variantes suivies sur {{total}}",
+      "other": "{{count}} variantes suivies sur {{total}}"
     },
-    "colVariant": "Variante",
-    "colTracking": "Suivi",
-    "colAvailable": "Unités disponibles",
-    "colGap": "Écart Shopify",
-    "colLink": "Détail",
     "tracked": "Suivie",
     "trackedInit": "Suivie (initialisation)",
     "notTracked": "Non suivie",
     "noneAvailable": "Aucune",
     "gapNone": "Aligné",
     "gapValue": "{{sign}}{{count}}",
-    "openVariant": "Voir la variante"
+    "available": "Disponibles : {{list}}",
+    "otherVariants": {
+      "one": "+{{count}} autre variante",
+      "many": "+{{count}} autres variantes",
+      "other": "+{{count}} autres variantes"
+    },
+    "openApp": "Ouvrir dans Serialis"
   },
   "orderBlock": {
     "heading": "Refs Serialis",
@@ -180,9 +199,6 @@
       "other": "{{count}} unités à attribuer"
     },
     "noUnits": "Aucune unité pour cette ligne.",
-    "colRef": "Ref",
-    "colState": "État",
-    "colOrigin": "Origine",
     "toAllocate": "À attribuer",
     "toConfirm": "À confirmer",
     "status_active": "Attribuée",
@@ -197,7 +213,18 @@
     "origin_api": "API",
     "origin_late": "Désignée après coup",
     "origin_migration": "Migration",
-    "edit": "Modifier les unités"
+    "edit": "Modifier les unités",
+    "moreUnits": {
+      "one": "+{{count}} autre unité",
+      "many": "+{{count}} autres unités",
+      "other": "+{{count}} autres unités"
+    },
+    "moreLines": {
+      "one": "+{{count}} autre ligne suivie",
+      "many": "+{{count}} autres lignes suivies",
+      "other": "+{{count}} autres lignes suivies"
+    },
+    "allAllocated": "Tout est attribué"
   },
   "orderAction": {
     "heading": "Modifier les unités",

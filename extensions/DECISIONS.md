@@ -47,11 +47,12 @@ Preact et composants web Polaris (`s-*`), un dossier par extension, code commun 
   renouvelée après un succès ou un changement.
 - **Chargement (15.7)** : spinner Polaris et « Encore un instant » après 3 s (pas de squelette : la liste des composants admin n'en propose pas).
   Bandeau « hors connexion » (`navigator.onLine`), validations bloquées, saisie conservée.
-- **Bloc commande** : une ligne par unité, « À attribuer » pour les unités manquantes, historique (libérées, retournées) après les
+- **Bloc commande** : une ligne par unité (dans la limite de la décision 1), « À attribuer » pour les unités manquantes, historique (libérées, retournées) après les
   attributions actives ; actualisation automatique toutes les 3 s (20 fois au plus) tant que `syncState = 'pending'`
   (« attribution en cours »). Bouton « Modifier les unités » : `shopify.navigation.navigate('extension://serialis-order-units-action')`.
 - **Bloc variante** : les unités sont lues par pages de 250 (8 pages au plus) ; au-delà, un bandeau signale que les chiffres sont
-  partiels et renvoie vers l'app. Les comptes par état sont calculés côté extension.
+  partiels. Les comptes par état sont calculés côté extension. La recherche de ref et la liste complète sont dans l'app
+  (écran Unités filtré sur la variante), plus dans le bloc (décision 1).
 - **Lien vers la variante (bloc produit)** : `shopify:admin/products/{id}/variants/{id}` dans `<s-link href>` ; le format n'est pas
   détaillé dans la référence des composants, à vérifier sur la boutique de développement.
 - **`exactOptionalPropertyTypes` désactivé** dans `extensions/tsconfig.ext.json` (les types de propriétés des composants Polaris
@@ -70,3 +71,42 @@ Preact et composants web Polaris (`s-*`), un dossier par extension, code commun 
 - **Sortie d'une ref avec motif (15.6, 19.4)** et **anomalies de la commande**, **lien vers la fiche unité** (bloc commande) : pas de route dans le contrat ; non implémentés.
 - Déclarer endommagée ou introuvable, confirmer ou corriger une expédition, identifier un retour : lots suivants (15.6).
 - Droits (15.8) : l'arrêt du suivi est une action d'administration ; un `forbidden` du serveur s'affiche en clair.
+
+## Décisions numérotées
+
+### 1. Hauteur des blocs : contenu essentiel ≤ 300 px
+
+Constat sur la boutique de développement : le bloc variante affichait l'avertissement « This Block is too tall » et était coupé
+par « Show more » (bandeau d'initialisation, tableau à 5 colonnes, tableau des refs et formulaire d'ajout empilés).
+
+Limites de Shopify (shopify.dev, `s-admin-block` et consignes de conception des blocs, vérifiées le 18/11/2026) : au-delà de
+300 px, Shopify affiche un bouton « Show more » qu'on ne peut ni retirer ni désactiver ; une fois déplié, le bloc s'arrête à sa
+hauteur maximale et le reste est coupé (le marchand voit alors un lien vers l'app) ; avertissements en console en développement ;
+les consignes demandent d'éviter les blocs trop hauts (moins de 600 px) et de paginer si besoin ; `collapsedSummary` est tronqué
+au-delà de 30 caractères. `s-modal` ne fait pas partie des composants des blocs (`BlockExtensionComponents` = composants standard,
+`AdminBlock` et `Form`).
+
+**Règle : le contenu essentiel d'un bloc tient dans 300 px** pour les cas courants, sans « Show more ».
+
+- **Bloc variante** : une ligne par emplacement (« Entrepôt · Shopify 10 · 0 ref » et le badge d'écart) ; à partir de 3
+  emplacements, un tableau de 4 colonnes limité à 3 lignes (emplacements en écart d'abord) et « +N autres emplacements ».
+  Le bandeau d'initialisation devient une ligne de texte, affichée seulement tant que Shopify montre des unités à enregistrer.
+  Les comptes par état sur une ligne, puis les 3 refs les plus récentes (aucune à côté du tableau des emplacements) ; le lien
+  « Voir les N refs » ouvre `app:units?variant=<gid>`. « Ajouter des refs » reste le bouton principal : le formulaire
+  **remplace** le résumé (bouton « Retour »), avec l'emplacement sur la ligne du titre et un champ de 3 lignes ; l'arrêt du
+  suivi passe dans le menu « Plus d'actions » et sa confirmation remplace la ligne d'actions.
+- **Bloc produit** : une ligne par variante (titre en lien vers la variante, badge de suivi, disponibles, écart), 5 au plus
+  (variantes suivies d'abord), puis « +N autres variantes » et un lien vers l'app.
+- **Bloc commande** : 2 lignes suivies au plus (celles qui ont des unités à attribuer d'abord) et 4 lignes d'unités en tout
+  (4 pour une ligne, 2 chacune pour deux) ; le reste est compté à côté de « Modifier les unités », qui montre toutes les unités.
+- `collapsedSummary` sur les trois blocs : « 0 ref · 10 à enregistrer », « 1 variante suivie sur 2 », « 1 unité à attribuer ».
+- **Vérification** : jsdom ne calcule pas de mise en page ; `estimateHeight` (`@serialis/extensions-shared/testing`) estime
+  la hauteur à partir des composants rendus (ligne de texte 20 px, badge 22, bouton 32, titre 24, tableau 36 + 40 par ligne,
+  piles additionnées avec leurs espacements, sans retour à la ligne). Les tests des trois blocs vérifient `≤ 300` sur les
+  cas courants (variante en initialisation avec 1 ou 2 emplacements et 0 à 5 refs, 4 emplacements, formulaire d'ajout,
+  produit à 12 variantes, commande de 18 unités). C'est un garde-fou contre l'empilement, pas une mesure : la hauteur réelle
+  se contrôle dans l'admin (à 375 px de large, les lignes se replient).
+- Taille des paquets après la refonte (esbuild, minifié) : bloc variante 35 Ko, produit 24 Ko, commande 25 Ko, sous la limite
+  de 64 Ko des extensions d'interface Shopify (la CI ne construit pas les extensions).
+- Hors du budget, assumé : bandeaux temporaires (hors connexion, attribution en cours, erreur), retour d'un ajout avec refs
+  refusées, aperçu des lignes en erreur du collage.

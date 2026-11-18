@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
 import type { OrderAllocationsResponse } from '@serialis/contract';
 import { createApiClient } from '@serialis/extensions-shared';
-import { LINE, ORDER, VARIANT, makeAllocation, mockFetch, pageText, problem, see, translatorFromFile } from '@serialis/extensions-shared/testing';
+import { BLOCK_HEIGHT_BUDGET, LINE, ORDER, VARIANT, blockHeight, makeAllocation, mockFetch, pageText, problem, see, translatorFromFile } from '@serialis/extensions-shared/testing';
 import { OrderBlock } from '../src/OrderBlock';
 
 const t = translatorFromFile(join(import.meta.dirname, '..', 'locales', 'fr.default.json'), 'fr');
@@ -27,10 +27,10 @@ function order(over: Partial<OrderAllocationsResponse> = {}): OrderAllocationsRe
   };
 }
 
-function setup(responses: OrderAllocationsResponse[], translate = t, onEdit = vi.fn(), pollMs = 5) {
+function setup(responses: OrderAllocationsResponse[], translate = t, onEdit = vi.fn(), pollMs = 5, onSummary?: (s: string) => void) {
   let i = 0;
   const m = mockFetch({ 'GET /api/v1/orders/9001/allocations': () => responses[Math.min(i++, responses.length - 1)] });
-  render(<OrderBlock api={createApiClient({ fetch: m.fetch })} t={translate} orderGid={ORDER} onEdit={onEdit} pollMs={pollMs} formatDateTime={(iso) => `le ${iso.slice(0, 10)}`} />);
+  render(<OrderBlock api={createApiClient({ fetch: m.fetch })} t={translate} orderGid={ORDER} onEdit={onEdit} pollMs={pollMs} formatDateTime={(iso) => `le ${iso.slice(0, 10)}`} {...(onSummary ? { onSummary } : {})} />);
   return { m, onEdit };
 }
 
@@ -38,12 +38,9 @@ describe('OrderBlock', () => {
   it('shows one row per unit under each tracked line with ref, state and origin, plus missing units', async () => {
     const { m } = setup([order()]);
     await see('Vélo test');
-    const rows = [...document.querySelectorAll('s-table-row')].map((r) => [...r.querySelectorAll('s-table-cell')].map((c) => c.textContent));
-    expect(rows).toEqual([
-      ['SN-001', 'Attribuée', 'Commande (automatique)'],
-      ['SN-002', 'Expédiée', 'Manuelle'],
-      ['À attribuer', 'En attente d\'une unité', '–'],
-    ]);
+    expect(pageText()).toContain("SN-001 Attribuée Commande (automatique) SN-002 Expédiée Manuelle À attribuer En attente d'une unité");
+    expect(document.querySelector('s-table')).toBeNull();
+    expect(blockHeight()).toBeLessThanOrEqual(BLOCK_HEIGHT_BUDGET);
     expect(pageText()).toContain('1 unité à attribuer');
     expect(pageText()).toContain('× 3');
     expect(pageText()).toContain('Synchronisée le le 2026-03-02');
@@ -108,5 +105,26 @@ describe('OrderBlock', () => {
     render(<OrderBlock api={createApiClient({ fetch: m.fetch })} t={t} orderGid={ORDER} onEdit={() => {}} />);
     await see('Élément introuvable');
     await waitFor(() => expect(screen.getByText('Réessayer', { selector: 's-button' })).toBeTruthy());
+  });
+
+  it('gives the collapsed summary of the block', async () => {
+    const onSummary = vi.fn();
+    setup([order()], t, vi.fn(), 5, onSummary);
+    await waitFor(() => expect(onSummary).toHaveBeenLastCalledWith('1 unité à attribuer'));
+  });
+
+  it('an order with many units stays compact: 2 lines, 4 unit rows, the rest counted next to the edit button', async () => {
+    const line = (n: number, title: string, units: number, missing: number) => ({
+      lineItemGid: `gid://shopify/LineItem/${n}`, variantGid: VARIANT, title, tracked: true, quantity: units + missing, missing,
+      allocations: Array.from({ length: units }, (_, i) => makeAllocation(`L${n}-${i + 1}`, { id: `a-${n}-${i}`, lineItemGid: `gid://shopify/LineItem/${n}` })),
+    });
+    setup([order({ lines: [line(1, 'Vélo A', 10, 0), line(2, 'Vélo B', 5, 1), line(3, 'Vélo C', 3, 0)] })]);
+    await see('Vélo B');
+    // the line with a unit to allocate comes first, 2 rows per line, a third line left out
+    expect(pageText()).toMatch(/Vélo B .*L2-1.*L2-2.*Vélo A .*L1-1.*L1-2/);
+    expect(pageText()).not.toContain('L1-3');
+    expect(pageText()).not.toContain('Vélo C');
+    expect(pageText()).toContain('+15 autres unités · +1 autre ligne suivie'); // (6 - 2) + (10 - 2) + 3
+    expect(blockHeight()).toBeLessThanOrEqual(BLOCK_HEIGHT_BUDGET);
   });
 });

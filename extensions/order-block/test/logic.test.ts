@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { OrderAllocationsResponse } from '@serialis/contract';
 import { LINE, ORDER, VARIANT, makeAllocation } from '@serialis/extensions-shared/testing';
-import { MAX_POLLS, buildLineViews, canEdit, originKey, shouldPoll, statusView, untrackedLineCount } from '../src/logic';
+import { MAX_POLLS, buildLineViews, canEdit, compactLines, type LineView, originKey, shouldPoll, statusView, untrackedLineCount } from '../src/logic';
 
 const response = (over: Partial<OrderAllocationsResponse> = {}): OrderAllocationsResponse => ({
   orderGid: ORDER,
@@ -52,5 +52,29 @@ describe('labels and polling', () => {
     expect(shouldPoll('pending', MAX_POLLS)).toBe(false);
     expect(shouldPoll('synced', 0)).toBe(false);
     expect(shouldPoll('error', 0)).toBe(false);
+  });
+});
+
+describe('compactLines', () => {
+  const view = (id: string, rows: number, missing = 0): LineView => ({
+    line: { lineItemGid: id, variantGid: VARIANT, title: id, tracked: true, quantity: rows, missing, allocations: [] },
+    rows: Array.from({ length: rows }, (_, i) => ({ kind: 'missing' as const, position: i + 1 })),
+    missing,
+  });
+
+  it('a single line shows up to 4 rows', () => {
+    const c = compactLines([view('a', 6)]);
+    expect(c.shown[0]!.rows).toHaveLength(4);
+    expect(c).toMatchObject({ hiddenLines: 0, hiddenUnits: 2 });
+  });
+
+  it('two lines or more: lines with units to allocate first, 2 rows each, the rest counted', () => {
+    const c = compactLines([view('a', 3), view('b', 1), view('c', 2, 2)]);
+    expect(c.shown.map((s) => [s.view.line.lineItemGid, s.rows.length])).toEqual([['c', 2], ['a', 2]]);
+    expect(c).toMatchObject({ hiddenLines: 1, hiddenUnits: 2 });
+  });
+
+  it('a small order is shown whole', () => {
+    expect(compactLines([view('a', 2), view('b', 1)])).toMatchObject({ hiddenLines: 0, hiddenUnits: 0 });
   });
 });

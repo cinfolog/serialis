@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LOCATIONS, makeTrackedItem } from '@serialis/extensions-shared/testing';
-import { VARIANTS_QUERY, buildRows, createVariantLoader, type ProductData } from '../src/logic';
+import { VARIANTS_QUERY, buildRows, createVariantLoader, pickRows, type ProductData, type VariantRow } from '../src/logic';
 
 const V1 = 'gid://shopify/ProductVariant/1';
 const V2 = 'gid://shopify/ProductVariant/2';
@@ -66,5 +66,15 @@ describe('createVariantLoader', () => {
   it('rejects on GraphQL errors and yields nothing for an unknown product', async () => {
     await expect(createVariantLoader(async () => ({ errors: [{}] }))('p')).rejects.toThrow();
     await expect(createVariantLoader(async () => ({ data: { product: null } }))('p')).resolves.toEqual([]);
+  });
+});
+
+describe('pickRows', () => {
+  const row = (id: string, tracked: boolean): VariantRow =>
+    ({ variantGid: id, title: id, sku: null, tracked, initializing: false, available: [], totalAvailable: 0, gap: 0 });
+  it('keeps tracked variants first and caps the list', () => {
+    const r = pickRows([row('a', false), row('b', true), row('c', false), row('d', true)], 3);
+    expect(r.shown.map((x) => x.variantGid)).toEqual(['b', 'd', 'a']);
+    expect(r.hidden).toBe(1);
   });
 });

@@ -167,3 +167,73 @@ export async function see(expected: string | RegExp): Promise<void> {
 export function valueOf(el: Element | null): string {
   return (el as unknown as { value?: string } | null)?.value ?? '';
 }
+
+// ---------------------------------------------------------------------------
+// Rough height budget of an admin block (extensions/DECISIONS.md, "essential content ≤ 300 px")
+// ---------------------------------------------------------------------------
+
+/** Initial height of an admin block before Shopify adds its "Show more" button (shopify.dev, admin block). */
+export const BLOCK_HEIGHT_BUDGET = 300;
+
+/** Approximate pixel values of the Polaris spacing tokens used as `gap`. */
+const GAP_PX: Record<string, number> = {
+  none: 0, 'small-500': 2, 'small-400': 4, 'small-300': 8, 'small-200': 8, 'small-100': 12, small: 12,
+  base: 16, 'large-100': 20, large: 20, 'large-200': 24, 'large-300': 28,
+};
+/** Default gap of `<s-stack>` when the attribute is absent. */
+const DEFAULT_GAP = 0;
+
+/**
+ * Rough rendered height (px) of a Polaris web component tree under jsdom, which has no layout. A deliberately
+ * pessimistic model of the admin rendering at a desktop width: no line wraps, but every line of text, badge and
+ * button at its usual height, block stacks summed with their gaps, inline stacks at their tallest child, overlays
+ * (menu, tooltip) ignored. It cannot replace a look in the real admin: it guards against stacking regressions.
+ */
+export function estimateHeight(el: Element): number {
+  const tag = el.tagName.toLowerCase();
+  const kids = [...el.children];
+  const label = el.getAttribute('label') && el.getAttribute('labelAccessibilityVisibility') !== 'exclusive' ? 20 : 0;
+  switch (tag) {
+    case 's-menu':
+    case 's-tooltip':
+    case 's-option':
+      return 0;
+    case 's-text':
+    case 's-paragraph':
+    case 's-link':
+      return 20;
+    case 's-badge':
+      return 22;
+    case 's-heading':
+      return 24;
+    case 's-button':
+    case 's-spinner':
+      return 32;
+    case 's-search-field':
+    case 's-text-field':
+    case 's-select':
+      return label + 36 + (el.getAttribute('details') ? 20 : 0);
+    case 's-text-area':
+      return label + Number(el.getAttribute('rows') ?? 2) * 20 + 16 + (el.getAttribute('details') ? 20 : 0);
+    case 's-choice-list':
+      return label + el.querySelectorAll('s-choice').length * 28;
+    case 's-table':
+      return 36 + el.querySelectorAll('s-table-body > s-table-row').length * 40;
+    case 's-banner':
+      return 24 + (el.getAttribute('heading') ? 24 : 0) + kids.reduce((n, k) => n + estimateHeight(k), 0);
+    case 's-stack': {
+      const heights = kids.map(estimateHeight).filter((h) => h > 0);
+      if (heights.length === 0) return 0;
+      if (el.getAttribute('direction') === 'inline') return Math.max(...heights);
+      const gap = GAP_PX[el.getAttribute('gap') ?? ''] ?? DEFAULT_GAP;
+      return heights.reduce((a, b) => a + b, 0) + gap * (heights.length - 1);
+    }
+    default:
+      return kids.reduce((n, k) => n + estimateHeight(k), 0);
+  }
+}
+
+/** Rough height of what a block component rendered into `document.body`. */
+export function blockHeight(root: Element = document.body): number {
+  return [...root.children].reduce((n, k) => n + estimateHeight(k), 0);
+}

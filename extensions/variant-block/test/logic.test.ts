@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { CreateUnitsBatchResponse } from '@serialis/contract';
 import { LOCATIONS, makeTrackedItem, makeUnit } from '@serialis/extensions-shared/testing';
-import { buildAddPlan, defaultKind, filterUnits, summarizeBatch, summarizeLocations, toBatchRequest } from '../src/logic';
+import {
+  buildAddPlan, countStates, defaultKind, filterUnits, pickLocations, recentUnits, summarizeBatch, summarizeLocations, toBatchRequest, totals, unitsAppHref,
+} from '../src/logic';
 
 describe('summarizeLocations', () => {
   it('counts units by state per location and computes the gap with Shopify on_hand', () => {
@@ -97,5 +99,44 @@ describe('summarizeBatch', () => {
     expect(out.created).toBe(2);
     expect(out.rejected).toEqual([{ ref: 'B2', code: 'identifier_conflict', detail: 'exists on another variant' }]);
     expect(out.remainingText).toBe('B2');
+  });
+});
+
+describe('compact view helpers', () => {
+  const summary = (id: string, gap: number | null) => ({ locationId: id, name: id, shopifyOnHand: 0, registeredUnits: 0, gap, counts: [], total: 0 });
+
+  it('pickLocations puts locations with a gap first and caps the list', () => {
+    const r = pickLocations([summary('a', 0), summary('b', 2), summary('c', null), summary('d', -1), summary('e', 0)]);
+    expect(r.shown.map((s) => s.locationId)).toEqual(['b', 'd', 'a']);
+    expect(r.hidden).toBe(2);
+    expect(pickLocations([summary('a', 0)]).hidden).toBe(0);
+  });
+
+  it('recentUnits keeps the most recently received units first', () => {
+    const units = [
+      makeUnit('OLD', { receivedAt: '2026-01-01T00:00:00Z' }),
+      makeUnit('NEW', { receivedAt: '2026-05-01T00:00:00Z' }),
+      makeUnit('NONE', { receivedAt: null, createdAt: '2026-04-01T00:00:00Z' }),
+      makeUnit('MID', { receivedAt: '2026-03-01T00:00:00Z' }),
+    ];
+    expect(recentUnits(units).map((u) => u.ref)).toEqual(['NEW', 'NONE', 'MID']);
+    expect(recentUnits(units, 0)).toEqual([]);
+  });
+
+  it('countStates aggregates every location in display order', () => {
+    const units = [makeUnit('A', { state: 'ALLOCATED' }), makeUnit('B'), makeUnit('C', { locationId: 'loc-b' })];
+    expect(countStates(units)).toEqual([{ state: 'AVAILABLE', count: 2 }, { state: 'ALLOCATED', count: 1 }]);
+  });
+
+  it('totals sums the registered refs and the gap over the stock locations', () => {
+    const item = makeTrackedItem({ stock: [
+      { locationId: 'loc-a', shopifyOnHand: 10, registeredUnits: 4, availableUnits: 4 },
+      { locationId: 'loc-b', shopifyOnHand: 1, registeredUnits: 2, availableUnits: 2 },
+    ] });
+    expect(totals(item)).toEqual({ registered: 6, gap: 5 });
+  });
+
+  it('unitsAppHref links to the unit list of the app filtered on the variant', () => {
+    expect(unitsAppHref('gid://shopify/ProductVariant/1001')).toBe('app:units?variant=gid%3A%2F%2Fshopify%2FProductVariant%2F1001');
   });
 });

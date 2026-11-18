@@ -31,6 +31,33 @@ export function buildLineViews(res: OrderAllocationsResponse): LineView[] {
     });
 }
 
+/** Tracked lines shown in the block, and unit rows shown in all (essential content within 300 px, DECISIONS.md). */
+export const MAX_LINES_SHOWN = 2;
+export const MAX_UNIT_ROWS = 4;
+
+export interface CompactView {
+  shown: Array<{ view: LineView; rows: UnitRow[] }>;
+  /** Tracked lines left out (their units are in `hiddenUnits`). */
+  hiddenLines: number;
+  /** Unit rows left out, over the shown and the hidden lines. */
+  hiddenUnits: number;
+}
+
+/**
+ * Caps an order to what fits a collapsed block: lines with units to allocate first, 2 lines at most, 4 unit rows
+ * in all (4 for a single line, 2 each for two). The rest is counted; "Modifier les unités" shows every unit.
+ */
+export function compactLines(views: LineView[], maxLines = MAX_LINES_SHOWN, maxRows = MAX_UNIT_ROWS): CompactView {
+  const ordered = [...views.filter((v) => v.missing > 0), ...views.filter((v) => v.missing === 0)];
+  const kept = ordered.slice(0, maxLines);
+  const perLine = Math.max(1, Math.floor(maxRows / Math.max(1, kept.length)));
+  const shown = kept.map((view) => ({ view, rows: view.rows.slice(0, perLine) }));
+  const hiddenUnits =
+    kept.reduce((n, v) => n + Math.max(0, v.rows.length - perLine), 0) +
+    ordered.slice(maxLines).reduce((n, v) => n + v.rows.length, 0);
+  return { shown, hiddenLines: ordered.length - kept.length, hiddenUnits };
+}
+
 export function untrackedLineCount(res: OrderAllocationsResponse): number {
   return res.lines.filter((l) => !l.tracked).length;
 }

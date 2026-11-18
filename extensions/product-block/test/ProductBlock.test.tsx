@@ -1,8 +1,8 @@
-import { cleanup, render } from '@testing-library/preact';
+import { cleanup, render, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
 import { createApiClient } from '@serialis/extensions-shared';
-import { LOCATIONS, PRODUCT, makeTrackedItem, mockFetch, pageText, problem, see, translatorFromFile } from '@serialis/extensions-shared/testing';
+import { BLOCK_HEIGHT_BUDGET, LOCATIONS, PRODUCT, blockHeight, makeTrackedItem, mockFetch, pageText, problem, see, translatorFromFile } from '@serialis/extensions-shared/testing';
 import { ProductBlock } from '../src/ProductBlock';
 import type { VariantLoader } from '../src/logic';
 
@@ -18,14 +18,14 @@ const variants: VariantLoader = async () => [
   { id: V2, title: 'Taille M', sku: 'SKU-M' },
 ];
 
-function setup(extra: Parameters<typeof mockFetch>[0] = {}, loader: VariantLoader = variants, translate = t) {
+function setup(extra: Parameters<typeof mockFetch>[0] = {}, loader: VariantLoader = variants, translate = t, onSummary?: (s: string) => void) {
   const m = mockFetch({
     'GET /api/v1/locations': () => page(LOCATIONS),
     'GET /api/v1/tracked-items': () =>
       page([makeTrackedItem({ variantGid: V1, stock: [{ locationId: 'loc-a', shopifyOnHand: 4, registeredUnits: 3, availableUnits: 2 }, { locationId: 'loc-b', shopifyOnHand: 2, registeredUnits: 2, availableUnits: 2 }] })]),
     ...extra,
   });
-  render(<ProductBlock api={createApiClient({ fetch: m.fetch })} t={translate} productGid={PRODUCT} loadVariants={loader} />);
+  render(<ProductBlock api={createApiClient({ fetch: m.fetch })} t={translate} productGid={PRODUCT} loadVariants={loader} {...(onSummary ? { onSummary } : {})} />);
   return m;
 }
 
@@ -43,6 +43,27 @@ describe('ProductBlock', () => {
     const links = [...document.querySelectorAll('s-link')].map((l) => l.getAttribute('href'));
     expect(links).toEqual(['shopify:admin/products/501/variants/1', 'shopify:admin/products/501/variants/2']);
     expect(m.callsTo('GET /api/v1/tracked-items')[0]!.query.get('product')).toBe(PRODUCT);
+    expect(document.querySelector('s-table')).toBeNull();
+    expect(blockHeight()).toBeLessThanOrEqual(BLOCK_HEIGHT_BUDGET);
+  });
+
+  it('gives the collapsed summary of the block', async () => {
+    const onSummary = vi.fn();
+    setup({}, variants, t, onSummary);
+    await waitFor(() => expect(onSummary).toHaveBeenLastCalledWith('1 variante suivie sur 2'));
+  });
+
+  it('many variants: 5 lines at most, tracked first, the others counted with a link to the app', async () => {
+    const many: VariantLoader = async () =>
+      Array.from({ length: 12 }, (_, i) => ({ id: `gid://shopify/ProductVariant/${i + 1}`, title: `Taille ${i + 1}`, sku: `SKU-${i + 1}` }));
+    setup({
+      'GET /api/v1/tracked-items': () => page([makeTrackedItem({ variantGid: 'gid://shopify/ProductVariant/9' })]),
+    }, many);
+    await see('+7 autres variantes');
+    const titles = [...document.querySelectorAll('s-link')].map((l) => l.textContent);
+    expect(titles).toEqual(['Taille 9', 'Taille 1', 'Taille 2', 'Taille 3', 'Taille 4', 'Ouvrir dans Serialis']);
+    expect(document.querySelectorAll('s-link')[5]!.getAttribute('href')).toBe('app:tracked-items');
+    expect(blockHeight()).toBeLessThanOrEqual(BLOCK_HEIGHT_BUDGET);
   });
 
   it('is available in English', async () => {
@@ -56,7 +77,7 @@ describe('ProductBlock', () => {
       throw new Error('no access');
     });
     await see('seules les variantes suivies sont affichées');
-    expect(document.querySelectorAll('s-table-row')).toHaveLength(1);
+    expect(document.querySelectorAll('s-link')).toHaveLength(1);
   });
 
   it('shows an error with retry when the app backend fails', async () => {

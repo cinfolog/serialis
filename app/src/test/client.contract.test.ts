@@ -49,6 +49,9 @@ const INVOCATIONS: { [K in keyof ApiClient]: (c: ApiClient) => Promise<unknown> 
   health: (c) => c.health(),
   reviveTask: (c) => c.reviveTask('sync_order:gid://shopify/Order/1'),
   retryWrite: (c) => c.retryWrite(42),
+  abandonWrite: (c) => c.abandonWrite(42),
+  listAppUsers: (c) => c.listAppUsers(),
+  patchAppUser: (c) => c.patchAppUser({ userId: '70003', role: 'admin' }),
 };
 
 const methods = Object.keys(INVOCATIONS) as Array<keyof ApiClient>;
@@ -72,7 +75,11 @@ describe('Client API ↔ contrat', () => {
     expect(OPERATIONS_ROUTES.health).toBe('GET /health');
     // Health actions (12.7): internal only, never in PUBLIC_ROUTES.
     expect(OPERATIONS_ROUTES.reviveTask).toBe('POST /health/tasks/{key}/revive');
-    expect(OPERATIONS_ROUTES.retryWrite).toBe('POST /health/writes/{id}/retry');
+    // Outbox actions (12.4, route table of the spec): internal only, never in PUBLIC_ROUTES.
+    expect(OPERATIONS_ROUTES.retryWrite).toBe('POST /outbox/{id}/retry');
+    expect(OPERATIONS_ROUTES.abandonWrite).toBe('POST /outbox/{id}/abandon');
+    // Users (15.8): GET/PATCH /app-users.
+    expect([OPERATIONS_ROUTES.listAppUsers, OPERATIONS_ROUTES.patchAppUser]).toEqual(['GET /app-users', 'PATCH /app-users']);
   });
 
   it('the HTTP client implements exactly the methods of the interface, and so does the mock', () => {

@@ -47,7 +47,7 @@ pnpm dev         # wrangler dev
 | `@serialis/contract` (`api/contract/`) | Contrat d'API partagé : types, tables de routes, portées, document OpenAPI 3.1 |
 | `@serialis/shopify` (`services/shopify/`) | Client Shopify : GraphQL, limiteur par coût, idempotence, reprises, erreurs typées |
 | `@serialis/admin` (`app/`) | App d'administration embarquée (React, composants web Polaris) : accueil, assistant, unités, articles suivis, anomalies, imports, réglages (dont utilisateurs), clés d'API, santé (relance et abandon) |
-| `extensions/*` | Blocs admin variante, produit, commande et action de commande |
+| `extensions/*` | Blocs admin variante, produit et commande ; actions « Ajouter des refs » (variante) et « Modifier les unités » (commande) |
 | `db/shop/`, `db/registry/` | Migrations SQL additives (base de boutique, annuaire D1) |
 | `@serialis/shopify-sim` (`tests/sim/`) | Simulateur de l'API Shopify (GraphQL, OAuth, webhooks signés, pannes injectables) |
 | `@serialis/ui-tests` (`tests/ui/`) | Tests navigateur Playwright et axe de l'app (T-UX-02, 03, 05, 07) |

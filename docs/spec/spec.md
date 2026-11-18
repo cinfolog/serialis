@@ -1060,7 +1060,8 @@ Porte de vérification PV-1 : `shopify app deploy` refuse tout sujet inexistant 
 | Actions produit | `admin.product-details.action.render` | « Trouver une unité » : recherche par ref (EF-07) ; « Suivre les refs » : activation du suivi |
 | Action commande « Modifier les unités » | `admin.order-details.action.render` | Attribuer, remplacer, retirer, déclarer endommagée ou introuvable, confirmer ou corriger une expédition, identifier un retour, par saisie de la ref ou choix dans une liste (15.6) |
 | Action commande « Préparer » | `admin.order-details.action.render` | Ouvre l'écran Préparation de l'app sur l'ordre d'expédition |
-| Bloc variante (MVP) | `admin.product-variant-details.block.render` | Refs par emplacement et par état, ajout de refs par saisie ou collage (reçues ou déjà comptées), sortie avec motif |
+| Bloc variante (MVP) | `admin.product-variant-details.block.render` | Refs par emplacement et par état, bouton « Ajouter des refs » qui ouvre l'action variante, sortie avec motif |
+| Action variante « Ajouter des refs » (MVP) | `admin.product-variant-details.action.render` | Ajout de refs par saisie ou collage (reçues ou déjà comptées), dans une fenêtre modale ouverte depuis le bloc variante ou le menu « Plus d'actions » de la variante |
 | Bloc commande provisoire | `admin.draft-order-details.block.render` | Pré-attribution |
 | Impression | `admin.order-details.print-action.render` | Bon de préparation avec les refs attribuées |
 | Caisse | action de ligne de panier et bloc de commande POS | Choix ou saisie d'une unité, propriétés de ligne (API Cart `addLineItemProperties`) |
@@ -1393,7 +1394,8 @@ Objectif : T-UX-02.
 
 Les extensions admin s'exécutent dans un environnement isolé de Shopify, avec leurs propres composants et un code de taille limitée : elles restent simples et renvoient vers l'app pour le travail en série. Chaque extension signale son premier affichage au serveur (carte de démarrage).
 
-- **Bloc variante** (MVP) : refs par emplacement et par état, à côté du stock Shopify, écart signalé ; ajout de refs par saisie ou collage, avec l'emplacement et le type (« reçues » ou « déjà comptées »), effet sur le stock annoncé avant validation ; sortie d'une ref avec motif.
+- **Bloc variante** (MVP) : refs par emplacement et par état, à côté du stock Shopify, écart signalé ; bouton « Ajouter des refs » qui ouvre l'action variante ; sortie d'une ref avec motif.
+- **Action variante « Ajouter des refs »** (MVP, fenêtre modale) : ajout de refs par saisie ou collage, avec l'emplacement (choix seulement s'il y en a plusieurs) et le type (« reçues » ou « déjà comptées »), effet sur le stock annoncé avant validation ; le formulaire n'a pas sa place dans un bloc limité à 300 px.
 - **Bloc produit** (MVP) : refs par variante et par emplacement, lien vers le bloc de chaque variante.
 - **Bloc commande** (MVP) : par ligne suivie, refs attribuées ou « à attribuer », une ligne par unité, origine (commande, manuelle, API, caisse), badge d'état, état de la mise en attente s'il y en a une ; anomalies de la commande ; lien vers la fiche unité ; bouton « Modifier les unités » qui ouvre l'action.
 - **Action commande « Modifier les unités »** (MVP, fenêtre modale) : attribuer une unité à une ligne (saisie de la ref ou choix dans la liste des unités disponibles à l'emplacement), remplacer, retirer une attribution avant expédition ; à partir des lots suivants, déclarer endommagée ou introuvable, confirmer ou corriger une unité expédiée, identifier une unité retournée (dans le MVP, ces deux dernières se font depuis l'écran Anomalies, par saisie de la ref) ; chaque action annonce son effet sur le stock avant confirmation et passe par le serveur de l'app.

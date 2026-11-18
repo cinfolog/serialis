@@ -97,7 +97,7 @@ test.describe('keyboard: navigation and focus', () => {
     expect(info?.path).toContain('main');
   });
 
-  for (const path of ['/', '/units', '/tracked-items', '/anomalies', '/imports', '/settings', '/start']) {
+  for (const path of ['/', '/units', '/tracked-items', '/anomalies', '/imports', '/settings', '/settings/health', '/start']) {
     test(`Tab walk on ${path}: focus never lost, never trapped, a focus indicator everywhere`, async ({ page }) => {
       await open(page, path);
       const stops: string[] = [];

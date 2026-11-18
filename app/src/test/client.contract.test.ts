@@ -1,4 +1,4 @@
-import { ROUTES, ADMIN_APP_ROUTES, API_KEY_ROUTES, INTERNAL_BASE, INTERNAL_ROUTES } from '@serialis/contract';
+import { ROUTES, ADMIN_APP_ROUTES, API_KEY_ROUTES, INTERNAL_BASE, INTERNAL_ROUTES, OPERATIONS_ROUTES } from '@serialis/contract';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError, CLIENT_ROUTES, HttpClient, type ApiClient } from '../api/client';
 import { MockClient } from '../api/mock';
@@ -46,6 +46,7 @@ const INVOCATIONS: { [K in keyof ApiClient]: (c: ApiClient) => Promise<unknown> 
   listApiKeys: (c) => c.listApiKeys(),
   createApiKey: (c) => c.createApiKey({ name: 'ERP', scopes: ['units:read'] }),
   revokeApiKey: (c) => c.revokeApiKey('abcdefghijklmnop'),
+  health: (c) => c.health(),
 };
 
 const methods = Object.keys(INVOCATIONS) as Array<keyof ApiClient>;
@@ -57,7 +58,7 @@ describe('Client API ↔ contrat', () => {
   });
 
   it('only uses routes of ROUTES (shared contract) or the documented additions', () => {
-    const additions = new Set([...Object.keys(ADMIN_APP_ROUTES), ...Object.keys(API_KEY_ROUTES)]);
+    const additions = new Set([...Object.keys(ADMIN_APP_ROUTES), ...Object.keys(API_KEY_ROUTES), ...Object.keys(OPERATIONS_ROUTES)]);
     for (const route of Object.values(CLIENT_ROUTES)) {
       expect(route in ROUTES || additions.has(route)).toBe(true);
     }
@@ -65,6 +66,8 @@ describe('Client API ↔ contrat', () => {
     expect(Object.values(ADMIN_APP_ROUTES)).toEqual(['GET /stats/home', 'POST /units/batch/check', 'POST /anomalies/{id}/acknowledge', 'POST /settings/simulate']);
     // Key management: the declared exception of 14.2 (interface only, O5).
     expect(Object.values(API_KEY_ROUTES)).toEqual(['GET /api-keys', 'POST /api-keys', 'DELETE /api-keys/{prefix}']);
+    // Operations (15.8, 17.1): the health section reads GET /health.
+    expect(OPERATIONS_ROUTES.health).toBe('GET /health');
   });
 
   it('the HTTP client implements exactly the methods of the interface, and so does the mock', () => {

@@ -6,7 +6,7 @@
 import type { Env } from './env.js';
 
 /** Routes of the admin app (app/src/routes.tsx): the SPA answers them with index.html. */
-const APP_ROUTES = [/^\/$/, /^\/units\/?$/, /^\/units\/[^/]+\/?$/, /^\/tracked-items\/?$/, /^\/anomalies\/?$/, /^\/imports\/?$/, /^\/settings\/?$/, /^\/start\/?$/];
+const APP_ROUTES = [/^\/$/, /^\/units\/?$/, /^\/units\/[^/]+\/?$/, /^\/tracked-items\/?$/, /^\/anomalies\/?$/, /^\/imports\/?$/, /^\/settings\/?$/, /^\/settings\/health\/?$/, /^\/start\/?$/];
 
 const CSP = [
   'frame-ancestors https://admin.shopify.com https://*.myshopify.com',

@@ -18,6 +18,7 @@ import type {
   CreateUnitsBatchResponse,
   ErrorCode,
   ExtensionKey,
+  HealthResponse,
   HomeStatsResponse,
   ListUnitsQuery,
   ListLocationsResponse,
@@ -95,6 +96,8 @@ export interface MockOptions {
   empty?: boolean;
   /** Start with every extension already displayed. */
   extensionsShown?: boolean;
+  /** Health of the shop (`GET /health`): all green by default, or with dead tasks/writes and alerts. */
+  health?: 'ok' | 'degraded';
   now?: () => Date;
 }
 
@@ -690,6 +693,50 @@ export class MockClient implements ApiClient {
     const key = this.apiKeys.find((k) => k.prefix === prefix);
     if (!key) throw new ApiError({ status: 404, code: 'not_found', detail: 'unknown api key' });
     key.revokedAt ??= this.iso();
+  }
+
+  async health(): Promise<HealthResponse> {
+    await this.tick();
+    this.adminOnly();
+    return structuredClone(this.healthReport());
+  }
+
+  /** Health report of the scenario (same shape and thresholds as the Worker, `workers/src/api/health.ts`). */
+  healthReport(): HealthResponse {
+    const degraded = this.options.health === 'degraded';
+    const passes: HealthResponse['passes'] = [
+      { pass: 'R1', lastRunAt: this.iso(1), nextRunAt: this.iso(-1) },
+      { pass: 'R2', lastRunAt: this.iso(9), nextRunAt: this.iso(-6) },
+      { pass: 'R3', lastRunAt: this.iso(23), nextRunAt: this.iso(-17) },
+      { pass: 'R4', lastRunAt: degraded ? null : this.iso(510), nextRunAt: this.iso(-930) },
+      { pass: 'purge', lastRunAt: this.iso(390), nextRunAt: this.iso(-1050) },
+    ];
+    if (!degraded) {
+      return {
+        shopState: 'active',
+        token: 'valid',
+        schemaVersion: 6,
+        databaseBytes: 3_457_024,
+        counters: { tasksDead: 0, tasksOverdue: 0, outboxDead: 0, outboxPending: 0, outboxPendingOver1h: 0, outboxOldestPendingSeconds: null, reconnectRequired: false, frozen: false },
+        alerts: [],
+        lastWebhookAt: this.iso(2),
+        passes,
+        deadTasks: [],
+        deadWrites: [],
+      };
+    }
+    return {
+      shopState: 'active',
+      token: 'reconnect_required',
+      schemaVersion: 6,
+      databaseBytes: 5_600_000_000,
+      counters: { tasksDead: 1, tasksOverdue: 2, outboxDead: 1, outboxPending: 4, outboxPendingOver1h: 3, outboxOldestPendingSeconds: 5_400, reconnectRequired: true, frozen: false },
+      alerts: ['task_dead', 'task_overdue', 'outbox_dead', 'outbox_stuck', 'reconnect_required', 'webhook_silence'],
+      lastWebhookAt: this.iso(420),
+      passes,
+      deadTasks: [{ key: 'sync_order:gid://shopify/Order/1001', kind: 'sync_order', attempts: 8, lastError: 'Shopify GraphQL THROTTLED', updatedAt: this.iso(35) }],
+      deadWrites: [{ id: 42, kind: 'inventory_adjust', lastError: 'userErrors: CHANGE_FROM_QUANTITY_STALE', updatedAt: this.iso(50) }],
+    };
   }
 
   private adminOnly(): void {

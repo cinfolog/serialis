@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Anomalies } from './screens/anomalies/Anomalies';
 import { Imports } from './screens/imports/Imports';
+import { Health } from './screens/settings/Health';
 import { Settings } from './screens/settings/Settings';
 import { Home } from './screens/home/Home';
 import { TrackedItems } from './screens/tracked/TrackedItems';
@@ -15,6 +16,7 @@ export const ROUTE_TABLE: Array<{ path: string; element: ReactNode }> = [
   { path: '/anomalies', element: <Anomalies /> },
   { path: '/imports', element: <Imports /> },
   { path: '/settings', element: <Settings /> },
+  { path: '/settings/health', element: <Health /> },
   { path: '/units', element: <Units /> },
   { path: '/units/:id', element: <UnitDetail /> },
 ];

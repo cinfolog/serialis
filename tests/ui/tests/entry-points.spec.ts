@@ -8,7 +8,7 @@ import { expect, goTo, mockState, open, test, visibleText } from './support';
 import { translator } from './messages';
 
 const t = translator('fr');
-const SCREENS = ['/', '/units', '/tracked-items', '/anomalies', '/imports', '/settings', '/start'];
+const SCREENS = ['/', '/units', '/tracked-items', '/anomalies', '/imports', '/settings', '/settings/health', '/start'];
 
 test.describe('T-UX-07 guard rails in the browser', () => {
   test('no view uses the camera, shows customer data, or calls a third party', async ({ page, diagnostics }) => {

@@ -79,7 +79,7 @@ Secrets GitHub (par environnement) :
 | Secret | Usage |
 |---|---|
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | Déploiement du Worker et migrations D1 |
-| `SHOPIFY_API_SECRET` | Secret de l'app Shopify, copié dans le Worker (jetons de session, HMAC des webhooks, échange de jetons) |
+| `SHOPIFY_API_SECRET` | Secret client de l'app Shopify (Dev Dashboard › Settings, commence par `shpss_`), copié dans le Worker (jetons de session, HMAC des webhooks, échange de jetons). Une mauvaise valeur rejette toutes les sessions en `bad_signature`. Le déploiement affiche sa longueur et son empreinte ; comparer avec `printf '%s' '<secret>' \| shasum -a 256 \| cut -c1-8` |
 | `SHOPIFY_CLI_TOKEN` | Compte de service « App development » pour `shopify app deploy` (étape sautée avec un avertissement s'il manque) |
 | `TOKEN_ENCRYPTION_KEY` | Clé AES-256-GCM des jetons Shopify au repos (base64 de 32 octets ; `2:<b64>,1:<b64>` pendant une rotation) |
 | `API_KEY_SEAL_SECRET_V1` | Scellement des clés de l'API publique (`openssl rand -base64 32`) ; rotation par `API_KEY_SEAL_SECRET_V2` |

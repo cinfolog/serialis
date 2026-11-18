@@ -251,6 +251,10 @@ export function domainOutboxHooks(deps: {
           details: { outboxId: row.id, kind: row.kind, error: detail.error ?? null },
           now,
         });
+      } else {
+        // A row retried by an operator (12.7 « Relancer ») reached a final status: its outbox_dead anomaly closes.
+        const live = repo.liveAnomalyByKey(`outbox_dead|outbox=${row.id}`);
+        if (live) repo.closeAnomaly(live.id, 'auto_resolved', { by: status === 'done' ? 'outbox_done' : 'outbox_failed' }, now);
       }
       if (intent?.type === 'metafield') {
         const orderGid = (intent as unknown as MetafieldIntent).orderGid;

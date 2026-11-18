@@ -47,6 +47,8 @@ const INVOCATIONS: { [K in keyof ApiClient]: (c: ApiClient) => Promise<unknown> 
   createApiKey: (c) => c.createApiKey({ name: 'ERP', scopes: ['units:read'] }),
   revokeApiKey: (c) => c.revokeApiKey('abcdefghijklmnop'),
   health: (c) => c.health(),
+  reviveTask: (c) => c.reviveTask('sync_order:gid://shopify/Order/1'),
+  retryWrite: (c) => c.retryWrite(42),
 };
 
 const methods = Object.keys(INVOCATIONS) as Array<keyof ApiClient>;
@@ -68,6 +70,9 @@ describe('Client API ↔ contrat', () => {
     expect(Object.values(API_KEY_ROUTES)).toEqual(['GET /api-keys', 'POST /api-keys', 'DELETE /api-keys/{prefix}']);
     // Operations (15.8, 17.1): the health section reads GET /health.
     expect(OPERATIONS_ROUTES.health).toBe('GET /health');
+    // Health actions (12.7): internal only, never in PUBLIC_ROUTES.
+    expect(OPERATIONS_ROUTES.reviveTask).toBe('POST /health/tasks/{key}/revive');
+    expect(OPERATIONS_ROUTES.retryWrite).toBe('POST /health/writes/{id}/retry');
   });
 
   it('the HTTP client implements exactly the methods of the interface, and so does the mock', () => {
@@ -99,6 +104,9 @@ describe('Client API ↔ contrat', () => {
     await client.listUnits({ q: 'SN 1', state: ['AVAILABLE', 'HELD'], limit: 5 });
     expect(calls[0]?.url).toBe('/api/v1/units/unit%201%2Fx');
     expect(calls[1]?.url).toBe('/api/v1/units?state=AVAILABLE%2CHELD&q=SN+1&limit=5');
+    // A task key carries ':' and '/': one encoded path segment.
+    await client.reviveTask('sync_order:gid://shopify/Order/1');
+    expect(calls[2]?.url).toBe('/api/v1/health/tasks/sync_order%3Agid%3A%2F%2Fshopify%2FOrder%2F1/revive');
   });
 
   it('uses the Idempotency-Key given by the caller (replay after a cut) and a fresh one otherwise', async () => {

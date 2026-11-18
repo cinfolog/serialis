@@ -20,6 +20,7 @@ const SCREENS: Array<{ name: string; path: string }> = [
   { name: 'settings', path: '/settings' },
   { name: 'settings-health', path: '/settings/health' },
   { name: 'settings-health-alerts', path: '/settings/health?mock_health=degraded' },
+  { name: 'settings-health-stopped', path: '/settings/health?mock_health=stopped' },
   { name: 'not-found', path: '/nope' },
 ];
 
@@ -111,6 +112,18 @@ test.describe('T-UX-03 axe, interactive states', () => {
     await expectNoSeriousViolation(page, testInfo, 'home-empty');
     await open(page, '/units', { empty: true });
     await expectNoSeriousViolation(page, testInfo, 'units-empty');
+  });
+
+  test('health: retry done, then retry refused (12.7)', async ({ page }, testInfo) => {
+    await open(page, '/settings/health?mock_health=stopped');
+    await page.getByTestId('health-revive-task-sync_order:gid://shopify/Order/1001').getByRole('button').click();
+    await expect(page.getByTestId('health-retry-task-done')).toBeVisible();
+    await expect(page.getByTestId('health-dead-tasks-empty')).toBeVisible();
+    await expectNoSeriousViolation(page, testInfo, 'health-retry-done');
+    await open(page, '/settings/health?mock_health=degraded');
+    await page.getByTestId('health-retry-write-42').getByRole('button').click();
+    await expect(page.getByTestId('health-retry-write-error')).toBeVisible();
+    await expectNoSeriousViolation(page, testInfo, 'health-retry-refused');
   });
 
   test('import CSV: simulation report', async ({ page }, testInfo) => {

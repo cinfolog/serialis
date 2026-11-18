@@ -110,4 +110,79 @@ describe('Réglages › Santé (17.1, 17.2)', () => {
     expect(text(screen.getByTestId('health-size'))).toBe('5.6 GB');
     expect(text(screen.getByTestId('health-dead-writes'))).toContain('Given up on');
   });
+
+  it('relaunches a dead task and a given-up write (12.7): busy state, success banner, refreshed lists', async () => {
+    const mock = new MockClient({ health: 'stopped' });
+    let release!: () => void;
+    const original = mock.reviveTask.bind(mock);
+    mock.reviveTask = async (key, opts) => {
+      await new Promise<void>((r) => (release = r));
+      return original(key, opts);
+    };
+    renderApp('/settings/health', { mock });
+    await waitFor(() => expect(screen.getByTestId('health-dead-tasks')).toBeInTheDocument());
+    const revive = screen.getByTestId('health-revive-task-sync_order:gid://shopify/Order/1001');
+    expect(text(revive)).toBe('Relancer');
+    expect(revive.getAttribute('accessibilityLabel')).toBe('Relancer la tâche sync_order');
+    press(revive);
+    // Busy: the pressed button loads, the other one waits.
+    await waitFor(() => expect(revive.hasAttribute('loading')).toBe(true));
+    expect(screen.getByTestId('health-retry-write-42').hasAttribute('disabled')).toBe(true);
+    release();
+    await waitFor(() => expect(screen.getByTestId('health-dead-tasks-empty')).toBeInTheDocument());
+    expect(text(screen.getByTestId('health-retry-task-done'))).toContain('Tâche relancée');
+    expect(screen.getByTestId('live-region').textContent).toContain('Tâche relancée');
+    expect(screen.queryByTestId('health-alert-task_dead')).toBeNull();
+    expect(mock.postLog.map((p) => p.name)).toEqual(['reviveTask']);
+
+    press(screen.getByTestId('health-retry-write-42'));
+    await waitFor(() => expect(screen.getByTestId('health-dead-writes-empty')).toBeInTheDocument());
+    expect(text(screen.getByTestId('health-retry-write-done'))).toContain('Écriture relancée');
+    expect(text(screen.getByTestId('health-status'))).toBe('Tout fonctionne');
+  });
+
+  it('explains a refused retry (409 reconnect_required) and keeps the row', async () => {
+    renderApp('/settings/health', { health: 'degraded' });
+    await waitFor(() => expect(screen.getByTestId('health-dead-writes')).toBeInTheDocument());
+    press(screen.getByTestId('health-retry-write-42'));
+    await waitFor(() => expect(screen.getByTestId('health-retry-write-error')).toBeInTheDocument());
+    expect(text(screen.getByTestId('health-retry-write-error'))).toContain('l’accès à Shopify doit d’abord être rétabli');
+    expect(screen.getByTestId('health-retry-write-error').getAttribute('tone')).toBe('critical');
+    expect(screen.getByTestId('health-dead-writes')).toBeInTheDocument();
+    expect(screen.queryByTestId('health-retry-task-error')).toBeNull();
+  });
+
+  it('refreshes the list when the item is no longer stopped (404) and shows other errors as they come', async () => {
+    const mock = new MockClient({ health: 'stopped' });
+    mock.retryWrite = async () => {
+      throw new ApiError({ status: 0, code: 'network' });
+    };
+    let reads = 0;
+    const health = mock.health.bind(mock);
+    mock.health = async () => {
+      reads += 1;
+      return health();
+    };
+    mock.reviveTask = async (key) => {
+      mock.revivedTasks.add(key);
+      throw new ApiError({ status: 404, code: 'not_found', detail: 'task_not_dead' });
+    };
+    renderApp('/settings/health', { mock });
+    await waitFor(() => expect(screen.getByTestId('health-dead-writes')).toBeInTheDocument());
+    press(screen.getByTestId('health-retry-write-42'));
+    await waitFor(() => expect(screen.getByTestId('health-retry-write-error')).toBeInTheDocument());
+    expect(screen.getByTestId('health-dead-writes')).toBeInTheDocument();
+    press(screen.getByTestId('health-revive-task-sync_order:gid://shopify/Order/1001'));
+    await waitFor(() => expect(text(screen.getByTestId('health-retry-task-error'))).toContain('n’est plus arrêté'));
+    await waitFor(() => expect(screen.getByTestId('health-dead-tasks-empty')).toBeInTheDocument());
+    expect(reads).toBe(2);
+  });
+
+  it('the retry buttons are translated in English', async () => {
+    renderApp('/settings/health', { locale: 'en', health: 'stopped' });
+    await waitFor(() => expect(screen.getByTestId('health-dead-writes')).toBeInTheDocument());
+    expect(text(screen.getByTestId('health-retry-write-42'))).toBe('Retry');
+    press(screen.getByTestId('health-retry-write-42'));
+    await waitFor(() => expect(text(screen.getByTestId('health-retry-write-done'))).toContain('Write retried'));
+  });
 });

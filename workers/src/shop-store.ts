@@ -162,6 +162,12 @@ export class ShopStore extends DurableObject<Env> {
       client: () => this.shopifyClient(),
       queueOutbox: (input, now) => this.queueOutbox(input, now),
       enqueueTask: (input, now) => this.tasks.enqueue(input, now),
+      reviveTask: (key, now) => this.tasks.revive(key, now),
+      retryOutbox: (id, now = Date.now()) => {
+        if (!this.outbox.retryDead(id, now)) return false;
+        this.tasks.enqueue({ key: OUTBOX_TASK_KEY, kind: 'process_outbox', priority: TASK_PRIORITY.process_outbox }, now);
+        return true;
+      },
     };
     // Pending migrations run before any other call (blockConcurrencyWhile, 30 s limit), then
     // interrupted work is released and the alarm re-armed (spec 12.2 "Baux", "Réarmement").

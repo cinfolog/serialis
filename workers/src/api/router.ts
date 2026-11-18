@@ -31,6 +31,8 @@ const ADMIN_ROUTES: ReadonlySet<AnyRouteName> = new Set<AnyRouteName>([
   'listAppUsers',
   'patchAppUser',
   'health',
+  'reviveTask',
+  'retryWrite',
 ]);
 
 export const IDEMPOTENCY_TTL_MS = 24 * 3_600_000;
@@ -49,6 +51,8 @@ function handlers(info: () => ShopInfo): Record<AnyRouteName, Handler> {
     listAppUsers: (ctx) => users.listAppUsers(ctx),
     patchAppUser: (ctx) => users.patchAppUser(ctx),
     health: (ctx) => health.healthReport(ctx, info()),
+    reviveTask: (ctx, p) => health.reviveTask(ctx, info(), p.key!),
+    retryWrite: (ctx, p) => health.retryWrite(ctx, info(), p.id!),
     homeStats: (ctx) => admin.homeStats(ctx, info()),
     listTrackedItems: (ctx) => units.listTrackedItems(ctx),
     trackItems: (ctx) => units.trackItems(ctx),

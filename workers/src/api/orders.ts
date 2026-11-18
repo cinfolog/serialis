@@ -455,15 +455,18 @@ export async function resolveAnomaly(ctx: ApiContext, id: string): Promise<ApiRe
     case 'designate':
       if (!s.orderGid || !s.lineItemGid) throw new ApiError(422, 'validation_failed', 'anomaly without order line');
       allocateToLine(ctx, s.orderGid, s.lineItemGid, { ref, unitId: typeof params.unitId === 'string' ? params.unitId : undefined });
+      settleOne(ctx, a.id);
       break;
     case 'confirm_shipped':
       if (!s.orderGid || !s.lineItemGid || !s.locationId || !ref) throw new ApiError(422, 'validation_failed', 'ref required');
       confirmShippedUnit(ctx, { orderGid: s.orderGid, lineItemGid: s.lineItemGid, locationId: s.locationId }, ref);
       break;
-    case 'identify':
+    case 'identify': {
       if (!s.returnLineItemGid || !ref) throw new ApiError(422, 'validation_failed', 'ref required');
-      identifyReturnLine(ctx, s.returnLineItemGid, ref);
+      const out = identifyReturnLine(ctx, s.returnLineItemGid, ref);
+      if (out.result === 'identified') settleOne(ctx, a.id);
       break;
+    }
     case 'restock':
     case 'lose':
     case 'scrap':
@@ -479,6 +482,19 @@ export async function resolveAnomaly(ctx: ApiContext, id: string): Promise<ApiRe
       break;
   }
   return json(presentAnomaly(ctx, ctx.d.repo.anomaly(id)!));
+}
+
+/**
+ * One unit of the anomaly's quantity is settled by the action: the anomaly is closed when it was
+ * the last one, its quantity lowered otherwise. The next synchronization confirms (or reopens) it.
+ */
+function settleOne(ctx: ApiContext, anomalyId: string): void {
+  const { repo } = ctx.d;
+  const a = repo.anomaly(anomalyId);
+  if (!a || (a.status !== 'open' && a.status !== 'acknowledged')) return;
+  const quantity = typeof a.details.quantity === 'number' ? a.details.quantity : 1;
+  if (quantity <= 1) repo.closeAnomaly(a.id, 'resolved', { by: ctx.call.principal.actor }, ctx.now);
+  else repo.updateAnomalyDetails(a.id, { ...a.details, quantity: quantity - 1 }, ctx.now);
 }
 
 /** Unit to verify (F3, F5, 8.1): put back in stock (one write at most: level re-read in the outbox), or declare lost / scrapped without write. */

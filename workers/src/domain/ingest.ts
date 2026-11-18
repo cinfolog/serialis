@@ -49,7 +49,10 @@ export function shouldSchedule(ctx: DomainContext, action: TaskAction, topic: st
     return Array.isArray(body.line_items) ? false : REEVALUATE_IGNORED.has(topic) || !known;
   }
   if (known) return REEVALUATE_IGNORED.has(topic);
-  return true; // unknown order without its lines in the body: the sync decides
+  // Unknown order without its lines in the body (fulfillment orders, fulfillments, refunds): its
+  // `orders/*` webhooks carry the variants; a line marked at activation (S-24) also makes it known. R1 covers a lost one.
+  if (sql.exec('SELECT 1 FROM order_line_tracking WHERE order_gid = ? LIMIT 1', orderGid).toArray().length > 0) return true;
+  return topic.startsWith('returns/') || topic.startsWith('reverse_fulfillment_orders/');
 }
 
 /** Keeps the removals of an order edit (restock flag when present). */

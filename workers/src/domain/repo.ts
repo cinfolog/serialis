@@ -362,7 +362,7 @@ export class DomainRepo {
         now,
         unitId,
         from,
-      ).rowsWritten === 1
+      ).rowsWritten > 0
     );
   }
 

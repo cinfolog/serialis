@@ -16,7 +16,7 @@ import { toMillis } from './util.js';
 
 /**
  * One query for the whole order (12.3 step 1). Page sizes keep the requested cost under 800 points
- * (single query ceiling 1 000): 50 lines, 5 fulfillment orders of 20 lines, 5 fulfillments, 3 returns.
+ * (single query ceiling 1 000): 50 lines, 5 fulfillment orders of 15 lines, 5 fulfillments, 3 returns.
  * A truncated page makes the read fail (`order_too_large`) rather than plan on partial data.
  */
 export const ORDER_QUERY = `query SerialisOrder($id: ID!) {
@@ -30,17 +30,17 @@ export const ORDER_QUERY = `query SerialisOrder($id: ID!) {
       nodes {
         id status
         assignedLocation { location { id } }
-        lineItems(first: 20) { pageInfo { hasNextPage } nodes { id totalQuantity remainingQuantity lineItem { id } } }
+        lineItems(first: 15) { pageInfo { hasNextPage } nodes { id totalQuantity remainingQuantity lineItem { id } } }
       }
     }
     fulfillments(first: 5) {
       id status createdAt
       location { id }
-      fulfillmentLineItems(first: 20) { nodes { quantity lineItem { id } } }
+      fulfillmentLineItems(first: 15) { nodes { quantity lineItem { id } } }
     }
     refunds {
       id createdAt
-      refundLineItems(first: 20) { nodes { quantity restockType location { id } lineItem { id } } }
+      refundLineItems(first: 15) { nodes { quantity restockType location { id } lineItem { id } } }
     }
     returns(first: 3) {
       nodes {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/client';
 import { MockClient } from '../api/mock';
-import { button, choose, field, findField, pageHeading, press, renderApp, screen, typeIn, waitFor, text, flush } from './utils';
+import { actOnFirstAppearance, button, choose, field, findField, pageHeading, press, renderApp, screen, typeIn, waitFor, text, flush } from './utils';
 
 describe('Unités : liste', () => {
   it('lists units with state badges and location names, and filters from the URL', async () => {
@@ -22,6 +22,14 @@ describe('Unités : liste', () => {
     press(button('Rechercher'));
     await pageHeading('Unité SN-UR500-M-51203');
     await waitFor(() => expect(screen.getByTestId('unit-events')).toBeInTheDocument());
+  });
+
+  it('keeps a ref typed right after the search field appears (decision 29)', async () => {
+    actOnFirstAppearance('units-q', (el) => typeIn(el, 'sn-ur500-m-51203'));
+    renderApp('/units');
+    await pageHeading('Unités');
+    press(screen.getByTestId('units-search'));
+    await pageHeading('Unité SN-UR500-M-51203');
   });
 
   it('shows an empty state with a useful message when nothing matches', async () => {

@@ -1,5 +1,5 @@
 import type { SettingValue, SettingsSimulation } from '@serialis/contract';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { isApiError, newIdempotencyKey } from '../../api/client';
 import { useAnnounce, useClient, useSession } from '../../context';
 import { useLocations } from '../../data';
@@ -42,10 +42,9 @@ export function Settings() {
   const simulationKey = useRef<{ signature: string; key: string } | null>(null);
 
   const serverByKey = useMemo(() => new Map<string, SettingValue>((server.data?.values ?? []).map((v) => [v.key, v])), [server.data]);
-  useEffect(() => {
-    setDraft({});
-    setMinutesText(null);
-  }, [server.data]);
+  // The draft is never reset by an effect on `server.data`: such an effect runs after the commit
+  // that shows the loaded values, so a change made in between was silently overwritten (decision 29).
+  // The draft is cleared only where the server values are replaced on purpose (`persist`, `discard`).
 
   const valueOf = (def: SettingDef): SettingValueType => draft[def.key] ?? serverByKey.get(def.key)?.value ?? def.default;
   const changedKeys = SETTINGS.filter((d) => draft[d.key] !== undefined && !same(draft[d.key], serverByKey.get(d.key)?.value ?? d.default)).map((d) => d.key);
@@ -102,10 +101,13 @@ export function Settings() {
     setSaving(true);
     setError(null);
     try {
-      await client.patchSettings({ scope: 'shop', values, ...(simulationId ? { simulationId } : {}) });
+      const saved = await client.patchSettings({ scope: 'shop', values, ...(simulationId ? { simulationId } : {}) });
+      // Same batch: the saved values become the server values and leave the draft. A key changed
+      // again while the request was in flight keeps its new draft value.
+      server.replace(saved);
+      setDraft((d) => Object.fromEntries(Object.entries(d).filter(([k, v]) => !(k in values && same(v, values[k])))));
       setReview(null);
       setMinutesText(null);
-      server.reload();
       announce(t('settings.save.saved'), { toast: true });
     } catch (e) {
       setError(errorMessage(e));

@@ -26,8 +26,14 @@ export function Units() {
   const q = params.get('q') ?? '';
   const adding = params.get('add') === '1';
 
+  // The search text follows the URL when `q` changes, adjusted during render and not in an effect:
+  // an effect runs after the commit that shows the field, so text typed in between was lost (decision 29).
   const [qDraft, setQDraft] = useState(q);
-  useEffect(() => setQDraft(q), [q]);
+  const [qShown, setQShown] = useState(q);
+  if (qShown !== q) {
+    setQShown(q);
+    setQDraft(q);
+  }
 
   const locations = useLocations();
   const tracked = useAsync(() => client.listTrackedItems({ limit: 250 }), [client]);

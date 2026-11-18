@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { choose, navLink, field, pageHeading, press, renderApp, screen, text, typeIn, waitFor, within } from './utils';
+import { actOnFirstAppearance, choose, navLink, field, pageHeading, press, renderApp, screen, text, typeIn, waitFor, within } from './utils';
 
 async function openSettings(options: Parameters<typeof renderApp>[1] = {}) {
   const rendered = renderApp('/settings', { extensionsShown: true, ...options });
@@ -46,6 +46,30 @@ describe('Réglages (MVP)', () => {
     press(screen.getByTestId('save-bar-save'));
     await waitFor(() => expect(mock.settings['S-05']).toBe('fifo'));
     await waitFor(() => expect(screen.getByTestId('mine-empty')).toBeInTheDocument());
+  });
+
+  it('keeps a change made right after the settings appear (decision 29)', async () => {
+    // The change lands in the same task as the commit that shows the loaded values, before that
+    // commit's effects run: it must not be overwritten when the effects flush.
+    actOnFirstAppearance('input-S-05', (el) => choose(el, 'manual'));
+    const { mock } = renderApp('/settings', { extensionsShown: true });
+    await waitFor(() => expect(screen.getByTestId('save-bar')).toBeInTheDocument());
+    press(screen.getByTestId('save-bar-save'));
+    await waitFor(() => expect(mock.settings['S-05']).toBe('manual'));
+  });
+
+  it('keeps a change made while a save is in flight (decision 29)', async () => {
+    const { mock } = await openSettings();
+    choose(screen.getByTestId('input-S-05'), 'manual');
+    await waitFor(() => expect(screen.getByTestId('save-bar')).toBeInTheDocument());
+    press(screen.getByTestId('save-bar-save'));
+    choose(screen.getByTestId('input-S-08'), 'first'); // before PATCH answers
+    await waitFor(() => expect(mock.settings['S-05']).toBe('manual'));
+    await waitFor(() => expect(screen.getByTestId('mine-list').textContent).toContain('Manuelle'));
+    expect(screen.getByTestId('save-bar')).toBeInTheDocument();
+    press(screen.getByTestId('save-bar-save'));
+    await waitFor(() => expect(mock.settings['S-08']).toBe('first'));
+    await waitFor(() => expect(screen.queryByTestId('save-bar')).toBeNull());
   });
 
   it('discards unsaved changes', async () => {

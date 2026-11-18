@@ -52,7 +52,9 @@ describe('errorMessage', () => {
   });
   it('falls back to the generic message for unknown codes and non-API errors', () => {
     expect(errorKey('brand_new_code')).toBe('errors.unknown');
-    expect(errorMessage(t, new Error('boom'))).toBe(t('errors.unknown'));
+    // Non-API errors keep a short technical trace (diagnosis from a screenshot).
+    expect(errorMessage(t, new TypeError('boom'))).toBe(`${t('errors.unknown')} (TypeError: boom)`);
+    expect(errorMessage(t, 'not an error')).toBe(t('errors.unknown'));
   });
   it('covers every error code of the contract', () => {
     const codes = readFileSync(join(extRoot, '..', 'api', 'contract', 'src', 'index.ts'), 'utf8').match(/export type ErrorCode =([^;]+);/)![1]!;

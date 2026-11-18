@@ -175,6 +175,10 @@ describe('T-MVP-04 — every channel, no free unit, unit received later', () => 
     await h.drain();
     expect(await anomalies(h, 'insufficient_units')).toHaveLength(1);
     expect((await orderLines(h, late.id))[0]!.missing).toBe(1);
+    // A business anomaly goes to « To handle now »; the synchronisation itself stays healthy (spec 17.1).
+    const home = await json(await h.api('GET', '/stats/home'), 200);
+    expect(home.toDo.criticalAnomalies).toBe(1);
+    expect(home.sync.level).not.toBe('red');
     expect(h.sim.callCount('fulfillmentOrderHold')).toBe(0);
 
     await addRefs(h, variant, loc, ['C-4']);

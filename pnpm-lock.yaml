@@ -187,6 +187,34 @@ importers:
         specifier: ~4.1.0
         version: 4.1.12(@types/node@22.20.5)(jsdom@27.4.0)(vite@8.3.8(@types/node@22.20.5)(esbuild@0.28.2))
 
+  extensions/variant-action:
+    dependencies:
+      '@serialis/contract':
+        specifier: workspace:*
+        version: link:../../api/contract
+      '@serialis/extensions-shared':
+        specifier: workspace:*
+        version: link:../shared
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
+    devDependencies:
+      '@shopify/ui-extensions':
+        specifier: 2026.10.2
+        version: 2026.10.2(preact@10.29.8)
+      '@testing-library/preact':
+        specifier: ^3.2.4
+        version: 3.2.6(preact@10.29.8)
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
+      jsdom:
+        specifier: ^27.0.0
+        version: 27.4.0
+      vitest:
+        specifier: ~4.1.0
+        version: 4.1.12(@types/node@22.20.5)(jsdom@27.4.0)(vite@8.3.8(@types/node@22.20.5)(esbuild@0.28.2))
+
   extensions/variant-block:
     dependencies:
       '@serialis/contract':

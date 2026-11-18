@@ -1,10 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
-import type { CreateUnitsBatchRequest } from '@serialis/contract';
 import { createApiClient } from '@serialis/extensions-shared';
 import {
-  BLOCK_HEIGHT_BUDGET, LOCATIONS, VARIANT, blockHeight, choose, makeTrackedItem, makeUnit, mockFetch, pageText, problem, see, translatorFromFile, typeInto, valueOf,
+  BLOCK_HEIGHT_BUDGET, LOCATIONS, VARIANT, blockHeight, makeTrackedItem, makeUnit, mockFetch, pageText, problem, see, translatorFromFile,
 } from '@serialis/extensions-shared/testing';
 import { VariantBlock } from '../src/VariantBlock';
 
@@ -18,19 +17,14 @@ const text = () => pageText();
 const button = (label: string | RegExp) =>
   screen.getByText(label, { selector: 's-button' }) as HTMLElement;
 
-/** Opens the add form, which replaces the summary. */
-async function openAdd() {
-  await waitFor(() => button('Ajouter des refs'));
-  fireEvent.click(button('Ajouter des refs'));
-  await waitFor(() => expect(document.querySelector('s-text-area')).not.toBeNull());
-}
-
 function setup(opts: {
   item?: ReturnType<typeof makeTrackedItem> | null;
   units?: ReturnType<typeof makeUnit>[];
   extra?: Parameters<typeof mockFetch>[0];
   lang?: 'fr' | 'en';
   onSummary?: (s: string) => void;
+  onAddRefs?: () => void;
+  refreshMs?: number;
 } = {}) {
   const item = opts.item === undefined ? makeTrackedItem({ stock: [{ locationId: 'loc-a', shopifyOnHand: 5, registeredUnits: 3, availableUnits: 3 }] }) : opts.item;
   const units = opts.units ?? [makeUnit('AB-001'), makeUnit('AB-002'), makeUnit('AB-003', { state: 'ALLOCATED' })];
@@ -41,7 +35,17 @@ function setup(opts: {
     ...opts.extra,
   });
   const api = createApiClient({ fetch: m.fetch, newIdempotencyKey: () => 'key-1' });
-  render(<VariantBlock api={api} t={opts.lang === 'en' ? tEn : t} variantGid={VARIANT} {...(opts.onSummary ? { onSummary: opts.onSummary } : {})} />);
+  const onAddRefs = 'onAddRefs' in opts ? opts.onAddRefs : vi.fn();
+  render(
+    <VariantBlock
+      api={api}
+      t={opts.lang === 'en' ? tEn : t}
+      variantGid={VARIANT}
+      {...(opts.onSummary ? { onSummary: opts.onSummary } : {})}
+      {...(onAddRefs ? { onAddRefs } : {})}
+      {...(opts.refreshMs ? { refreshMs: opts.refreshMs } : {})}
+    />,
+  );
   return m;
 }
 
@@ -82,122 +86,6 @@ describe('VariantBlock — tracked variant', () => {
     await see('Action impossible');
     expect(text()).toContain('Une erreur inattendue');
     expect(screen.getByText('Réessayer', { selector: 's-button' })).toBeTruthy();
-  });
-
-  it('paste → per-line statuses → effect announced → one batch call with an Idempotency-Key', async () => {
-    let body: CreateUnitsBatchRequest | undefined;
-    const m = setup({
-      item: makeTrackedItem({ stock: [{ locationId: 'loc-a', shopifyOnHand: 5, registeredUnits: 3, availableUnits: 3 }] }),
-      extra: {
-        'POST /api/v1/units/batch': (c) => {
-          body = c.body as CreateUnitsBatchRequest;
-          return { created: [makeUnit('NEW-1'), makeUnit('NEW-2')], rejected: [] };
-        },
-      },
-    });
-    await openAdd();
-    // gap 2 at the first location → "already counted" is proposed by default
-    choose(document.querySelector('s-choice-list')!, 'received');
-    typeInto(document.querySelector('s-text-area')!, 'NEW-1\nnew-1, NEW-2; AB-001\nTOO' + 'X'.repeat(200));
-    await waitFor(() => expect(text()).toContain('2 prête(s), 1 doublon(s) dans la liste, 1 déjà connue(s), 1 au format invalide'));
-    expect(text()).toContain('Doublon dans la liste');
-    expect(text()).toContain('Déjà connue');
-    expect(text()).toContain('Format invalide');
-
-    fireEvent.click(button(/Vérifier l'ajout de 2 refs/));
-    await see("Confirmer l'ajout");
-    expect(text()).toContain('2 unités seront créées à « Entrepôt » et le stock Shopify augmentera de 2');
-    expect(m.callsTo('POST /api/v1/units/batch')).toHaveLength(0); // nothing sent before confirmation
-
-    fireEvent.click(button('Ajouter 2 refs'));
-    await see('2 refs ajoutées');
-    expect(body).toEqual({ variantGid: VARIANT, locationId: 'loc-a', refs: ['NEW-1', 'NEW-2'], alreadyCounted: false, mode: 'per_item' });
-    expect(m.callsTo('POST /api/v1/units/batch')[0]!.headers['idempotency-key']).toMatch(/^[0-9a-f-]{36}$/);
-    // the list is reloaded after the add
-    await waitFor(() => expect(m.callsTo('GET /api/v1/units').length).toBeGreaterThan(1));
-  });
-
-  it('"already counted" announces no stock write', async () => {
-    setup();
-    await openAdd();
-    typeInto(document.querySelector('s-text-area')!, 'N1 N2');
-    fireEvent.click(button(/Vérifier l'ajout de 2 refs/));
-    await see("Confirmer l'ajout");
-    expect(text()).toContain('sans aucune écriture dans le stock Shopify');
-  });
-
-  it('blocks "already counted" when Shopify shows no gap and suggests "Reçues"', async () => {
-    setup({ item: makeTrackedItem() }); // 5 on hand, 5 registered
-    await openAdd();
-    choose(document.querySelector('s-choice-list')!, 'already_counted');
-    typeInto(document.querySelector('s-text-area')!, 'N1');
-    await see(/Aucun écart dans Shopify/);
-    expect(button(/Vérifier l'ajout/).hasAttribute('disabled')).toBe(true);
-  });
-
-  it('keeps rejected refs in the field with their reason, and leaves the others added', async () => {
-    setup({
-      extra: {
-        'POST /api/v1/units/batch': () => ({
-          created: [makeUnit('N1')],
-          rejected: [{ index: 1, ref: 'N2', code: 'identifier_conflict', detail: 'used by another variant' }],
-        }),
-      },
-    });
-    await openAdd();
-    typeInto(document.querySelector('s-text-area')!, 'N1 N2');
-    fireEvent.click(button(/Vérifier l'ajout/));
-    await see("Confirmer l'ajout");
-    fireEvent.click(button('Ajouter 2 refs'));
-    await see('1 ref ajoutée');
-    expect(text()).toContain('N2 : Cette ref existe déjà. (used by another variant)');
-    await waitFor(() => expect(valueOf(document.querySelector('s-text-area'))).toBe('N2'));
-  });
-
-  it('a retry after a network cut reuses the Idempotency-Key (not applied twice)', async () => {
-    let attempt = 0;
-    let n = 0;
-    const m = mockFetch({
-      'GET /api/v1/locations': () => page(LOCATIONS),
-      'GET /api/v1/tracked-items': () => page([makeTrackedItem({ stock: [{ locationId: 'loc-a', shopifyOnHand: 5, registeredUnits: 3, availableUnits: 3 }] })]),
-      'GET /api/v1/units': () => page([]),
-      'POST /api/v1/units/batch': () => {
-        if (++attempt === 1) throw new TypeError('Failed to fetch');
-        return { created: [makeUnit('N1')], rejected: [] };
-      },
-    });
-    render(<VariantBlock api={createApiClient({ fetch: m.fetch, newIdempotencyKey: () => `key-${++n}` })} t={t} variantGid={VARIANT} />);
-    await openAdd();
-    typeInto(document.querySelector('s-text-area')!, 'N1');
-    fireEvent.click(button(/Vérifier l'ajout/));
-    await see("Confirmer l'ajout");
-    fireEvent.click(button('Ajouter 1 ref'));
-    await see(/Connexion impossible/);
-    expect(valueOf(document.querySelector('s-text-area'))).toBe('N1'); // input kept
-    fireEvent.click(button('Ajouter 1 ref'));
-    await see('1 ref ajoutée');
-    const keys = m.callsTo('POST /api/v1/units/batch').map((c) => c.headers['idempotency-key']);
-    expect(keys).toHaveLength(2);
-    expect(keys[0]).toBe(keys[1]);
-  });
-
-  it('shows the problem message of a refused add', async () => {
-    setup({ extra: { 'POST /api/v1/units/batch': () => problem(403, 'forbidden') } });
-    await openAdd();
-    typeInto(document.querySelector('s-text-area')!, 'N1');
-    fireEvent.click(button(/Vérifier l'ajout/));
-    await see("Confirmer l'ajout");
-    fireEvent.click(button('Ajouter 1 ref'));
-    await see(/pas les droits nécessaires/);
-  });
-
-  it('blocks submissions while offline and shows the banner', async () => {
-    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
-    setup();
-    await see('Hors connexion');
-    await openAdd();
-    typeInto(document.querySelector('s-text-area')!, 'N1');
-    expect(button(/Vérifier l'ajout/).hasAttribute('disabled')).toBe(true);
   });
 
   it('untrack: announces the effect, then POSTs the untrack action', async () => {
@@ -312,30 +200,65 @@ describe('VariantBlock — compact rendering (essential content within the 300 p
     expect(button('Voir les 3 refs')).toBeTruthy();
     expect(blockHeight()).toBeLessThanOrEqual(BLOCK_HEIGHT_BUDGET);
   });
+});
 
-  it('the add form replaces the summary (no stacking) and fits the budget with one location', async () => {
-    setup({
-      item: makeTrackedItem({ stock: [{ locationId: 'loc-a', shopifyOnHand: 10, registeredUnits: 0, availableUnits: 0 }] }),
-      units: [],
-      extra: { 'GET /api/v1/locations': () => page([LOCATIONS[0]!]) },
-    });
-    await openAdd();
-    expect(text()).not.toContain('Entrepôt · Shopify');
-    expect(text()).toContain('Emplacement : Entrepôt');
-    expect(document.querySelector('s-select')).toBeNull(); // a single location needs no choice
-    expect(blockHeight()).toBeLessThanOrEqual(BLOCK_HEIGHT_BUDGET);
-    fireEvent.click(button('Retour'));
-    await see('Entrepôt · Shopify 10 · 0 ref');
+describe('VariantBlock — adding refs opens the action modal', () => {
+  it('« Ajouter des refs » navigates to the action; no form in the block', async () => {
+    const onAddRefs = vi.fn();
+    setup({ onAddRefs });
+    await see('Entrepôt · Shopify 5 · 3 refs');
+    fireEvent.click(button('Ajouter des refs'));
+    expect(onAddRefs).toHaveBeenCalledTimes(1);
     expect(document.querySelector('s-text-area')).toBeNull();
+    expect(document.querySelector('s-choice-list')).toBeNull();
+    expect(document.querySelector('s-select')).toBeNull();
+    expect(text()).toContain('Entrepôt · Shopify 5 · 3 refs'); // the summary stays
+    expect(blockHeight()).toBeLessThanOrEqual(BLOCK_HEIGHT_BUDGET);
   });
 
-  it('offers the location choice when several locations can receive refs', async () => {
-    setup({ item: makeTrackedItem({ stock: [
-      { locationId: 'loc-a', shopifyOnHand: 2, registeredUnits: 0, availableUnits: 0 },
-      { locationId: 'loc-b', shopifyOnHand: 1, registeredUnits: 0, availableUnits: 0 },
-    ] }), units: [] });
-    await openAdd();
-    expect(document.querySelector('s-select')).not.toBeNull();
+  it('reloads the summary after the action was opened (no close event reaches the block)', async () => {
+    let registered = 3;
+    const m = setup({
+      refreshMs: 20,
+      extra: {
+        'GET /api/v1/tracked-items': () =>
+          page([makeTrackedItem({ stock: [{ locationId: 'loc-a', shopifyOnHand: 5, registeredUnits: registered, availableUnits: registered }] })]),
+      },
+    });
+    await see('Entrepôt · Shopify 5 · 3 refs');
+    const before = m.callsTo('GET /api/v1/tracked-items').length;
+    await new Promise((r) => setTimeout(r, 60));
+    expect(m.callsTo('GET /api/v1/tracked-items').length).toBe(before); // no polling before the action is opened
+    fireEvent.click(button('Ajouter des refs'));
+    registered = 5; // refs added in the modal
+    await see('Entrepôt · Shopify 5 · 5 refs');
+    expect(text()).toContain('Aligné');
+  });
+
+  it('reloads at once when the page becomes visible again', async () => {
+    const m = setup({ refreshMs: 60_000 });
+    await see('Entrepôt · Shopify 5 · 3 refs');
+    fireEvent.click(button('Ajouter des refs'));
+    const before = m.callsTo('GET /api/v1/tracked-items').length;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await waitFor(() => expect(m.callsTo('GET /api/v1/tracked-items').length).toBe(before + 1));
+  });
+
+  it('without navigation, links to the add form of the app (Units screen, add=1)', async () => {
+    setup({ onAddRefs: undefined });
+    await see('Entrepôt · Shopify 5 · 3 refs');
+    expect(button('Ajouter des refs').getAttribute('href')).toBe(`app:units?variant=${encodeURIComponent(VARIANT)}&add=1`);
+  });
+
+  it('fits the budget with 2 locations, 5 refs and the initialization hint', async () => {
+    setup({
+      item: makeTrackedItem({ initializing: true, stock: [
+        { locationId: 'loc-a', shopifyOnHand: 6, registeredUnits: 3, availableUnits: 3 },
+        { locationId: 'loc-b', shopifyOnHand: 2, registeredUnits: 2, availableUnits: 2 },
+      ] }),
+      units: Array.from({ length: 5 }, (_, i) => makeUnit(`R-${i + 1}`, { locationId: i % 2 ? 'loc-b' : 'loc-a' })),
+    });
+    await see('Initialisation');
     expect(blockHeight()).toBeLessThanOrEqual(BLOCK_HEIGHT_BUDGET);
   });
 });

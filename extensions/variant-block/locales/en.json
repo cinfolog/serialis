@@ -1,6 +1,6 @@
 {
   "name": "Serialis refs (variant)",
-  "description": "Variant page block: refs per location and state, gap with Shopify stock, adding refs.",
+  "description": "Variant page block: refs per location and state, gap with Shopify stock, button that opens the “Add refs” action.",
   "common": {
     "loading": "Loading…",
     "stillLoading": "Just a moment…",
@@ -76,8 +76,6 @@
     "colShopify": "Shopify stock",
     "colRegistered": "Registered refs",
     "colGap": "Gap",
-    "colRef": "Ref",
-    "colStatus": "Status",
     "noLocation": "No location",
     "gapNone": "Aligned",
     "gapToRegister": "{{count}} to register",
@@ -87,44 +85,6 @@
     },
     "refsEmpty": "No refs registered for this variant.",
     "addTitle": "Add refs",
-    "addLocation": "Location",
-    "addKind": "These units are…",
-    "kindAlreadyCounted": "Already counted in Shopify (no stock write)",
-    "kindReceived": "Received now (Shopify stock +1 per unit)",
-    "addRefs": "Refs to add",
-    "addRefsHelp": "One ref per line; spaces, commas and semicolons are also accepted.",
-    "previewSummary": "{{ready}} ready, {{duplicate}} duplicate(s) in the list, {{known}} already known, {{invalid}} invalid format.",
-    "line_duplicate": "Duplicate in the list",
-    "line_known": "Already known",
-    "line_invalid": "Invalid format",
-    "addNoGap": "No gap in Shopify: use “Received” to add stock.",
-    "addTooMany": "1,000 refs at most per add: split the list.",
-    "addExceedsGap": "You are adding {{count}} “already counted” refs for a gap of {{gap}}: the server will refuse those beyond the gap.",
-    "addReview": {
-      "one": "Review adding {{count}} ref",
-      "other": "Review adding {{count}} refs"
-    },
-    "confirmTitle": "Confirm the add",
-    "effectReceived": {
-      "one": "{{count}} unit will be created at “{{location}}” and Shopify stock will increase by {{count}}.",
-      "other": "{{count}} units will be created at “{{location}}” and Shopify stock will increase by {{count}}."
-    },
-    "effectCounted": {
-      "one": "{{count}} unit will be created at “{{location}}” with no write to Shopify stock (already counted).",
-      "other": "{{count}} units will be created at “{{location}}” with no write to Shopify stock (already counted)."
-    },
-    "confirmAdd": {
-      "one": "Add {{count}} ref",
-      "other": "Add {{count}} refs"
-    },
-    "outcomeTitle": {
-      "one": "{{count}} ref added",
-      "other": "{{count}} refs added"
-    },
-    "outcomeRejected": {
-      "one": "{{count}} ref rejected, left in the field for correction:",
-      "other": "{{count}} refs rejected, left in the field for correction:"
-    },
     "initializingHint": "Initialization: register existing stock as “already counted”.",
     "refsCount": {
       "one": "{{count}} ref",
@@ -142,8 +102,6 @@
     },
     "collapsed": "{{refs}} · {{status}}",
     "notTrackedShort": "Not tracked",
-    "moreActions": "More actions",
-    "addAt": "Location: {{location}}",
-    "addBack": "Back"
+    "moreActions": "More actions"
   }
 }

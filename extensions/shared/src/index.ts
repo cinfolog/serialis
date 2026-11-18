@@ -5,5 +5,6 @@ export * from './i18n';
 export * from './idempotency';
 export * from './ids';
 export * from './refs';
+export * from './variant';
 export * from './ui/common';
 export * from './ui/DesignationInput';

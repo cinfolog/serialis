@@ -61,3 +61,39 @@ export function useSlow(active: boolean, ms = 3000): boolean {
   }, [active, ms]);
   return slow;
 }
+
+/** Refresh rhythm of a block after it opened an action modal (no "closed" event reaches the block). */
+export const ACTION_REFRESH_MS = 4000;
+export const ACTION_REFRESH_MAX = 30;
+
+/**
+ * Keeps a block up to date after it opened an action modal: Shopify tells the block nothing when the modal closes,
+ * so `start()` reloads every `intervalMs` (`max` times, 2 minutes by default) and at once when the page becomes
+ * visible or focused again (where the sandbox exposes those events). Each `start()` restarts the count.
+ */
+export function useRefreshAfterAction(reload: () => void, intervalMs = ACTION_REFRESH_MS, max = ACTION_REFRESH_MAX): () => void {
+  const [run, setRun] = useState(0);
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  useEffect(() => {
+    if (run === 0) return;
+    let left = max;
+    const id = setInterval(() => {
+      reloadRef.current();
+      if (--left <= 0) clearInterval(id);
+    }, intervalMs);
+    const onBack = () => {
+      const doc = (globalThis as { document?: { visibilityState?: string } }).document;
+      if (!doc || doc.visibilityState !== 'hidden') reloadRef.current();
+    };
+    const doc = (globalThis as { document?: EventTarget }).document;
+    doc?.addEventListener?.('visibilitychange', onBack);
+    globalThis.addEventListener?.('focus', onBack);
+    return () => {
+      clearInterval(id);
+      doc?.removeEventListener?.('visibilitychange', onBack);
+      globalThis.removeEventListener?.('focus', onBack);
+    };
+  }, [run, intervalMs, max]);
+  return useCallback(() => setRun((n) => n + 1), []);
+}

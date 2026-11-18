@@ -1,12 +1,13 @@
 # Extensions admin : décisions et points ouverts
 
-Périmètre : spec 13.5, 15.5, 15.6, 15.7, 9.15 (F15) et 19.4 (MVP). Quatre extensions `ui_extension`, API 2026-10,
+Périmètre : spec 13.5, 15.5, 15.6, 15.7, 9.15 (F15) et 19.4 (MVP). Cinq extensions `ui_extension`, API 2026-10,
 Preact et composants web Polaris (`s-*`), un dossier par extension, code commun dans `extensions/shared`
 (`@serialis/extensions-shared`).
 
 | Dossier | Handle | Cible |
 |---|---|---|
 | `variant-block` | `serialis-variant-block` | `admin.product-variant-details.block.render` |
+| `variant-action` | `serialis-variant-refs-action` | `admin.product-variant-details.action.render` |
 | `product-block` | `serialis-product-block` | `admin.product-details.block.render` |
 | `order-block` | `serialis-order-block` | `admin.order-details.block.render` |
 | `order-action` | `serialis-order-units-action` | `admin.order-details.action.render` |
@@ -50,6 +51,8 @@ Preact et composants web Polaris (`s-*`), un dossier par extension, code commun 
 - **Bloc commande** : une ligne par unité (dans la limite de la décision 1), « À attribuer » pour les unités manquantes, historique (libérées, retournées) après les
   attributions actives ; actualisation automatique toutes les 3 s (20 fois au plus) tant que `syncState = 'pending'`
   (« attribution en cours »). Bouton « Modifier les unités » : `shopify.navigation.navigate('extension://serialis-order-units-action')`.
+- **Action variante « Ajouter des refs »** : le formulaire d'ajout (décision 2). Les règles (emplacements proposés, type par défaut,
+  plan d'ajout, requête et résultat du lot) sont dans `extensions/shared/src/variant.ts`, partagé avec le bloc variante.
 - **Bloc variante** : les unités sont lues par pages de 250 (8 pages au plus) ; au-delà, un bandeau signale que les chiffres sont
   partiels. Les comptes par état sont calculés côté extension. La recherche de ref et la liste complète sont dans l'app
   (écran Unités filtré sur la variante), plus dans le bloc (décision 1).
@@ -92,9 +95,8 @@ au-delà de 30 caractères. `s-modal` ne fait pas partie des composants des bloc
   emplacements, un tableau de 4 colonnes limité à 3 lignes (emplacements en écart d'abord) et « +N autres emplacements ».
   Le bandeau d'initialisation devient une ligne de texte, affichée seulement tant que Shopify montre des unités à enregistrer.
   Les comptes par état sur une ligne, puis les 3 refs les plus récentes (aucune à côté du tableau des emplacements) ; le lien
-  « Voir les N refs » ouvre `app:units?variant=<gid>`. « Ajouter des refs » reste le bouton principal : le formulaire
-  **remplace** le résumé (bouton « Retour »), avec l'emplacement sur la ligne du titre et un champ de 3 lignes ; l'arrêt du
-  suivi passe dans le menu « Plus d'actions » et sa confirmation remplace la ligne d'actions.
+  « Voir les N refs » ouvre `app:units?variant=<gid>`. « Ajouter des refs » reste le bouton principal et ouvre l'action
+  variante (décision 2) ; l'arrêt du suivi passe dans le menu « Plus d'actions » et sa confirmation remplace la ligne d'actions.
 - **Bloc produit** : une ligne par variante (titre en lien vers la variante, badge de suivi, disponibles, écart), 5 au plus
   (variantes suivies d'abord), puis « +N autres variantes » et un lien vers l'app.
 - **Bloc commande** : 2 lignes suivies au plus (celles qui ont des unités à attribuer d'abord) et 4 lignes d'unités en tout
@@ -103,10 +105,44 @@ au-delà de 30 caractères. `s-modal` ne fait pas partie des composants des bloc
 - **Vérification** : jsdom ne calcule pas de mise en page ; `estimateHeight` (`@serialis/extensions-shared/testing`) estime
   la hauteur à partir des composants rendus (ligne de texte 20 px, badge 22, bouton 32, titre 24, tableau 36 + 40 par ligne,
   piles additionnées avec leurs espacements, sans retour à la ligne). Les tests des trois blocs vérifient `≤ 300` sur les
-  cas courants (variante en initialisation avec 1 ou 2 emplacements et 0 à 5 refs, 4 emplacements, formulaire d'ajout,
+  cas courants (variante en initialisation avec 1 ou 2 emplacements et 0 à 5 refs, 4 emplacements,
   produit à 12 variantes, commande de 18 unités). C'est un garde-fou contre l'empilement, pas une mesure : la hauteur réelle
   se contrôle dans l'admin (à 375 px de large, les lignes se replient).
 - Taille des paquets après la refonte (esbuild, minifié) : bloc variante 35 Ko, produit 24 Ko, commande 25 Ko, sous la limite
   de 64 Ko des extensions d'interface Shopify (la CI ne construit pas les extensions).
 - Hors du budget, assumé : bandeaux temporaires (hors connexion, attribution en cours, erreur), retour d'un ajout avec refs
   refusées, aperçu des lignes en erreur du collage.
+
+### 2. Ajout de refs : action modale de la page variante, plus formulaire dans le bloc
+
+Constat sur la boutique de développement après la décision 1 : l'étape « Ajouter des refs » qui remplaçait le résumé du bloc
+variante restait trop haute (« This Block is too tall », « Show more ») : sélecteur d'emplacement pleine largeur même avec un seul
+emplacement, choix « déjà comptées / reçues », champ des refs, puis les boutons sous la ligne de flottaison. Un formulaire de
+saisie de nombreuses refs n'a pas sa place dans un bloc limité à 300 px.
+
+- **Nouvelle extension `variant-action`** (handle `serialis-variant-refs-action`, cible `admin.product-variant-details.action.render`,
+  vérifiée sur shopify.dev, liste des cibles de l'API 2026-10, le 18/11/2026) : Shopify l'affiche en fenêtre modale, et aussi
+  dans le menu « Plus d'actions » de la page variante. La variante vient de `shopify.data.selected`.
+- **Dans la fenêtre** : emplacement en une ligne (« Emplacement : Entrepôt ») s'il n'y en a qu'un, sélecteur à partir de 2
+  (premier emplacement avec des unités à enregistrer) ; type « déjà comptées / reçues » (« déjà comptées » par défaut en
+  initialisation ou quand Shopify montre un écart ; le défaut suit l'emplacement tant que la personne n'a pas choisi) ; champ de
+  8 lignes, décompte en direct et lignes signalées (doublon, déjà connue, format invalide). Boutons dans les emplacements de
+  `s-admin-action` : principal « Ajouter N refs », secondaire « Annuler ». Le principal ouvre la confirmation qui nomme l'effet
+  exact (15.7 : « … le stock Shopify augmentera de N » ou « sans aucune écriture »), puis « Confirmer l'ajout de N refs » et
+  « Retour ».
+- **Après l'envoi** : comme l'action commande, la fenêtre reste ouverte et montre le résultat. Tout ajouté : bandeau de succès,
+  principal « Fermer », secondaire « Ajouter d'autres refs ». Refs refusées : elles restent dans le champ avec leur motif
+  (T-UX-02), le secondaire devient « Fermer ». Clé d'idempotence, erreurs et hors connexion inchangés (même code qu'avant, déplacé).
+- **Bloc variante** : seulement le résumé compact. « Ajouter des refs » appelle
+  `shopify.navigation.navigate('extension://serialis-variant-refs-action')`. Le bloc n'est pas prévenu de la fermeture de la
+  fenêtre : après l'ouverture, il se recharge toutes les 4 s pendant 2 minutes, et tout de suite au retour de la visibilité ou du
+  focus quand le bac à sable expose ces évènements (`useRefreshAfterAction`, `extensions/shared/src/hooks.ts`) ; le rechargement
+  garde l'affichage, sans clignotement. Si `shopify.navigation` n'existe pas, le bouton devient un lien vers le formulaire
+  d'ajout de l'app : `app:units?variant=<gid>&add=1` (écran Unités).
+- **Langues** : les textes du formulaire passent de `variantBlock` à l'espace `variantAction`.
+- **Vérification** : tests de l'action (un ou plusieurs emplacements, défaut d'initialisation, déjà comptées / reçues,
+  doublons, confirmation, succès, refus partiel, erreur, nouvelle tentative avec la même clé, hors connexion) ; tests du bloc
+  (le bouton navigue, aucun formulaire, rechargement après ouverture, lien de repli, budget de 300 px par `estimateHeight`).
+- Taille des paquets (esbuild, minifié) : bloc variante 29 Ko, action variante 27 Ko.
+- **À vérifier dans l'admin réel** : la fenêtre s'ouvre depuis le bloc ; le bloc se met à jour après la fermeture (sinon, noter
+  le délai observé) ; l'action apparaît aussi dans « Plus d'actions » de la variante.

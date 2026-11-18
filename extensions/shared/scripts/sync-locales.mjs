@@ -17,6 +17,7 @@ export const EXTENSIONS = {
   'product-block': ['productBlock'],
   'order-block': ['orderBlock'],
   'order-action': ['orderBlock', 'orderAction'],
+  'variant-action': ['variantAction'],
 };
 // Default locale is French (the first target market); English is the fallback translation.
 const FILES = { fr: 'fr.default.json', en: 'en.json' };

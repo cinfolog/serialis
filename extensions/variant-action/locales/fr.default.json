@@ -1,0 +1,117 @@
+{
+  "name": "Ajouter des refs (variante)",
+  "description": "Action de la page variante : ajout de refs par saisie ou collage, reçues ou déjà comptées.",
+  "common": {
+    "loading": "Chargement…",
+    "stillLoading": "Encore un instant…",
+    "errorTitle": "Action impossible",
+    "retry": "Réessayer",
+    "reload": "Recharger",
+    "cancel": "Annuler",
+    "back": "Retour",
+    "close": "Fermer",
+    "offlineTitle": "Hors connexion",
+    "offlineBody": "Les validations sont impossibles jusqu'au retour du réseau. Votre saisie est conservée.",
+    "conflictTitle": "Modification en conflit"
+  },
+  "designation": {
+    "exact": "Unité reconnue : {{ref}}.",
+    "suffix": "Unité reconnue par ses 4 derniers caractères : {{ref}}. Vérifiez qu'il s'agit bien de la bonne.",
+    "ambiguous": "{{count}} unités correspondent : saisissez la ref en entier.",
+    "tooShort": "Saisissez au moins 4 caractères, ou la ref en entier.",
+    "unknown": "Aucune unité proposée ne correspond à cette ref.",
+    "suggestions": "Suggestions de refs"
+  },
+  "errors": {
+    "unauthenticated": "Session expirée. Rechargez la page de l'admin Shopify.",
+    "forbidden": "Vous n'avez pas les droits nécessaires pour cette action.",
+    "not_found": "Élément introuvable : il a peut-être été supprimé.",
+    "validation_failed": "Les données envoyées ne sont pas valables.",
+    "idempotency_conflict": "Cette demande a déjà été envoyée avec un contenu différent. Rechargez puis recommencez.",
+    "precondition_failed": "Cette unité a été modifiée entre-temps. Rechargez pour voir les valeurs actuelles.",
+    "rate_limited": "Trop de demandes. Patientez quelques secondes puis réessayez.",
+    "unit_not_available": "Cette unité n'est pas disponible : elle est déjà attribuée à une commande, réservée ou verrouillée.",
+    "identifier_conflict": "Cette ref existe déjà.",
+    "invalid_transition": "Action impossible dans l'état actuel de l'unité ou de la commande (par exemple, déjà en préparation ou expédiée).",
+    "variant_mismatch": "Cette ref appartient à une autre variante.",
+    "location_mismatch": "Cette unité n'est pas dans le bon emplacement.",
+    "ambiguous_ref": "Plusieurs unités correspondent : saisissez la ref en entier.",
+    "unknown_ref": "Ref inconnue.",
+    "not_tracked": "Cette variante n'est pas suivie par Serialis.",
+    "emergency_stop": "Arrêt d'urgence actif : les actions sont suspendues. Levez-le depuis l'app Serialis.",
+    "simulation_expired": "La simulation a expiré. Relancez-la.",
+    "incompatible_settings": "Cette action est incompatible avec les réglages actuels.",
+    "network_error": "Connexion impossible. Vérifiez votre réseau puis réessayez.",
+    "unknown": "Une erreur inattendue est survenue. Réessayez."
+  },
+  "states": {
+    "INCOMING": "Attendue",
+    "AVAILABLE": "Disponible",
+    "HELD": "Réservée",
+    "ALLOCATED": "Attribuée",
+    "QUALITY_CONTROL": "Contrôle qualité",
+    "DAMAGED": "Endommagée",
+    "IN_TRANSIT": "En transit",
+    "SHIPPED": "Expédiée",
+    "RETURN_PENDING": "Retour attendu",
+    "TO_VERIFY": "À vérifier",
+    "LOST": "Perdue",
+    "SCRAPPED": "Mise au rebut",
+    "UNTRACKED": "Hors suivi"
+  },
+  "variantAction": {
+    "heading": "Ajouter des refs",
+    "addLocation": "Emplacement",
+    "addKind": "Ces unités sont…",
+    "kindAlreadyCounted": "Déjà comptées dans Shopify (aucune écriture de stock)",
+    "kindReceived": "Reçues maintenant (stock Shopify +1 par unité)",
+    "addRefs": "Refs à ajouter",
+    "addRefsHelp": "Une ref par ligne ; espaces, virgules et points-virgules sont aussi acceptés.",
+    "previewSummary": "{{ready}} prête(s), {{duplicate}} doublon(s) dans la liste, {{known}} déjà connue(s), {{invalid}} au format invalide.",
+    "line_duplicate": "Doublon dans la liste",
+    "line_known": "Déjà connue",
+    "line_invalid": "Format invalide",
+    "addNoGap": "Aucun écart dans Shopify : utilisez « Reçues » pour ajouter du stock.",
+    "addTooMany": "1 000 refs au maximum par ajout : découpez la liste.",
+    "addExceedsGap": "Vous ajoutez {{count}} refs « déjà comptées » pour un écart de {{gap}} : le serveur refusera celles qui dépassent l'écart.",
+    "confirmTitle": "Confirmer l'ajout",
+    "effectReceived": {
+      "one": "{{count}} unité sera créée à « {{location}} » et le stock Shopify augmentera de {{count}}.",
+      "many": "{{count}} unités seront créées à « {{location}} » et le stock Shopify augmentera de {{count}}.",
+      "other": "{{count}} unités seront créées à « {{location}} » et le stock Shopify augmentera de {{count}}."
+    },
+    "effectCounted": {
+      "one": "{{count}} unité sera créée à « {{location}} » sans aucune écriture dans le stock Shopify (déjà comptée).",
+      "many": "{{count}} unités seront créées à « {{location}} » sans aucune écriture dans le stock Shopify (déjà comptées).",
+      "other": "{{count}} unités seront créées à « {{location}} » sans aucune écriture dans le stock Shopify (déjà comptées)."
+    },
+    "confirmAdd": {
+      "one": "Ajouter {{count}} ref",
+      "many": "Ajouter {{count}} refs",
+      "other": "Ajouter {{count}} refs"
+    },
+    "outcomeTitle": {
+      "one": "{{count}} ref ajoutée",
+      "many": "{{count}} refs ajoutées",
+      "other": "{{count}} refs ajoutées"
+    },
+    "outcomeRejected": {
+      "one": "{{count}} ref refusée, laissée dans le champ pour correction :",
+      "many": "{{count}} refs refusées, laissées dans le champ pour correction :",
+      "other": "{{count}} refs refusées, laissées dans le champ pour correction :"
+    },
+    "addAt": "Emplacement : {{location}}",
+    "colRef": "Ref",
+    "colStatus": "Statut",
+    "notTracked": "Cette variante n'est pas suivie par Serialis : activez le suivi depuis le bloc « Refs Serialis » de la variante.",
+    "noLocation": "Aucun emplacement ne peut recevoir de refs.",
+    "initializingHint": "Initialisation : le stock existant s'enregistre en « déjà comptées ».",
+    "confirmSubmit": {
+      "one": "Confirmer l'ajout de {{count}} ref",
+      "many": "Confirmer l'ajout de {{count}} refs",
+      "other": "Confirmer l'ajout de {{count}} refs"
+    },
+    "addMore": "Ajouter d'autres refs",
+    "doneHint": "Le bloc de la variante se met à jour après la fermeture."
+  }
+}

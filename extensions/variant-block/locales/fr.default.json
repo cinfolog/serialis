@@ -1,6 +1,6 @@
 {
   "name": "Refs Serialis (variante)",
-  "description": "Bloc de la page variante : refs par emplacement et par état, écart avec le stock Shopify, ajout de refs.",
+  "description": "Bloc de la page variante : refs par emplacement et par état, écart avec le stock Shopify, bouton qui ouvre l’action « Ajouter des refs ».",
   "common": {
     "loading": "Chargement…",
     "stillLoading": "Encore un instant…",
@@ -76,8 +76,6 @@
     "colShopify": "Stock Shopify",
     "colRegistered": "Refs enregistrées",
     "colGap": "Écart",
-    "colRef": "Ref",
-    "colStatus": "Statut",
     "noLocation": "Sans emplacement",
     "gapNone": "Aligné",
     "gapToRegister": "{{count}} à enregistrer",
@@ -88,50 +86,6 @@
     },
     "refsEmpty": "Aucune ref enregistrée pour cette variante.",
     "addTitle": "Ajouter des refs",
-    "addLocation": "Emplacement",
-    "addKind": "Ces unités sont…",
-    "kindAlreadyCounted": "Déjà comptées dans Shopify (aucune écriture de stock)",
-    "kindReceived": "Reçues maintenant (stock Shopify +1 par unité)",
-    "addRefs": "Refs à ajouter",
-    "addRefsHelp": "Une ref par ligne ; espaces, virgules et points-virgules sont aussi acceptés.",
-    "previewSummary": "{{ready}} prête(s), {{duplicate}} doublon(s) dans la liste, {{known}} déjà connue(s), {{invalid}} au format invalide.",
-    "line_duplicate": "Doublon dans la liste",
-    "line_known": "Déjà connue",
-    "line_invalid": "Format invalide",
-    "addNoGap": "Aucun écart dans Shopify : utilisez « Reçues » pour ajouter du stock.",
-    "addTooMany": "1 000 refs au maximum par ajout : découpez la liste.",
-    "addExceedsGap": "Vous ajoutez {{count}} refs « déjà comptées » pour un écart de {{gap}} : le serveur refusera celles qui dépassent l'écart.",
-    "addReview": {
-      "one": "Vérifier l'ajout de {{count}} ref",
-      "many": "Vérifier l'ajout de {{count}} refs",
-      "other": "Vérifier l'ajout de {{count}} refs"
-    },
-    "confirmTitle": "Confirmer l'ajout",
-    "effectReceived": {
-      "one": "{{count}} unité sera créée à « {{location}} » et le stock Shopify augmentera de {{count}}.",
-      "many": "{{count}} unités seront créées à « {{location}} » et le stock Shopify augmentera de {{count}}.",
-      "other": "{{count}} unités seront créées à « {{location}} » et le stock Shopify augmentera de {{count}}."
-    },
-    "effectCounted": {
-      "one": "{{count}} unité sera créée à « {{location}} » sans aucune écriture dans le stock Shopify (déjà comptée).",
-      "many": "{{count}} unités seront créées à « {{location}} » sans aucune écriture dans le stock Shopify (déjà comptées).",
-      "other": "{{count}} unités seront créées à « {{location}} » sans aucune écriture dans le stock Shopify (déjà comptées)."
-    },
-    "confirmAdd": {
-      "one": "Ajouter {{count}} ref",
-      "many": "Ajouter {{count}} refs",
-      "other": "Ajouter {{count}} refs"
-    },
-    "outcomeTitle": {
-      "one": "{{count}} ref ajoutée",
-      "many": "{{count}} refs ajoutées",
-      "other": "{{count}} refs ajoutées"
-    },
-    "outcomeRejected": {
-      "one": "{{count}} ref refusée, laissée dans le champ pour correction :",
-      "many": "{{count}} refs refusées, laissées dans le champ pour correction :",
-      "other": "{{count}} refs refusées, laissées dans le champ pour correction :"
-    },
     "initializingHint": "Initialisation : saisissez le stock existant en « déjà comptées ».",
     "refsCount": {
       "one": "{{count}} ref",
@@ -152,8 +106,6 @@
     },
     "collapsed": "{{refs}} · {{status}}",
     "notTrackedShort": "Non suivie",
-    "moreActions": "Plus d'actions",
-    "addAt": "Emplacement : {{location}}",
-    "addBack": "Retour"
+    "moreActions": "Plus d'actions"
   }
 }

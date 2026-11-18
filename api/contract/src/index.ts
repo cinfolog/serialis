@@ -437,3 +437,35 @@ export const ADMIN_APP_ROUTES = {
 
 export const ALL_ROUTES = { ...ROUTES, ...ADMIN_APP_ROUTES } as const;
 export type AnyRouteName = keyof typeof ALL_ROUTES;
+
+// Additions for the admin UI extensions (additive only; existing types untouched)
+// ---------------------------------------------------------------------------
+
+/**
+ * Optional filters of `GET /tracked-items` used by the variant and product blocks:
+ * `variant` returns the (at most one) active item of that variant, `product` all the items
+ * of a product. Without filter the route lists every tracked item as before.
+ */
+export interface ListTrackedItemsQuery {
+  variant?: Gid;
+  product?: Gid;
+  cursor?: string;
+  limit?: number;
+}
+
+/**
+ * `POST /tracked-items` with `action: 'untrack'` deactivates the tracking of the variants (EF-01):
+ * units in stock become UNTRACKED without any stock write. Refused with `invalid_transition`
+ * while units are allocated, in transit or awaiting a return. Admin level (15.8).
+ * Without `action` (or with `'track'`) the request is a `TrackItemsRequest`.
+ */
+export interface UntrackItemsRequest {
+  action: 'untrack';
+  variantGids: Gid[];
+}
+
+/** Response of `POST /tracked-items` (both actions): the resulting items (untracked ones are omitted on `untrack`). */
+export type TrackItemsResponse = Page<TrackedItem>;
+
+/** `GET /locations` → `Page<Location>` (active and inactive locations; `nextCursor` is null when the list is complete). */
+export type ListLocationsResponse = Page<Location>;

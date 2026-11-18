@@ -24,8 +24,9 @@ import {
   type HomeStatsResponse,
   type ImportReport,
   type ImportReportExtras,
+  type ListLocationsResponse,
+  type ListTrackedItemsQuery,
   type ListUnitsQuery,
-  type Location,
   type LookupResponse,
   type MeResponse,
   type MeResponseAdminExtras,
@@ -39,6 +40,7 @@ import {
   type SimulateSettingsRequest,
   type TrackedItem,
   type TrackItemsRequest,
+  type TrackItemsResponse,
   type Unit,
   type UnitEvent,
   type AnomalySeverity,
@@ -69,8 +71,8 @@ export interface ApiClient {
   me(): Promise<Me>;
   homeStats(): Promise<HomeStatsResponse>;
 
-  listTrackedItems(params?: PageParams): Promise<Page<TrackedItem>>;
-  trackItems(req: TrackItemsRequest, opts?: WriteOptions): Promise<Page<TrackedItem>>;
+  listTrackedItems(query?: ListTrackedItemsQuery): Promise<Page<TrackedItem>>;
+  trackItems(req: TrackItemsRequest, opts?: WriteOptions): Promise<TrackItemsResponse>;
 
   listUnits(query?: ListUnitsQuery): Promise<Page<Unit>>;
   getUnit(id: string): Promise<Unit>;
@@ -83,7 +85,7 @@ export interface ApiClient {
   acknowledgeAnomaly(id: string, opts?: WriteOptions): Promise<Anomaly>;
   resolveAnomaly(id: string, req: ResolveAnomalyRequest, opts?: WriteOptions): Promise<Anomaly>;
 
-  listLocations(): Promise<Page<Location>>;
+  listLocations(): Promise<ListLocationsResponse>;
 
   getSettings(scope: SettingScope): Promise<SettingsResponse>;
   simulateSettings(req: SimulateSettingsRequest, opts?: WriteOptions): Promise<SettingsSimulation>;
@@ -261,11 +263,11 @@ export class HttpClient implements ApiClient {
   homeStats() {
     return this.call<HomeStatsResponse>('homeStats');
   }
-  listTrackedItems(params: PageParams = {}) {
-    return this.call<Page<TrackedItem>>('listTrackedItems', { query: { cursor: params.cursor, limit: params.limit } });
+  listTrackedItems(query: ListTrackedItemsQuery = {}) {
+    return this.call<Page<TrackedItem>>('listTrackedItems', { query: { variant: query.variant, product: query.product, cursor: query.cursor, limit: query.limit } });
   }
   trackItems(req: TrackItemsRequest, opts: WriteOptions = {}) {
-    return this.call<Page<TrackedItem>>('trackItems', { body: req, idempotencyKey: opts.idempotencyKey });
+    return this.call<TrackItemsResponse>('trackItems', { body: req, idempotencyKey: opts.idempotencyKey });
   }
   listUnits(query: ListUnitsQuery = {}) {
     return this.call<Page<Unit>>('listUnits', {
@@ -306,7 +308,7 @@ export class HttpClient implements ApiClient {
     return this.call<Anomaly>('resolveAnomaly', { pathParams: { id }, body: req, idempotencyKey: opts.idempotencyKey });
   }
   listLocations() {
-    return this.call<Page<Location>>('listLocations');
+    return this.call<ListLocationsResponse>('listLocations');
   }
   getSettings(scope: SettingScope) {
     return this.call<SettingsResponse>('getSettings', { query: { scope } });

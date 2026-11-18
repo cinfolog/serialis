@@ -10,4 +10,10 @@ export interface Env {
   SHOPIFY_API_KEY: string;
   /** Secret: `wrangler secret put SHOPIFY_API_SECRET --env <env>` (never in the repo). */
   SHOPIFY_API_SECRET: string;
+  /**
+   * Secret: AES-256-GCM key(s) for the Shopify tokens at rest (spec 16). Either one base64 key
+   * (version 1) or a comma-separated keyring `2:<base64>,1:<base64>`; the first key encrypts,
+   * all of them decrypt (rotation without downtime).
+   */
+  TOKEN_ENCRYPTION_KEY: string;
 }

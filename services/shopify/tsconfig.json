@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Runtime-agnostic code (fetch, WebCrypto): typed with the Workers types, runs in workerd and Node 22.
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": ["src", "test"]
+}

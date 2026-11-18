@@ -16,6 +16,8 @@ import type {
   ExtensionKey,
   HomeStatsResponse,
   ListUnitsQuery,
+  ListLocationsResponse,
+  ListTrackedItemsQuery,
   Location,
   LookupResponse,
   Page,
@@ -28,6 +30,7 @@ import type {
   SimulateSettingsRequest,
   TrackedItem,
   TrackItemsRequest,
+  TrackItemsResponse,
   Unit,
   UnitEvent,
   UnitState,
@@ -366,13 +369,16 @@ export class MockClient implements ApiClient {
     };
   }
 
-  async listTrackedItems(params: PageParams = {}): Promise<Page<TrackedItem>> {
+  async listTrackedItems(params: ListTrackedItemsQuery = {}): Promise<Page<TrackedItem>> {
     await this.tick();
     this.recomputeStock();
-    return this.page(this.trackedItems.map((t) => structuredClone(t)), params);
+    return this.page(
+      this.trackedItems.filter((t) => (params.variant ? t.variantGid === params.variant : true) && (params.product ? t.productGid === params.product : true)).map((t) => structuredClone(t)),
+      params,
+    );
   }
 
-  async trackItems(req: TrackItemsRequest, opts: WriteOptions = {}): Promise<Page<TrackedItem>> {
+  async trackItems(req: TrackItemsRequest, opts: WriteOptions = {}): Promise<TrackItemsResponse> {
     await this.tick();
     return this.idempotent('trackItems', opts.idempotencyKey, () => {
       const added: TrackedItem[] = [];
@@ -511,7 +517,7 @@ export class MockClient implements ApiClient {
     });
   }
 
-  async listLocations(): Promise<Page<Location>> {
+  async listLocations(): Promise<ListLocationsResponse> {
     await this.tick();
     return { items: this.locations.map((l) => ({ ...l })), nextCursor: null };
   }

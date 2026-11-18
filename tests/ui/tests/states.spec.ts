@@ -20,6 +20,8 @@ const SCREENS = [
   { name: 'imports', path: '/imports' },
   { name: 'settings', path: '/settings' },
   { name: 'settings-health', path: '/settings/health?mock_health=degraded' },
+  { name: 'settings-health-stopped', path: '/settings/health?mock_health=stopped' },
+  { name: 'settings-designated-admin', path: '/settings?mock_role=admin' },
   { name: 'wizard', path: '/start' },
 ];
 

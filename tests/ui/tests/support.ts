@@ -57,7 +57,8 @@ export { expect };
 export interface Scenario {
   locale?: 'fr' | 'en';
   empty?: boolean;
-  role?: 'operator';
+  /** `operator`, or `admin` = an administrator designated by the owner (default: the owner). */
+  role?: 'operator' | 'admin';
   stop?: boolean;
   shown?: boolean;
   delay?: number;

@@ -21,6 +21,8 @@ const SCREENS: Array<{ name: string; path: string }> = [
   { name: 'settings-health', path: '/settings/health' },
   { name: 'settings-health-alerts', path: '/settings/health?mock_health=degraded' },
   { name: 'settings-health-stopped', path: '/settings/health?mock_health=stopped' },
+  { name: 'settings-users-designated-admin', path: '/settings?mock_role=admin' },
+  { name: 'settings-operator', path: '/settings?mock_role=operator' },
   { name: 'not-found', path: '/nope' },
 ];
 
@@ -124,6 +126,26 @@ test.describe('T-UX-03 axe, interactive states', () => {
     await page.getByTestId('health-retry-write-42').getByRole('button').click();
     await expect(page.getByTestId('health-retry-write-error')).toBeVisible();
     await expectNoSeriousViolation(page, testInfo, 'health-retry-refused');
+  });
+
+  test('health: abandon confirmation dialog, then done (12.4)', async ({ page }, testInfo) => {
+    await open(page, '/settings/health?mock_health=stopped');
+    await page.getByTestId('health-abandon-write-42').getByRole('button').click();
+    await expect(page.getByTestId('dialog-confirm')).toBeVisible();
+    await expectNoSeriousViolation(page, testInfo, 'health-abandon-dialog');
+    await page.getByTestId('dialog-confirm').getByRole('button').click();
+    await expect(page.getByTestId('health-dead-writes-empty')).toBeVisible();
+    await expectNoSeriousViolation(page, testInfo, 'health-abandon-done');
+  });
+
+  test('settings users: designation dialog, then designated (15.8)', async ({ page }, testInfo) => {
+    await open(page, '/settings');
+    await page.getByTestId('user-grant-70004').getByRole('button').click();
+    await expect(page.getByTestId('dialog-confirm')).toBeVisible();
+    await expectNoSeriousViolation(page, testInfo, 'users-grant-dialog');
+    await page.getByTestId('dialog-confirm').getByRole('button').click();
+    await expect(page.getByTestId('user-revoke-70004')).toBeVisible();
+    await expectNoSeriousViolation(page, testInfo, 'users-granted');
   });
 
   test('import CSV: simulation report', async ({ page }, testInfo) => {

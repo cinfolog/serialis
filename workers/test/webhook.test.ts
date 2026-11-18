@@ -75,7 +75,7 @@ describe('embedded app entry', () => {
     const res = await SELF.fetch('https://staging.serialis.dev/?shop=example.myshopify.com');
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('<meta name="shopify-api-key" content="03fd014d5ce8c5b37ed75e6effaae74f">');
+    expect(html).toMatch(/<meta name="shopify-api-key" content="03fd014d5ce8c5b37ed75e6effaae74f"\s*\/?>/);
     expect(html).not.toContain('%SHOPIFY_API_KEY%');
     expect(res.headers.get('Cache-Control')).toBe('no-store');
     expect(res.headers.get('Content-Security-Policy')).toContain('frame-ancestors https://admin.shopify.com https://*.myshopify.com');

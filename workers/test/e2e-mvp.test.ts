@@ -101,7 +101,7 @@ async function orderLines(h: Harness, orderGid: string) {
   }>;
 }
 
-const active = (l: { allocations: Array<{ status: string }> }) => l.allocations.filter((a) => a.status === 'active');
+const active = <T extends { status: string }>(l: { allocations: T[] }): T[] => l.allocations.filter((a) => a.status === 'active');
 
 describe('T-MVP-03 — replacement, two locations, quantity reduced', () => {
   it('replaced unit visible in metafield and API; units taken in each location; reduction releases the last allocated', async () => {

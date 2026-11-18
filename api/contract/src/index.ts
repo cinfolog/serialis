@@ -12,6 +12,7 @@
  */
 
 export * from './operations.js';
+import { OPERATIONS_ROUTES } from './operations.js';
 
 export const API_VERSION = 'v1' as const;
 export const INTERNAL_BASE = '/api/v1' as const;
@@ -520,8 +521,8 @@ export const API_KEY_ROUTES = {
   revokeApiKey: 'DELETE /api-keys/{prefix}',
 } as const;
 
-/** Every route of the internal surface `/api/v1` (admin app client). */
-export const INTERNAL_ROUTES = { ...ALL_ROUTES, ...API_KEY_ROUTES } as const;
+/** Every route of the internal surface `/api/v1` (admin app client): shared routes, key management, operations (users, health). */
+export const INTERNAL_ROUTES = { ...ALL_ROUTES, ...API_KEY_ROUTES, ...OPERATIONS_ROUTES } as const;
 export type InternalRouteName = keyof typeof INTERNAL_ROUTES;
 
 /** POST /units (public API, 14.2, 19.4 capability 1): one unit; same rules as `POST /units/batch` in atomic mode. Response: `Unit` (201, ETag). */

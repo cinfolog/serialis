@@ -2,7 +2,7 @@
  * The ONE typed client of the Serialis internal API (`/api/v1/...`, spec 14).
  *
  *  - every call goes through `HttpClient.call`, which resolves method and path from the shared route
- *    table of the contract (`INTERNAL_ROUTES` = `ALL_ROUTES` + `API_KEY_ROUTES`), so a method cannot target a route that does not exist;
+ *    table of the contract (`INTERNAL_ROUTES` = `ALL_ROUTES` + `API_KEY_ROUTES` + `OPERATIONS_ROUTES`), so a method cannot target a route that does not exist;
  *  - `Authorization: Bearer <App Bridge session token>` (fresh token per request);
  *  - `Idempotency-Key` on every POST (14.1): callers that retry the SAME user action after a cut
  *    must pass the same `idempotencyKey` (15.5 "Envois sûrs");
@@ -24,6 +24,7 @@ import {
   type CreateUnitsBatchRequest,
   type CreateUnitsBatchResponse,
   type ErrorCode,
+  type HealthResponse,
   type HomeStatsResponse,
   type ImportReport,
   type ImportReportExtras,
@@ -104,6 +105,9 @@ export interface ApiClient {
   listApiKeys(): Promise<Page<ApiKey>>;
   createApiKey(req: CreateApiKeyRequest): Promise<CreateApiKeyResponse>;
   revokeApiKey(prefix: string): Promise<void>;
+
+  /** Health of the shop (17.1, 17.2), administrators only: state, counters, passes, dead tasks and writes. */
+  health(): Promise<HealthResponse>;
 }
 
 /** Contract route used by each client method (checked by `client.contract.test.ts`). */
@@ -132,6 +136,7 @@ export const CLIENT_ROUTES = {
   listApiKeys: 'listApiKeys',
   createApiKey: 'createApiKey',
   revokeApiKey: 'revokeApiKey',
+  health: 'health',
 } as const satisfies Record<keyof ApiClient, InternalRouteName>;
 
 // ---------------------------------------------------------------------------
@@ -351,6 +356,9 @@ export class HttpClient implements ApiClient {
   }
   revokeApiKey(prefix: string) {
     return this.call<void>('revokeApiKey', { pathParams: { prefix } });
+  }
+  health() {
+    return this.call<HealthResponse>('health');
   }
 }
 

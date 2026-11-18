@@ -70,9 +70,13 @@ export function homeStats(ctx: ApiContext, info: HealthInfo): ApiResult {
   const deadWrites = one<{ n: number }>("SELECT count(*) AS n FROM outbox WHERE status = 'dead'")?.n ?? 0;
   const anomalyCount = (where: string) => one<{ n: number }>(`SELECT count(*) AS n FROM anomalies WHERE status IN ('open', 'acknowledged') AND ${where}`)?.n ?? 0;
   const critical = anomalyCount("severity = 'critical'");
+  // Spec 17.1: the indicator summarises the synchronisation only (webhooks, reconciliation, delay, writes to Shopify).
+  // Business anomalies (insufficient_units, shipped_without_unit...) are listed under « To handle now », not here.
+  const SYNC_ANOMALIES = ['outbox_dead', 'task_dead', 'reconnect_required', 'consistency_violation', 'webhook_silence'];
+  const syncCritical = anomalyCount(`severity = 'critical' AND type IN (${SYNC_ANOMALIES.map((t) => `'${t}'`).join(', ')})`);
   const delaySeconds = oldestDue === null ? 0 : Math.max(0, Math.round((now - oldestDue) / 1000));
   const health = healthCounters(ctx.d, info, now);
-  const red = critical > 0 || deadWrites > 0 || health.counters.tasksDead > 0 || health.counters.reconnectRequired;
+  const red = syncCritical > 0 || deadWrites > 0 || health.counters.tasksDead > 0 || health.counters.reconnectRequired;
   const level: HomeStatsResponse['sync']['level'] = red ? 'red' : delaySeconds > 60 || pendingWrites > 50 || health.alerts.length > 0 ? 'orange' : 'green';
 
   // Share of tracked lines allocated in under 60 s (19.4 success criterion), over 30 days.

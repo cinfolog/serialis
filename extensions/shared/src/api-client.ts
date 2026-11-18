@@ -1,3 +1,4 @@
+import { newUuid } from './uuid';
 import {
   INTERNAL_BASE,
   type CreateAllocationRequest,
@@ -52,7 +53,7 @@ export interface ApiClientOptions {
   fetch?: typeof fetch;
   /** Defaults to the internal base of the contract (`/api/v1`). */
   baseUrl?: string;
-  /** Source of Idempotency-Key values (defaults to `crypto.randomUUID`). */
+  /** Source of Idempotency-Key values (defaults to `newUuid`, which falls back to `crypto.getRandomValues`). */
   newIdempotencyKey?: () => string;
 }
 
@@ -63,7 +64,7 @@ export interface CallOptions {
 }
 
 function randomKey(): string {
-  return globalThis.crypto.randomUUID();
+  return newUuid();
 }
 
 function queryString(params: Record<string, string | number | string[] | undefined>): string {

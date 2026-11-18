@@ -183,3 +183,18 @@ Demande du marchand (admin réel) : voir, dans la fenêtre « Ajouter des refs �
 - **À vérifier dans l'admin réel** (recette 3.11) : délai du signalement d'un doublon ; rendu du bouton « Masquer » et du
   champ de filtre dans la fenêtre ; format de la date ; CORS de `POST /units/batch/check` et `GET /lookup` depuis
   l'extension (mêmes en-têtes que les autres routes).
+
+### 4. Clés d'idempotence sans `crypto.randomUUID`
+
+- **Constat (recette navigateur du 18/11)** : « Turn on tracking » échouait avec « An unexpected error occurred » sur toutes
+  les variantes. Les journaux du Worker staging (Workers Observability) ne montrent **aucune** requête `POST /tracked-items`
+  ni pré-vol `OPTIONS` correspondant, alors que les `GET` des mêmes extensions arrivent : l'échec se produit dans
+  l'extension, avant l'envoi. Les `POST` venus de l'app (imports, clés d'API, arrêt d'urgence) passaient.
+- **Cause** : la clé `Idempotency-Key` était tirée par `crypto.randomUUID()`, qui n'existe que dans un contexte sécurisé ;
+  le bac à sable des extensions (Web Worker dans une iframe isolée) ne le garantit pas. L'appel levait `TypeError`, pris pour
+  une erreur inconnue. Le test `zz-repro` (retiré après coup) reproduisait l'échec à coup sûr en masquant `randomUUID`.
+- **Correctif** : `newUuid()` (`extensions/shared/src/uuid.ts`) utilise `randomUUID` s'il existe, sinon
+  `crypto.getRandomValues` (disponible partout), sinon `Math.random` ; `IdempotencyKeeper` et le client d'API l'utilisent.
+  Test : `idempotency.test.ts` (« falls back to getRandomValues… »).
+- **Diagnostic** : une erreur qui n'est pas une réponse de l'API affiche désormais « … (TypeError: message) » après le texte
+  générique, pour qu'une capture suffise à la diagnostiquer.

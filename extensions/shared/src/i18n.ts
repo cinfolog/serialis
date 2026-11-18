@@ -51,6 +51,9 @@ export function errorMessage(t: Translate, error: unknown): string {
     const base = t(errorKey(error.code));
     return error.detail ? `${base} (${error.detail})` : base;
   }
+  // A non-API failure (exception in the extension itself) keeps a short technical trace so a merchant's
+  // screenshot is enough to diagnose it (recette du 18/11: « unexpected error » without any clue).
+  if (error instanceof Error) return `${t(errorKey('unknown'))} (${error.name}: ${error.message.slice(0, 120)})`;
   return t(errorKey('unknown'));
 }
 

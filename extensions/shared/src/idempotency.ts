@@ -1,3 +1,4 @@
+import { newUuid } from './uuid';
 /**
  * Keeps one Idempotency-Key per logical user action (15.5, "Envois sûrs"): a submission retried after a
  * network cut or an error with the same payload reuses the key, so the server cannot apply it twice;
@@ -5,7 +6,7 @@
  */
 export class IdempotencyKeeper {
   private last: { fingerprint: string; key: string } | null = null;
-  constructor(private readonly newKey: () => string = () => globalThis.crypto.randomUUID()) {}
+  constructor(private readonly newKey: () => string = newUuid) {}
 
   keyFor(payload: unknown): string {
     const fingerprint = JSON.stringify(payload);

@@ -8,3 +8,4 @@ export * from './refs';
 export * from './variant';
 export * from './ui/common';
 export * from './ui/DesignationInput';
+export { newUuid } from './uuid';

@@ -595,6 +595,11 @@ export class DomainRepo {
     return id;
   }
 
+  /** Live anomaly by its canonical fingerprint key (anomalies opened with an explicit `fingerprintKey`). */
+  liveAnomalyByKey(fingerprintKey: string): { id: string } | null {
+    return this.first<{ id: string }>("SELECT id FROM anomalies WHERE fingerprint = ? AND status IN ('open', 'acknowledged')", sha256Hex(fingerprintKey)) ?? null;
+  }
+
   updateAnomalyDetails(id: string, details: AnomalyDetails, now: number): void {
     this.sql.exec('UPDATE anomalies SET details = ?, updated_at = ? WHERE id = ?', JSON.stringify(details), now, id);
   }

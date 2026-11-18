@@ -8,7 +8,7 @@
  * - the alarm handler never throws and always reschedules the alarm.
  */
 import { backoffDelay } from '@serialis/shopify';
-import { errorMessage, logEvent } from './log.js';
+import { errorMessage, logEvent, withLogContext } from './log.js';
 
 export const MAX_ATTEMPTS = 8;
 export const LEASE_MS = 2 * 60_000;
@@ -64,10 +64,17 @@ export class NoHandlerError extends Error {
   override readonly name = 'NoHandlerError';
 }
 
+/** Domain reactions of the queue (critical anomaly when a task dies, closed when it runs again; 12.2). Synchronous. */
+export interface TaskQueueHooks {
+  onDead?(task: { key: string; kind: string; attempts: number; error: string }): void;
+  onCompleted?(task: { key: string; kind: string }): void;
+}
+
 export class TaskQueue {
   constructor(
     private readonly storage: DurableObjectStorage,
     private readonly random: () => number = Math.random,
+    private readonly hooks: TaskQueueHooks = {},
   ) {}
 
   private get sql(): SqlStorage {
@@ -130,8 +137,21 @@ export class TaskQueue {
     return cursor.rowsWritten > 0;
   }
 
-  /** Running rows whose lease expired go back to pending with the same payload (spec 12.2, T-CH-05). */
+  /**
+   * Running rows whose lease expired go back to pending with the same payload (spec 12.2, T-CH-05).
+   * A row that already used all its attempts was killed by the platform each time (an error the code
+   * cannot catch, attempts being counted at take time): it goes to `dead` instead (T-CH-06).
+   */
   recoverExpiredLeases(now = Date.now()): number {
+    const killed = this.sql
+      .exec<{ key: string; kind: string; attempts: number }>("SELECT key, kind, attempts FROM tasks WHERE status = 'running' AND lease_until < ? AND attempts >= ?", now, MAX_ATTEMPTS)
+      .toArray();
+    for (const t of killed) {
+      const error = 'lease_expired: execution interrupted at every attempt';
+      this.sql.exec("UPDATE tasks SET status = 'dead', lease_until = NULL, lease_token = NULL, last_error = ?, updated_at = ? WHERE key = ? AND status = 'running'", error, now, t.key);
+      logEvent('error', 'tasks.dead', { task: t.key, task_kind: t.kind, attempt: t.attempts, error });
+      this.notifyDead({ key: t.key, kind: t.kind, attempts: t.attempts, error });
+    }
     return this.sql.exec(
       "UPDATE tasks SET status = 'pending', lease_until = NULL, lease_token = NULL, run_at = ?, updated_at = ? WHERE status = 'running' AND lease_until < ?",
       now,
@@ -140,32 +160,42 @@ export class TaskQueue {
     ).rowsWritten;
   }
 
-  /** Next time the alarm must fire: smallest pending run_at, or the end of a running lease. */
-  nextWakeUp(): number | null {
+  /**
+   * Next time the alarm must fire: smallest pending run_at, or the end of a running lease. `onlyKeys`
+   * restricts it to some tasks (a frozen shop only runs its daily probe, 12.2).
+   */
+  nextWakeUp(onlyKeys?: readonly string[]): number | null {
+    const filter = onlyKeys ? ` AND key IN (${onlyKeys.map(() => '?').join(', ') || "''"})` : '';
     const row = this.sql
       .exec<{ next: number | null }>(
-        "SELECT MIN(CASE WHEN status = 'pending' THEN run_at WHEN status = 'running' THEN lease_until END) AS next FROM tasks WHERE status IN ('pending', 'running')",
+        `SELECT MIN(CASE WHEN status = 'pending' THEN run_at WHEN status = 'running' THEN lease_until END) AS next FROM tasks WHERE status IN ('pending', 'running')${filter}`,
+        ...(onlyKeys ?? []),
       )
       .one();
     return row.next ?? null;
   }
 
-  /** Sets the alarm on the next wake-up; only touches it when the time changes (spec 12.2). */
-  async syncAlarm(active: boolean): Promise<void> {
-    const next = active ? this.nextWakeUp() : null;
+  /**
+   * Sets the alarm on the next wake-up; only touches it when the time changes (spec 12.2).
+   * `true`: every task; `false`: no alarm (uninstalled shop); a list: only those tasks (frozen shop).
+   */
+  async syncAlarm(mode: boolean | readonly string[]): Promise<void> {
+    const next = mode === false ? null : this.nextWakeUp(mode === true ? undefined : mode);
     const current = await this.storage.getAlarm();
     if (next === null) {
       if (current !== null) await this.storage.deleteAlarm();
       return;
     }
-    if (current !== next) await this.storage.setAlarm(next);
+    const at = Math.max(next, 1);
+    if (current !== at) await this.storage.setAlarm(at);
   }
 
   /**
    * Runs due tasks by priority within the time budget. Never throws: each task has its own error
    * block, so an error counts against the task, not against the alarm.
    */
-  async runDue(lookup: (kind: string) => TaskHandler | undefined, budgetMs = ALARM_BUDGET_MS): Promise<number> {
+  async runDue(lookup: (kind: string) => TaskHandler | undefined, budgetMs = ALARM_BUDGET_MS, onlyKeys?: readonly string[]): Promise<number> {
+    const filter = onlyKeys ? ` AND key IN (${onlyKeys.map(() => '?').join(', ') || "''"})` : '';
     const started = Date.now();
     let ran = 0;
     try {
@@ -177,7 +207,7 @@ export class TaskQueue {
       let row: TaskRow | undefined;
       try {
         row = this.sql
-          .exec<TaskRow>("SELECT * FROM tasks WHERE status = 'pending' AND run_at <= ? ORDER BY priority, run_at LIMIT 1", Date.now())
+          .exec<TaskRow>(`SELECT * FROM tasks WHERE status = 'pending' AND run_at <= ?${filter} ORDER BY priority, run_at LIMIT 1`, Date.now(), ...(onlyKeys ?? []))
           .toArray()[0];
       } catch (error) {
         logEvent('error', 'tasks.select_failed', { error: errorMessage(error) });
@@ -223,7 +253,7 @@ export class TaskQueue {
       } catch {
         payload = {};
       }
-      const result = await handler({ key: row.key, kind: row.kind, payload, attempt, holdsLease });
+      const result = await withLogContext({ task: row.key, task_kind: row.kind }, () => handler({ key: row.key, kind: row.kind, payload, attempt, holdsLease }));
       this.complete(row.key, leaseToken, result ?? undefined);
     } catch (error) {
       this.fail(row.key, leaseToken, attempt, error);
@@ -241,6 +271,11 @@ export class TaskQueue {
         if (!current) return; // lease lost: another execution owns the row now
         const now = Date.now();
         const rescheduleAt = current.rerun_requested ? now : (result?.rescheduleAt ?? null);
+        try {
+          this.hooks.onCompleted?.({ key, kind: this.sql.exec<{ kind: string }>('SELECT kind FROM tasks WHERE key = ?', key).one().kind });
+        } catch (error) {
+          logEvent('error', 'tasks.on_completed_failed', { task: key, error: errorMessage(error) });
+        }
         if (rescheduleAt === null) {
           this.sql.exec('DELETE FROM tasks WHERE key = ?', key);
         } else {
@@ -254,7 +289,7 @@ export class TaskQueue {
         }
       });
     } catch (error) {
-      logEvent('error', 'tasks.complete_failed', { key, error: errorMessage(error) });
+      logEvent('error', 'tasks.complete_failed', { task: key, error: errorMessage(error) });
     }
   }
 
@@ -270,8 +305,9 @@ export class TaskQueue {
           key,
           leaseToken,
         );
-        // TODO(lot 0, observability): critical anomaly and alert (spec 12.2, 17.2).
-        logEvent('error', 'tasks.dead', { key, attempt, error: message });
+        logEvent('error', 'tasks.dead', { task: key, attempt, error: message });
+        const kind = this.sql.exec<{ kind: string }>('SELECT kind FROM tasks WHERE key = ?', key).toArray()[0]?.kind ?? 'unknown';
+        this.notifyDead({ key, kind, attempts: attempt, error: message });
         return;
       }
       const delay = backoffDelay(attempt, { baseMs: RETRY_BASE_MS, maxMs: RETRY_MAX_MS, random: this.random });
@@ -283,9 +319,18 @@ export class TaskQueue {
         key,
         leaseToken,
       );
-      logEvent('warn', 'tasks.retry', { key, attempt, delay_ms: delay, error: message });
+      logEvent('warn', 'tasks.retry', { task: key, attempt, delay_ms: delay, error: message });
     } catch (dbError) {
-      logEvent('error', 'tasks.fail_record_failed', { key, error: errorMessage(dbError) });
+      logEvent('error', 'tasks.fail_record_failed', { task: key, error: errorMessage(dbError) });
+    }
+  }
+
+  /** Critical anomaly and alert of a dead task (12.2, 17.2), through the shop object's hook. */
+  private notifyDead(task: { key: string; kind: string; attempts: number; error: string }): void {
+    try {
+      this.hooks.onDead?.(task);
+    } catch (error) {
+      logEvent('error', 'tasks.on_dead_failed', { task: task.key, error: errorMessage(error) });
     }
   }
 }

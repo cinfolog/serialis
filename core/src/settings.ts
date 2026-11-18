@@ -61,6 +61,8 @@ interface BaseDefinition<K extends SettingKey> {
   /**
    * Test proving the behaviour of each non-default value (T-SET-08). Keys: the value as a
    * string for enums and booleans, `other` for durations, `custom` for structured values.
+   * Value: the test name, in `core/test` by default, or `<path from the repository root>::<name>`
+   * for a test of another suite (e.g. `workers/test/…`).
    */
   readonly testRefs: Readonly<Record<string, string>>;
 }
@@ -266,7 +268,8 @@ export const SETTINGS: Catalogue = {
     default: true,
     scopes: ['shop'],
     changeRule: 'simulation',
-    testRefs: { false: 'S-38 no: the metafield is removed from the order' },
+    // Spec example of T-SET-08: removed from the open orders (Worker chain: API, sync, outbox).
+    testRefs: { false: 'workers/test/settings-behaviour.test.ts::S-38 no: the metafield is removed from the open orders at once' },
   },
   'S-40': {
     key: 'S-40',

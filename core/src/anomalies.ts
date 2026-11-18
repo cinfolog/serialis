@@ -42,6 +42,10 @@ export const ANOMALY_CATALOGUE = {
   invalid_serial_property: 'warning',
   tracking_disabled_in_shopify: 'critical',
   units_on_inactive_location: 'warning',
+  // Not in the 12.7 table (workers/DECISIONS.md, to report in the spec): 12.2 asks for a critical
+  // anomaly when a task reaches `dead`, 11.2 for a detected allocation/unit inconsistency.
+  task_dead: 'critical',
+  consistency_violation: 'critical',
 } as const satisfies Record<string, Severity>;
 
 export type AnomalyType = keyof typeof ANOMALY_CATALOGUE;

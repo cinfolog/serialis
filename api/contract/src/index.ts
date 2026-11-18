@@ -11,6 +11,8 @@
  * problem+json (RFC 9457) with a stable `code`.
  */
 
+export * from './operations.js';
+
 export const API_VERSION = 'v1' as const;
 export const INTERNAL_BASE = '/api/v1' as const;
 

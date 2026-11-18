@@ -140,6 +140,15 @@ export async function markUninstalled(env: Env, shop: string, now = new Date()):
   if (row) await env.SHOP_ROUTING.put(routingKey(shop), JSON.stringify(toRouting(row)));
 }
 
+/** Frozen shop (402/423, spec 12.2): `frozen` ↔ `active` in the registry and KV; an inactive shop is left as it is. */
+export async function setRegistryFrozen(env: Env, shop: string, frozen: boolean): Promise<void> {
+  await env.REGISTRY.prepare("UPDATE shops SET status = ? WHERE shop_domain = ? AND status IN ('active', 'frozen')")
+    .bind(frozen ? 'frozen' : 'active', shop)
+    .run();
+  const row = await registryRow(env, shop);
+  if (row) await env.SHOP_ROUTING.put(routingKey(shop), JSON.stringify(toRouting(row)));
+}
+
 function toRouting(row: ShopRow): ShopRouting {
   return {
     objectName: row.object_name,

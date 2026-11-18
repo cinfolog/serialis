@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkInvariants, type InvariantInput } from '../src/invariants.js';
+import { checkAllocationConsistency, checkInvariants, type InvariantInput } from '../src/invariants.js';
 import { initializationShouldEnd, planAutomaticToVerifyResolution, usableDeficit, usableExcess } from '../src/stock.js';
 import type { ExplainedQuantity, InventoryLevel } from '../src/types.js';
 import { LOC_A, T0, item, unit, units } from './fixtures.js';
@@ -107,5 +107,37 @@ describe('usable deficit and excess — spec 8', () => {
     expect(initializationShouldEnd('auto', false, false)).toBe(false);
     expect(initializationShouldEnd('on_decision', true, false)).toBe(false);
     expect(initializationShouldEnd('on_decision', true, true)).toBe(true);
+  });
+});
+
+describe('allocation ↔ unit consistency — spec 11.2', () => {
+  const alloc = (id: string, unitId: string, status: 'active' | 'fulfilled' | 'released' | 'returned') => ({ id, unitId, status });
+
+  it('accepts the states of the rule, including RETURN_PENDING with its fulfilled allocation and a historical sale', () => {
+    const units = [
+      { id: 'u1', status: 'ALLOCATED' as const },
+      { id: 'u2', status: 'SHIPPED' as const },
+      { id: 'u3', status: 'RETURN_PENDING' as const },
+      { id: 'u4', status: 'SHIPPED' as const },
+      { id: 'u5', status: 'AVAILABLE' as const },
+    ];
+    const allocations = [alloc('a1', 'u1', 'active'), alloc('a2', 'u2', 'fulfilled'), alloc('a3', 'u3', 'fulfilled'), alloc('a5', 'u5', 'released'), alloc('a6', 'u5', 'returned')];
+    expect(checkAllocationConsistency(units, allocations)).toEqual([]);
+  });
+
+  it('reports every breach, never throws', () => {
+    const units = [
+      { id: 'u1', status: 'ALLOCATED' as const },
+      { id: 'u2', status: 'SHIPPED' as const },
+      { id: 'u3', status: 'AVAILABLE' as const },
+      { id: 'u4', status: 'TO_VERIFY' as const },
+    ];
+    const allocations = [alloc('a2', 'u2', 'active'), alloc('a3', 'u3', 'active'), alloc('a4', 'u4', 'fulfilled')];
+    expect(checkAllocationConsistency(units, allocations).map((v) => `${v.unitId}:${v.detail}`)).toEqual([
+      'u1:allocated_without_one_active',
+      'u2:shipped_with_active',
+      'u3:engaged_in_other_state',
+      'u4:engaged_in_other_state',
+    ]);
   });
 });

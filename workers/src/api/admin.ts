@@ -5,6 +5,7 @@
 import { resolveSetting, SETTINGS, settingWarning, validateStoredSetting, type ScopeType, type SettingKey, type SettingValues } from '@serialis/core';
 import type {
   ExtensionKey,
+  HomeStatsHealthExtras,
   HomeStatsResponse,
   Location,
   MeResponse,
@@ -23,6 +24,8 @@ import { requestOrderSync } from '../domain/sync-order.js';
 import { newId, parseJson } from '../domain/util.js';
 import { ApiError, checkIfMatch, iso, json, parseBody, queryOne, type ApiResult } from './http.js';
 import type { ApiContext } from './present.js';
+import { roleOf } from './users.js';
+import { healthCounters, type HealthInfo } from './health.js';
 
 const LOCATIONS_TTL_MS = 10 * 60_000;
 const SIMULATION_TTL_MS = 10 * 60_000;
@@ -47,14 +50,14 @@ export function me(ctx: ApiContext, info: { shop: string; tokenStatus: string; s
     onboarding: { completed: step === 'done', step },
     emergencyStop: repo.automationPaused(),
     locale: ctx.locale,
-    role: 'admin',
+    role: roleOf(ctx.d, ctx.call.principal),
     banners,
     extensionsShown: shown,
   };
   return json(body);
 }
 
-export function homeStats(ctx: ApiContext): ApiResult {
+export function homeStats(ctx: ApiContext, info: HealthInfo): ApiResult {
   const { sql, repo } = ctx.d;
   const now = ctx.now;
   const one = <T>(q: string, ...b: SqlStorageValue[]) => sql.exec(q, ...b).toArray()[0] as T | undefined;
@@ -66,7 +69,9 @@ export function homeStats(ctx: ApiContext): ApiResult {
   const anomalyCount = (where: string) => one<{ n: number }>(`SELECT count(*) AS n FROM anomalies WHERE status IN ('open', 'acknowledged') AND ${where}`)?.n ?? 0;
   const critical = anomalyCount("severity = 'critical'");
   const delaySeconds = oldestDue === null ? 0 : Math.max(0, Math.round((now - oldestDue) / 1000));
-  const level: HomeStatsResponse['sync']['level'] = critical > 0 || deadWrites > 0 ? 'red' : delaySeconds > 60 || pendingWrites > 50 ? 'orange' : 'green';
+  const health = healthCounters(ctx.d, info, now);
+  const red = critical > 0 || deadWrites > 0 || health.counters.tasksDead > 0 || health.counters.reconnectRequired;
+  const level: HomeStatsResponse['sync']['level'] = red ? 'red' : delaySeconds > 60 || pendingWrites > 50 || health.alerts.length > 0 ? 'orange' : 'green';
 
   // Share of tracked lines allocated in under 60 s (19.4 success criterion), over 30 days.
   const since = now - 30 * 86_400_000;
@@ -96,7 +101,7 @@ export function homeStats(ctx: ApiContext): ApiResult {
     history.push({ date: day, rate: d ? d.ok / d.n : null });
   }
 
-  const response: HomeStatsResponse = {
+  const response: HomeStatsResponse & HomeStatsHealthExtras = {
     sync: {
       level,
       lastWebhookAt: lastWebhook,
@@ -115,6 +120,7 @@ export function homeStats(ctx: ApiContext): ApiResult {
       .toArray()
       .map((r) => ({ locationId: r.location_id, state: r.status, count: r.n })),
     assignedUnder60s: { rate: samples.length > 0 ? ok / samples.length : null, sample: samples.length, history30d: history },
+    health,
   };
   return json(response);
 }
@@ -337,6 +343,19 @@ export function simulateSettings(ctx: ApiContext): ApiResult {
   return json(response, 201);
 }
 
+/** Orders whose synchronization a "simulation" setting changes (same sets as the simulation, 14.2). */
+function concernedOrders(ctx: ApiContext, keys: string[]): Set<string> {
+  const { sql } = ctx.d;
+  const out = new Set<string>();
+  if (keys.includes('S-38')) {
+    for (const r of sql.exec<{ order_gid: string }>("SELECT DISTINCT order_gid FROM allocations WHERE status IN ('active', 'fulfilled')").toArray()) out.add(r.order_gid);
+  }
+  if (keys.includes('S-11')) {
+    for (const r of sql.exec<{ order_gid: string }>("SELECT order_gid FROM order_sync WHERE status IN ('ok', 'short', 'pending')").toArray()) out.add(r.order_gid);
+  }
+  return out;
+}
+
 export function patchSettings(ctx: ApiContext): ApiResult {
   const body = parseBody<PatchSettingsRequest & { values: Record<string, ApiValue | null> }>(ctx.call);
   checkIfMatch(ctx.call, settingsEtag(ctx));
@@ -390,6 +409,8 @@ export function patchSettings(ctx: ApiContext): ApiResult {
     }
     repo.setMeta('settings_version', String(Number(repo.meta('settings_version') ?? '0') + 1));
     repo.audit(actor, 'settings.update', before, { scope: scope.scope, values: body.values }, now);
+    // 6.6.1: a "simulation" setting is applied to what is in progress: each concerned order is synchronized now.
+    for (const orderGid of concernedOrders(ctx, simulated.map((c) => c.key))) requestOrderSync(ctx.d, orderGid, 0, now);
   });
   const response: SettingsResponse = { scope: scope.scope, values: readValues(ctx, scope) };
   return json(response, 200, { ETag: settingsEtag(ctx) });

@@ -34,6 +34,7 @@ import { newId, parseJson, placeholders } from '../domain/util.js';
 import { stockWriteInput } from '../domain/writes.js';
 import { ApiError, checkIfMatch, decodeCursor, encodeCursor, json, pageLimit, parseBody, queryList, queryOne, unitEtag, type ApiResult } from './http.js';
 import { presentTrackedItem, presentUnit, type ApiContext } from './present.js';
+import { firstNameOf } from './users.js';
 
 const IDENTIFIER_TYPE = 'serial';
 const MAX_REF_LENGTH = 128;
@@ -274,7 +275,7 @@ export function unitEvents(ctx: ApiContext, id: string): ApiResult {
   const limit = pageLimit(ctx.call);
   const after = decodeCursor(queryOne(ctx.call, 'cursor'));
   const rows = sql
-    .exec<{ id: number; type: string; from_status: UnitState | null; to_status: UnitState | null; actor_type: string; cause_type: string; data: string; occurred_at: number; location_id: string | null }>(
+    .exec<{ id: number; type: string; from_status: UnitState | null; to_status: UnitState | null; actor_type: string; actor_id: string | null; cause_type: string; data: string; occurred_at: number; location_id: string | null }>(
       `SELECT * FROM unit_events WHERE unit_id = ? ${after ? 'AND id < ?' : ''} ORDER BY id DESC LIMIT ?`,
       ...(after ? [id, Number(after), limit + 1] : [id, limit + 1]),
     )
@@ -286,7 +287,8 @@ export function unitEvents(ctx: ApiContext, id: string): ApiResult {
     return {
       id: String(r.id),
       at: new Date(r.occurred_at).toISOString(),
-      actor: ACTOR_LABEL[r.actor_type] ?? r.actor_type,
+      // 15.8: a person is shown by first name when known.
+      actor: (r.actor_type === 'user' ? firstNameOf(ctx.d, r.actor_id) : null) ?? ACTOR_LABEL[r.actor_type] ?? r.actor_type,
       type: r.type,
       fromState: r.from_status,
       toState: r.to_status,

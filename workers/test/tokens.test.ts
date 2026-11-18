@@ -100,9 +100,15 @@ describe('expiring offline token in the shop object (spec 13.9)', () => {
       await expect(store.accessToken()).rejects.toThrow(/no usable Shopify token/);
     });
     expect(await tokenStatus(stub)).toBe('reconnect_required');
+    const anomaly = (status: string) =>
+      runInDurableObject(stub, (_s: ShopStore, state: DurableObjectState) => state.storage.sql.exec("SELECT severity FROM anomalies WHERE type = 'reconnect_required' AND status = ?", status).toArray());
+    // 12.7: critical anomaly while the merchant must reopen the app.
+    expect(await anomaly('open')).toEqual([{ severity: 'critical' }]);
     // Next opening of the app: the token exchange gives a new pair.
     await stub.install({ shopDomain: 'lost-example.myshopify.com', objectName: 'global:lost-example.myshopify.com', sessionToken: 'session-jwt' });
     expect(await tokenStatus(stub)).toBe('valid');
+    expect(await anomaly('open')).toEqual([]);
+    expect(await anomaly('auto_resolved')).toHaveLength(1);
   });
 
   it('keeps the current access token while Shopify is unreachable', async () => {

@@ -4,7 +4,7 @@
  * refused (409) otherwise; problem+json errors. Runs inside the shop object; the caller has
  * authenticated the request and chosen the object.
  */
-import { ALL_ROUTES, type AnyRouteName } from '@serialis/contract';
+import { ALL_ROUTES, OPERATIONS_ROUTES } from '@serialis/contract';
 import type { DomainContext } from '../domain/context.js';
 import { sha256Hex } from '../domain/util.js';
 import { errorMessage, logEvent } from '../log.js';
@@ -13,6 +13,25 @@ import { ApiError, json, locale, problem, queryOne, type ApiCall, type ApiResult
 import * as orders from './orders.js';
 import type { ApiContext } from './present.js';
 import * as units from './units.js';
+import * as users from './users.js';
+import * as health from './health.js';
+
+/** Routes served by the shop object: contract tables of the admin app and of the operations (15.8, 17). */
+export const SERVED_ROUTES = { ...ALL_ROUTES, ...OPERATIONS_ROUTES } as const;
+export type AnyRouteName = keyof typeof SERVED_ROUTES;
+
+/** Administration level (15.8): settings, tracked items, imports confirmation, emergency stop, users, health. */
+const ADMIN_ROUTES: ReadonlySet<AnyRouteName> = new Set<AnyRouteName>([
+  'patchSettings',
+  'simulateSettings',
+  'trackItems',
+  'confirmImport',
+  'pause',
+  'resume',
+  'listAppUsers',
+  'patchAppUser',
+  'health',
+]);
 
 export const IDEMPOTENCY_TTL_MS = 24 * 3_600_000;
 
@@ -27,7 +46,10 @@ export interface ShopInfo {
 function handlers(info: () => ShopInfo): Record<AnyRouteName, Handler> {
   return {
     me: (ctx) => admin.me(ctx, info()),
-    homeStats: (ctx) => admin.homeStats(ctx),
+    listAppUsers: (ctx) => users.listAppUsers(ctx),
+    patchAppUser: (ctx) => users.patchAppUser(ctx),
+    health: (ctx) => health.healthReport(ctx, info()),
+    homeStats: (ctx) => admin.homeStats(ctx, info()),
     listTrackedItems: (ctx) => units.listTrackedItems(ctx),
     trackItems: (ctx) => units.trackItems(ctx),
     listUnits: (ctx) => units.listUnits(ctx),
@@ -65,7 +87,7 @@ interface CompiledRoute {
 }
 
 /** Static segments win over parameters (`/units/batch` before `/units/{id}`). */
-const COMPILED: CompiledRoute[] = (Object.entries(ALL_ROUTES) as Array<[AnyRouteName, string]>)
+const COMPILED: CompiledRoute[] = (Object.entries(SERVED_ROUTES) as Array<[AnyRouteName, string]>)
   .map(([name, spec]) => {
     const [method, path] = spec.split(' ') as [string, string];
     const params: string[] = [];
@@ -115,6 +137,10 @@ export async function handleApiCall(d: DomainContext, call: ApiCall, info: () =>
   if ('allowed' in matched) return problem(405, 'validation_failed', `method not allowed (allowed: ${matched.allowed.join(', ')})`, undefined, { Allow: matched.allowed.join(', ') });
   const { route, params } = matched;
   const now = Date.now();
+
+  users.registerAppUser(d, call.principal, now);
+  // 15.8: checked before the idempotency store, so that a refusal is never replayed after a promotion.
+  if (ADMIN_ROUTES.has(route.name) && users.roleOf(d, call.principal) !== 'admin') return problem(403, 'forbidden', 'admin_required');
 
   const hint = extensionHint(call, route.name);
   if (hint && d.repo.meta(`extension_render:${hint}`) === null) d.repo.setMeta(`extension_render:${hint}`, String(now));

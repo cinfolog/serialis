@@ -71,6 +71,8 @@ export const anomalies = defineMessages(
     'anomaly.type.invalid_serial_property': 'Propriété de numéro de série ignorée',
     'anomaly.type.tracking_disabled_in_shopify': 'Suivi du stock désactivé dans Shopify',
     'anomaly.type.units_on_inactive_location': 'Unités sur un emplacement inactif',
+    'anomaly.type.task_dead': 'Tâche de synchronisation en échec',
+    'anomaly.type.consistency_violation': 'Incohérence entre unités et attributions',
   },
   {
     'anomalies.heading': 'Anomalies',
@@ -142,5 +144,7 @@ export const anomalies = defineMessages(
     'anomaly.type.invalid_serial_property': 'Serial number property ignored',
     'anomaly.type.tracking_disabled_in_shopify': 'Stock tracking turned off in Shopify',
     'anomaly.type.units_on_inactive_location': 'Units on an inactive location',
+    'anomaly.type.task_dead': 'Synchronization task failed',
+    'anomaly.type.consistency_violation': 'Units and allocations inconsistent',
   },
 );

@@ -1,17 +1,20 @@
-import { AdminGraphqlClient, CostThrottle } from '@serialis/shopify';
+import { AdminGraphqlClient, CostThrottle, ShopifyError } from '@serialis/shopify';
 import { DurableObject } from 'cloudflare:workers';
 import m0001 from '../../db/shop/0001_init.sql';
 import m0002 from '../../db/shop/0002_allowed_transitions.sql';
 import m0003 from '../../db/shop/0003_platform.sql';
 import m0004 from '../../db/shop/0004_domain.sql';
 import m0005 from '../../db/shop/0005_api_keys.sql';
+import m0006 from '../../db/shop/0006_operations.sql';
 import { handleApiCall } from './api/router.js';
-import type { ApiCall, ApiResult } from './api/http.js';
+import { problem, type ApiCall, type ApiResult } from './api/http.js';
+import { registerAppUser, roleOf } from './api/users.js';
 import type { DomainContext } from './domain/context.js';
 import { recordOrderEdit, shouldSchedule } from './domain/ingest.js';
 import { runInventoryLevelCheck } from './domain/levels.js';
 import { ensureReconciliation, runReconcile, type Pass } from './domain/reconcile.js';
 import { DomainRepo } from './domain/repo.js';
+import { ensureMaintenance, runPurge } from './domain/maintenance.js';
 import { requestOrderSync, runSyncOrder } from './domain/sync-order.js';
 import { domainOutboxHooks } from './domain/writes.js';
 import { shopifyFetch } from './shopify-fetch.js';
@@ -19,10 +22,11 @@ import type { Env } from './env.js';
 import { taskHandler } from './handlers.js';
 import { handleApiKeysCall, handlePublicCall, invalidKey, isApiKeysPath, type PublicApiInput } from './public-api/object.js';
 import { TokenBucketLimiter } from './public-api/rate-limit.js';
-import { errorMessage, logEvent } from './log.js';
+import { errorMessage, logEvent, withLogContext } from './log.js';
 import { Outbox, type OutboxEnqueueInput } from './outbox.js';
 import { OUTBOX_TASK_KEY, TASK_PRIORITY } from './task-kinds.js';
-import { ALARM_BUDGET_MS, TaskQueue, type EnqueueTaskInput, type TaskHandler } from './tasks.js';
+import { ALARM_BUDGET_MS, TaskQueue, type EnqueueTaskInput, type TaskHandler, type TaskResult } from './tasks.js';
+import { setRegistryFrozen } from './routing.js';
 import { ReconnectRequiredError, TokenManager, type TokenStatus } from './tokens.js';
 import { minimalCompliancePayload, topicAction, WEBHOOK_TASK_DELAY_MS, type TopicAction } from './topics.js';
 
@@ -33,6 +37,7 @@ const MIGRATIONS: ReadonlyArray<{ version: number; sql: string }> = [
   { version: 3, sql: m0003 },
   { version: 4, sql: m0004 },
   { version: 5, sql: m0005 },
+  { version: 6, sql: m0006 },
 ];
 
 export type ShopState = 'active' | 'frozen' | 'uninstalled';
@@ -84,6 +89,16 @@ function parseBody(payload: string): Record<string, unknown> {
   }
 }
 
+const FREEZE_PROBE_KEY = 'freeze_probe';
+const FREEZE_PROBE_KIND = 'freeze_probe';
+/** One probe a day while frozen (12.2). */
+export const FREEZE_PROBE_EVERY_MS = 24 * 3_600_000;
+const WRITES_GATE_RETRY_MS = 30_000;
+
+function taskDeadKey(taskKey: string): string {
+  return `task_dead|task=${taskKey}`;
+}
+
 /** Budget of the outbox inside one alarm run (the alarm has 25 s of work in total, spec 12.2). */
 const OUTBOX_BUDGET_MS = 20_000;
 
@@ -107,8 +122,17 @@ export class ShopStore extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
-    this.tasks = new TaskQueue(ctx.storage);
     this.repo = new DomainRepo(this.sql);
+    this.tasks = new TaskQueue(ctx.storage, Math.random, {
+      // 12.2: a dead task opens a critical anomaly (and the operations alert, 17.2); it closes when the task runs again.
+      onDead: (t) => {
+        this.repo.openAnomaly({ type: 'task_dead', subject: {}, fingerprintKey: taskDeadKey(t.key), details: { task: t.key, kind: t.kind, attempts: t.attempts, error: t.error }, now: Date.now() });
+      },
+      onCompleted: (t) => {
+        const live = this.repo.liveAnomalyByKey(taskDeadKey(t.key));
+        if (live) this.repo.closeAnomaly(live.id, 'auto_resolved', { by: 'task_completed' }, Date.now());
+      },
+    });
     this.outbox = new Outbox(
       ctx.storage,
       () => this.meta('outbox_key_prefix') ?? 'serialis',
@@ -125,6 +149,7 @@ export class ShopStore extends DurableObject<Env> {
       apiSecret: env.SHOPIFY_API_SECRET,
       encryptionKey: env.TOKEN_ENCRYPTION_KEY,
       fetch: (input, init) => shopifyFetch()(input, init),
+      onStatusChange: (status) => this.onTokenStatus(status),
     });
     const self = this;
     this.domain = {
@@ -145,7 +170,8 @@ export class ShopStore extends DurableObject<Env> {
       this.migrate();
       this.tasks.recoverExpiredLeases();
       this.outbox.recoverExpiredLeases();
-      await this.tasks.syncAlarm(this.shopState() === 'active');
+      if (this.shopState() !== 'uninstalled') ctx.storage.transactionSync(() => ensureMaintenance(this.domain));
+      await this.armAlarm();
     });
   }
 
@@ -171,6 +197,10 @@ export class ShopStore extends DurableObject<Env> {
 
   /** Idempotent: first call creates the schema, a call after `app/uninstalled` reactivates. */
   async install(input: InstallInput): Promise<InstallResult> {
+    return this.logged(() => this.installImpl(input), input.shopDomain);
+  }
+
+  private async installImpl(input: InstallInput): Promise<InstallResult> {
     const created = this.schemaVersion() === 0;
     let reactivated = false;
     const now = Date.now();
@@ -184,6 +214,7 @@ export class ShopStore extends DurableObject<Env> {
         this.setMeta('installed_at', String(now));
         // Idempotency keys must never repeat across databases of the same shop (reinstall after redaction).
         this.setMeta('outbox_key_prefix', crypto.randomUUID());
+        ensureMaintenance(this.domain, now);
       });
       logEvent('info', 'shop.installed', { shop: input.shopDomain });
     } else {
@@ -203,7 +234,7 @@ export class ShopStore extends DurableObject<Env> {
       }
     }
     if (input.sessionToken) await this.tokens.ensureExchanged(input.sessionToken);
-    await this.tasks.syncAlarm(this.shopState() === 'active');
+    await this.armAlarm();
     return {
       created,
       reactivated,
@@ -245,6 +276,10 @@ export class ShopStore extends DurableObject<Env> {
    * duplicates are ignored (same webhook id). Idempotent, so RPC retries are harmless.
    */
   async ingest(input: IngestInput): Promise<IngestResult> {
+    return this.logged(() => this.ingestImpl(input));
+  }
+
+  private async ingestImpl(input: IngestInput): Promise<IngestResult> {
     if (this.schemaVersion() === 0) return { stored: false, reason: 'not_installed' };
     let body: unknown = null;
     try {
@@ -275,7 +310,7 @@ export class ShopStore extends DurableObject<Env> {
     });
 
     const shopState = this.shopState() ?? 'active';
-    await this.tasks.syncAlarm(shopState === 'active');
+    await this.armAlarm();
     if (!stored) return { stored: false, reason: 'duplicate', shopState };
     return { stored: true, action: action.type, shopState };
   }
@@ -334,7 +369,7 @@ export class ShopStore extends DurableObject<Env> {
   async enqueueTask(input: EnqueueTaskInput): Promise<string> {
     this.assertInstalled();
     const outcome = this.tasks.enqueue(input);
-    await this.tasks.syncAlarm(this.shopState() === 'active');
+    await this.armAlarm();
     return outcome;
   }
 
@@ -350,7 +385,7 @@ export class ShopStore extends DurableObject<Env> {
   async enqueueOutbox(input: OutboxEnqueueInput): Promise<{ id: number; created: boolean }> {
     this.assertInstalled();
     const result = this.ctx.storage.transactionSync(() => this.queueOutbox(input));
-    await this.tasks.syncAlarm(this.shopState() === 'active');
+    await this.armAlarm();
     return result;
   }
 
@@ -362,17 +397,27 @@ export class ShopStore extends DurableObject<Env> {
   }
 
   override async alarm(): Promise<void> {
+    return this.logged(() => this.alarmImpl());
+  }
+
+  private async alarmImpl(): Promise<void> {
     // Never throws (spec 12.2): every task has its own error block and the alarm is always re-armed.
     try {
       if (this.schemaVersion() === 0) return;
-      if (this.shopState() !== 'active') return;
+      const state = this.shopState();
+      if (state === 'frozen') {
+        // 12.2: passes, outbox and tasks suspended; only the daily probe runs.
+        await this.tasks.runDue((kind) => this.lookupHandler(kind), ALARM_BUDGET_MS, [FREEZE_PROBE_KEY]);
+        return;
+      }
+      if (state !== 'active') return;
       this.outbox.recoverExpiredLeases();
       await this.tasks.runDue((kind) => this.lookupHandler(kind), ALARM_BUDGET_MS);
     } catch (error) {
       logEvent('error', 'alarm.failed', { error: errorMessage(error) });
     } finally {
       try {
-        if (this.schemaVersion() > 0) await this.tasks.syncAlarm(this.shopState() === 'active');
+        if (this.schemaVersion() > 0) await this.armAlarm();
       } catch (error) {
         logEvent('error', 'alarm.rearm_failed', { error: errorMessage(error) });
       }
@@ -380,8 +425,11 @@ export class ShopStore extends DurableObject<Env> {
   }
 
   private lookupHandler(kind: string): TaskHandler | undefined {
+    if (kind === FREEZE_PROBE_KIND) return () => this.freezeProbe();
     if (kind === 'process_outbox') {
       return async () => {
+        // After a freeze, writes resume only once a full reconciliation has run (12.2, T-CH-09).
+        if (!this.writesResumable()) return { rescheduleAt: Date.now() + WRITES_GATE_RETRY_MS };
         const { nextAt } = await this.outbox.process(() => this.shopifyClient(), OUTBOX_BUDGET_MS);
         return { rescheduleAt: nextAt };
       };
@@ -397,6 +445,8 @@ export class ShopStore extends DurableObject<Env> {
       } catch (error) {
         // No usable token: wait for the merchant to open the app, without burning attempts (13.9).
         if (error instanceof ReconnectRequiredError) return { rescheduleAt: Date.now() + 5 * 60_000 };
+        // Frozen shop (402/423): suspended without burning attempts (12.2); the object is frozen by the client wrapper.
+        if (error instanceof ShopifyError && error.kind === 'frozen') return { rescheduleAt: Date.now() + 3_600_000 };
         throw error;
       }
     };
@@ -413,6 +463,8 @@ export class ShopStore extends DurableObject<Env> {
         return (ctx) => runReconcile(this.domain, String(ctx.payload.pass) as Pass);
       case 'resolve':
         return (ctx) => this.resolveSubject(String(ctx.payload.gid));
+      case 'purge':
+        return () => runPurge(this.domain);
       default:
         return undefined;
     }
@@ -444,17 +496,26 @@ export class ShopStore extends DurableObject<Env> {
    * verified the session token or API key and chosen this object from it.
    */
   async api(call: ApiCall): Promise<ApiResult> {
+    return this.logged(() => this.apiImpl(call));
+  }
+
+  private async apiImpl(call: ApiCall): Promise<ApiResult> {
     if (this.schemaVersion() === 0) return { status: 403, headers: { 'Content-Type': 'application/problem+json' }, body: JSON.stringify({ type: 'https://serialis.dev/problems/forbidden', title: 'Forbidden', status: 403, code: 'forbidden', detail: 'shop_not_installed' }) };
     this.repo.setMeta('last_activity_at', String(Date.now()));
     try {
-      if (isApiKeysPath(call.path)) return await handleApiKeysCall(this.domain, this.env, call);
+      if (isApiKeysPath(call.path)) {
+        // 15.8: API keys are an administration action.
+        registerAppUser(this.domain, call.principal, Date.now());
+        if (roleOf(this.domain, call.principal) !== 'admin') return problem(403, 'forbidden', 'admin_required');
+        return await handleApiKeysCall(this.domain, this.env, call);
+      }
       return await handleApiCall(this.domain, call, () => ({
         shop: this.meta('shop_domain') ?? '',
         tokenStatus: this.tokens.status().status,
         shopState: this.shopState(),
       }));
     } finally {
-      await this.tasks.syncAlarm(this.shopState() === 'active');
+      await this.armAlarm();
     }
   }
 
@@ -464,6 +525,10 @@ export class ShopStore extends DurableObject<Env> {
    * refuses the key without creating anything (10.5).
    */
   async publicApi(input: PublicApiInput): Promise<ApiResult> {
+    return this.logged(() => this.publicApiImpl(input));
+  }
+
+  private async publicApiImpl(input: PublicApiInput): Promise<ApiResult> {
     if (this.schemaVersion() === 0) return invalidKey();
     try {
       return await handlePublicCall(this.domain, input, {
@@ -471,7 +536,7 @@ export class ShopStore extends DurableObject<Env> {
         info: () => ({ shop: this.meta('shop_domain') ?? '', tokenStatus: this.tokens.status().status, shopState: this.shopState() }),
       });
     } finally {
-      await this.tasks.syncAlarm(this.shopState() === 'active');
+      await this.armAlarm();
     }
   }
 
@@ -479,7 +544,7 @@ export class ShopStore extends DurableObject<Env> {
   async ensureReconciliation(): Promise<void> {
     this.assertInstalled();
     this.ctx.storage.transactionSync(() => ensureReconciliation(this.domain));
-    await this.tasks.syncAlarm(this.shopState() === 'active');
+    await this.armAlarm();
   }
 
   /** Admin client of this shop; the token comes from the token manager (refreshed when needed). */
@@ -494,7 +559,126 @@ export class ShopStore extends DurableObject<Env> {
         else if (event.type === 'retry') logEvent('warn', 'shopify.retry', { attempt: event.attempt, kind: event.kind, delay_ms: event.delayMs });
       },
     });
-    return this.client;
+    // 12.2: a 402/423 on any call freezes the shop; the first successful call while frozen unfreezes it.
+    const client = this.client;
+    if (!(client as { serialisWrapped?: boolean }).serialisWrapped) {
+      const request = client.request.bind(client);
+      client.request = (async (query: string, options?: Parameters<AdminGraphqlClient['request']>[1]) => {
+        try {
+          const result = await request(query, options);
+          if (this.shopState() === 'frozen') await this.unfreeze();
+          return result;
+        } catch (error) {
+          if (error instanceof ShopifyError && error.kind === 'frozen') await this.markFrozen();
+          throw error;
+        }
+      }) as AdminGraphqlClient['request'];
+      (client as { serialisWrapped?: boolean }).serialisWrapped = true;
+    }
+    return client;
+  }
+
+  // ---------------------------------------------------------------- frozen shop (spec 12.2, T-CH-09)
+
+  /** Alarm on the next due task: every task when active, the daily probe only when frozen, none when uninstalled. */
+  private async armAlarm(): Promise<void> {
+    const state = this.shopState();
+    await this.tasks.syncAlarm(state === 'active' ? true : state === 'frozen' ? [FREEZE_PROBE_KEY] : false);
+  }
+
+  /** Shopify answered 402 or 423: the shop is frozen in the object and the registry; one probe a day. */
+  private async markFrozen(): Promise<void> {
+    if (this.schemaVersion() === 0 || this.shopState() !== 'active') return;
+    const now = Date.now();
+    this.ctx.storage.transactionSync(() => {
+      this.setMeta('shop_state', 'frozen');
+      this.setMeta('frozen_at', String(now));
+      this.tasks.enqueue({ key: FREEZE_PROBE_KEY, kind: FREEZE_PROBE_KIND, priority: 0, delayMs: FREEZE_PROBE_EVERY_MS }, now);
+    });
+    logEvent('warn', 'shop.frozen', {});
+    await this.updateRegistry('frozen');
+  }
+
+  /**
+   * First successful call while frozen: active again, then a full reconciliation (R1 from the last
+   * cursor, R2, R3) before any write; the outbox waits for it (`writes_resume_after`).
+   */
+  private async unfreeze(): Promise<void> {
+    if (this.shopState() !== 'frozen') return;
+    const now = Date.now();
+    this.ctx.storage.transactionSync(() => {
+      this.setMeta('shop_state', 'active');
+      this.deleteMeta('frozen_at');
+      this.setMeta('writes_resume_after', String(now));
+      this.sql.exec('DELETE FROM tasks WHERE key = ?', FREEZE_PROBE_KEY);
+      ensureReconciliation(this.domain, now);
+      this.sql.exec("UPDATE tasks SET run_at = ?, updated_at = ? WHERE key IN ('recon:R1', 'recon:R2', 'recon:R3') AND status = 'pending'", now, now);
+      // Suspended work becomes due again (sync tasks first by priority; the outbox waits for the reconciliation).
+      this.sql.exec("UPDATE tasks SET run_at = ? WHERE status = 'pending' AND run_at > ? AND key NOT IN ('purge', 'recon:R4')", now, now);
+      this.sql.exec("UPDATE outbox SET next_attempt_at = ? WHERE status = 'pending'", now);
+    });
+    logEvent('info', 'shop.unfrozen', {});
+    await this.updateRegistry('active');
+  }
+
+  /** Writes are allowed unless a full reconciliation is still due after a freeze. */
+  private writesResumable(): boolean {
+    const since = this.meta('writes_resume_after');
+    if (since === null) return true;
+    const done = !this.repo.hasActiveItems() || (['R1', 'R2', 'R3'] as const).every((p) => Number(this.meta(`last_run:${p}`) ?? '0') >= Number(since));
+    if (done) this.deleteMeta('writes_resume_after');
+    return done;
+  }
+
+  /** Daily probe of a frozen shop: a cheap read; success unfreezes through the client wrapper. */
+  private async freezeProbe(): Promise<TaskResult> {
+    try {
+      await this.shopifyClient().request('query SerialisProbe { shop { id } }', { estimatedCost: 1 });
+      return;
+    } catch (error) {
+      if (error instanceof ShopifyError && error.kind === 'frozen') return { rescheduleAt: Date.now() + FREEZE_PROBE_EVERY_MS };
+      if (error instanceof ReconnectRequiredError) return { rescheduleAt: Date.now() + FREEZE_PROBE_EVERY_MS };
+      return { rescheduleAt: Date.now() + 3_600_000 };
+    }
+  }
+
+  private async updateRegistry(status: 'active' | 'frozen'): Promise<void> {
+    const shop = this.meta('shop_domain');
+    if (!shop) return;
+    try {
+      await setRegistryFrozen(this.env, shop, status === 'frozen');
+    } catch (error) {
+      logEvent('error', 'shop.registry_update_failed', { status, error: errorMessage(error) });
+    }
+  }
+
+  // ---------------------------------------------------------------- observability (spec 17.1)
+
+  /** Runs an entry point with the shop in every log line and the per-shop order digest key. */
+  private logged<T>(fn: () => T, shopDomain?: string): T {
+    const installed = this.schemaVersion() > 0;
+    return withLogContext({ shop: shopDomain ?? (installed ? (this.meta('shop_domain') ?? undefined) : undefined), ...(installed ? { orderKey: this.logSecret() } : {}) }, fn);
+  }
+
+  private logSecret(): string {
+    let secret = this.meta('log_secret');
+    if (!secret) {
+      secret = crypto.randomUUID();
+      this.setMeta('log_secret', secret);
+    }
+    return secret;
+  }
+
+  /** `reconnect_required` (12.7, 13.9): critical anomaly while no usable token exists, closed by the next valid token. */
+  private onTokenStatus(status: 'valid' | 'reconnect_required'): void {
+    if (this.schemaVersion() === 0) return;
+    const now = Date.now();
+    if (status === 'reconnect_required') {
+      this.repo.openAnomaly({ type: 'reconnect_required', subject: {}, fingerprintKey: 'reconnect_required', details: {}, now });
+      return;
+    }
+    const live = this.repo.liveAnomalyByKey('reconnect_required');
+    if (live) this.repo.closeAnomaly(live.id, 'auto_resolved', { by: 'token_valid' }, now);
   }
 
   // ---------------------------------------------------------------- helpers

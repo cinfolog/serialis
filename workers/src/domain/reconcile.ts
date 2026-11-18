@@ -12,6 +12,7 @@ import type { TaskResult } from '../tasks.js';
 import type { DomainContext } from './context.js';
 import { listOrders } from './shopify-read.js';
 import { requestLevelCheck, requestOrderSync, syncOrderTaskKey } from './sync-order.js';
+import { runR4 } from './maintenance.js';
 
 const MIN = 60_000;
 export const R1_ACTIVE_MS = 2 * MIN;
@@ -20,11 +21,11 @@ export const R1_OVERLAP_MS = 10 * MIN;
 export const R2_MS = 15 * MIN;
 export const R3_MS = 40 * MIN;
 
-export type Pass = 'R1' | 'R2' | 'R3';
+export type Pass = 'R1' | 'R2' | 'R3' | 'R4';
 
 /** Schedules the passes that are not scheduled yet (called when tracking starts and at installation). */
 export function ensureReconciliation(ctx: DomainContext, now = Date.now()): void {
-  const delays: Record<Pass, number> = { R1: R1_ACTIVE_MS, R2: R2_MS, R3: R3_MS };
+  const delays: Record<Exclude<Pass, 'R4'>, number> = { R1: R1_ACTIVE_MS, R2: R2_MS, R3: R3_MS };
   for (const pass of ['R1', 'R2', 'R3'] as const) {
     const key = `recon:${pass}`;
     if (ctx.sql.exec('SELECT 1 FROM tasks WHERE key = ?', key).toArray().length > 0) continue;
@@ -33,15 +34,23 @@ export function ensureReconciliation(ctx: DomainContext, now = Date.now()): void
 }
 
 export async function runReconcile(ctx: DomainContext, pass: Pass): Promise<TaskResult> {
+  // R4 audits the base itself (outbox, tasks, consistency): it runs even with nothing tracked.
+  if (pass === 'R4') return runR4(ctx);
   if (!ctx.repo.hasActiveItems()) return; // nothing tracked: the passes stop until tracking starts again
+  let result: TaskResult;
   switch (pass) {
     case 'R1':
-      return runR1(ctx);
+      result = await runR1(ctx);
+      break;
     case 'R2':
-      return runR2(ctx);
+      result = runR2(ctx);
+      break;
     case 'R3':
-      return runR3(ctx);
+      result = runR3(ctx);
+      break;
   }
+  ctx.repo.setMeta(`last_run:${pass}`, String(Date.now()));
+  return result;
 }
 
 async function runR1(ctx: DomainContext): Promise<TaskResult> {

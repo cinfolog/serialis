@@ -7,6 +7,10 @@
  * (same key = same answer, never applied twice), simulation id required for "simulation" settings.
  */
 import type {
+  ApiKey,
+  ApiScope,
+  CreateApiKeyRequest,
+  CreateApiKeyResponse,
   Anomaly,
   CheckUnitsBatchResponse,
   CreateImportRequest,
@@ -112,6 +116,7 @@ export class MockClient implements ApiClient {
   readonly postLog: Array<{ name: string; key: string }> = [];
   private replay = new Map<string, unknown>();
   private simulations = new Map<string, SimulateSettingsRequest>();
+  apiKeys: ApiKey[] = [];
   private seq = 1;
 
   constructor(readonly options: MockOptions = {}) {
@@ -656,6 +661,39 @@ export class MockClient implements ApiClient {
       this.emergencyStop = false;
       return { emergencyStop: false };
     });
+  }
+
+  async listApiKeys(): Promise<Page<ApiKey>> {
+    await this.tick();
+    this.adminOnly();
+    return { items: structuredClone(this.apiKeys), nextCursor: null };
+  }
+
+  /** Same rules as the Worker: name 1–100 characters, non-empty known scopes, key returned once, never replayed. */
+  async createApiKey(req: CreateApiKeyRequest): Promise<CreateApiKeyResponse> {
+    await this.tick();
+    this.adminOnly();
+    const name = req.name.trim();
+    const known: ApiScope[] = ['units:read', 'units:write', 'allocations:read', 'allocations:write', 'anomalies:read', 'anomalies:write', 'admin'];
+    if (name.length < 1 || name.length > 100) throw new ApiError({ status: 422, code: 'validation_failed', detail: 'name', errors: [{ field: 'name', code: 'validation_failed' }] });
+    if (req.scopes.length === 0 || req.scopes.some((s) => !known.includes(s))) throw new ApiError({ status: 422, code: 'validation_failed', detail: 'scopes', errors: [{ field: 'scopes', code: 'validation_failed' }] });
+    const prefix = `mock${String(this.seq++).padStart(12, 'a')}`.slice(0, 16);
+    const publicPart = `srl_1_global_mock-shop.myshopify.com_${prefix}`;
+    const apiKey: ApiKey = { prefix, name, scopes: known.filter((s) => req.scopes.includes(s)), hint: `${publicPart}_…`, createdAt: this.iso(), createdBy: '1', lastUsedAt: null, revokedAt: null };
+    this.apiKeys.unshift(apiKey);
+    return { apiKey: structuredClone(apiKey), key: `${publicPart}_${'0'.repeat(32)}.${'S'.repeat(43)}` };
+  }
+
+  async revokeApiKey(prefix: string): Promise<void> {
+    await this.tick();
+    this.adminOnly();
+    const key = this.apiKeys.find((k) => k.prefix === prefix);
+    if (!key) throw new ApiError({ status: 404, code: 'not_found', detail: 'unknown api key' });
+    key.revokedAt ??= this.iso();
+  }
+
+  private adminOnly(): void {
+    if (this.options.role === 'operator') throw new ApiError({ status: 403, code: 'forbidden', detail: 'Réservé aux administrateurs.' });
   }
 
   /** Mock-only: what the Shopify resource picker would offer (not yet tracked variants). */

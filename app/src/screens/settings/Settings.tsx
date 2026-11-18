@@ -10,6 +10,7 @@ import { Page } from '../../ui/Page';
 import { SaveBar } from '../../ui/SaveBar';
 import { ErrorState, Loading, useErrorMessage } from '../../ui/states';
 import { choiceFor, FIXED_SETTINGS, SETTINGS, THEMES, weakeningOf, type SettingDef, type SettingValueType } from './../../settings/catalogue';
+import { ApiKeysSection } from './ApiKeysSection';
 import { EmergencyStopSection } from './EmergencyStopSection';
 
 const same = (a: SettingValueType | undefined, b: SettingValueType | undefined) => a === b;
@@ -293,6 +294,8 @@ export function Settings() {
           ))}
         </Stack>
       </Section>
+
+      <ApiKeysSection />
 
       <EmergencyStopSection />
 

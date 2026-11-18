@@ -7,11 +7,13 @@ import { markUninstalled, resolveRouting, shopStub } from './routing.js';
 import { isComplianceTopic } from './topics.js';
 import { API_PREFIX, handleInternalApi } from './api/internal.js';
 import { serveAdminApp } from './assets.js';
+import { handlePublicApi, publicApiBase } from './public-api/worker.js';
 
 export { ShopStore } from './shop-store.js';
 
 /**
  * Main Worker `serialis-web` (spec 10.2). Routes:
+ *  - api.* host (/v1/*) and /public/v1/* (not in production): public API, API keys (public-api/worker.ts)
  *  - /api/v1/*   internal API (api/contract), session or ID token, CORS for the admin extensions
  *  - GET /api/me session-token authentication, installation, shop status (lot 0)
  *  - POST /webhooks/shopify — signature check, routing, idempotent storage in the shop's object
@@ -21,6 +23,12 @@ export { ShopStore } from './shop-store.js';
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // Public API (14.1): `api.*` host under /v1, `/public/v1` on the staging and pilot hosts.
+    const publicBase = publicApiBase(url, env);
+    if (publicBase !== null && !(request.method === 'GET' && url.pathname === '/healthz')) return handlePublicApi(request, env, url, publicBase);
+    // Production: the app host does not expose the public API (single entry point `api.`).
+    if (url.pathname.startsWith('/public/')) return new Response('Not found', { status: 404 });
 
     if (url.pathname === API_PREFIX || url.pathname.startsWith(`${API_PREFIX}/`)) {
       return handleInternalApi(request, env, url);

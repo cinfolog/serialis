@@ -18,4 +18,10 @@ export interface Env {
    * all of them decrypt (rotation without downtime).
    */
   TOKEN_ENCRYPTION_KEY: string;
+  /**
+   * Secret: sealing secret of the API keys, version 1 (spec 14.1). A rotation adds
+   * `API_KEY_SEAL_SECRET_V2`, `_V3`… (read by name, `public-api/keys.ts`): the highest version seals
+   * new keys, every configured version verifies. Generate: `openssl rand -base64 32`.
+   */
+  API_KEY_SEAL_SECRET_V1: string;
 }

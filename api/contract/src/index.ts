@@ -272,7 +272,8 @@ export interface SettingsResponse {
 }
 export interface PatchSettingsRequest {
   scope: SettingScope;
-  values: Record<string, string | number | boolean>;
+  /** `null` removes the value stored at this scope (back to the inherited value or the default, T-SET-06). */
+  values: Record<string, string | number | boolean | null>;
   simulationId?: string;
 }
 
@@ -406,7 +407,8 @@ export interface UnitEvent {
 /** POST /settings/simulate — effect of a "simulation" setting change; id valid 10 min (14.2, 6.6.1). */
 export interface SimulateSettingsRequest {
   scope: SettingScope;
-  values: Record<string, string | number | boolean>;
+  /** Same values as the PATCH to come; `null` = back to the default. */
+  values: Record<string, string | number | boolean | null>;
 }
 export interface SettingsSimulation {
   simulationId: string;

@@ -250,6 +250,26 @@ describe('resources', () => {
     expect(reset.values.find((v: { key: string }) => v.key === 'S-05')).toMatchObject({ value: 'fifo', origin: 'default' });
   });
 
+  it('settings: a shop value equal to the default is not stored, null removes it (T-SET-06, « Mes choix »)', async () => {
+    // Browser recette: S-22 10 → 15 → 10 left an explicit shop value of 10 listed in « Mes choix ».
+    const { h } = await setup('settings-default');
+    const s22 = (r: { values: Array<{ key: string }> }) => r.values.find((v) => v.key === 'S-22');
+    const shopRows = async () => (await h.query<{ n: number }>("SELECT count(*) AS n FROM settings WHERE scope_type = 'shop' AND key = 'S-22'"))[0]!.n;
+    expect(s22(await json(await h.api('PATCH', '/settings', { scope: 'shop', values: { 'S-22': 15 } }), 200))).toMatchObject({ value: 15, origin: 'shop' });
+    expect(s22(await json(await h.api('PATCH', '/settings', { scope: 'shop', values: { 'S-22': 10 } }), 200))).toMatchObject({ value: 10, origin: 'default' });
+    expect(await shopRows()).toBe(0);
+    expect(s22(await json(await h.api('GET', '/settings?scope=shop'), 200))).toMatchObject({ value: 10, origin: 'default' });
+    // Same rule for a structured value (S-40) and a choice (S-05).
+    await json(await h.api('PATCH', '/settings', { scope: 'shop', values: { 'S-40': 'owner_no_digest', 'S-05': 'earliest_expiry' } }), 200);
+    const back = await json(await h.api('PATCH', '/settings', { scope: 'shop', values: { 'S-40': 'owner_digest', 'S-05': 'fifo' } }), 200);
+    expect(back.values.filter((v: { key: string; origin: string }) => ['S-40', 'S-05'].includes(v.key)).map((v: { origin: string }) => v.origin)).toEqual(['default', 'default']);
+    // A value stored before this rule (explicit 10) is still removed by « Back to default » (null).
+    await h.run("INSERT INTO settings (scope_type, scope_id, key, value, updated_by, updated_at) VALUES ('shop', '', 'S-22', '600000', 'legacy', 0)");
+    expect(s22(await json(await h.api('GET', '/settings?scope=shop'), 200))).toMatchObject({ value: 10, origin: 'shop' });
+    expect(s22(await json(await h.api('PATCH', '/settings', { scope: 'shop', values: { 'S-22': null } }), 200))).toMatchObject({ value: 10, origin: 'default' });
+    expect(await shopRows()).toBe(0);
+  });
+
   it('imports: simulation report, then confirmation (received and already counted)', async () => {
     const { h, loc, variant, item } = await setup('imports', 1);
     await track(h, [variant]);

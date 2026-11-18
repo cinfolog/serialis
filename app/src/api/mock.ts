@@ -617,15 +617,19 @@ export class MockClient implements ApiClient {
   async patchSettings(req: PatchSettingsRequest): Promise<SettingsResponse> {
     await this.tick();
     if (this.options.role === 'operator') throw new ApiError({ status: 403, code: 'forbidden', detail: 'Réservé aux administrateurs.' });
-    const needsSim = Object.keys(req.values).filter((k) => SIMULATED_KEYS.has(k) && req.values[k] !== this.settings[k]);
+    // `null` = back to the default (the stored value is removed), like the Worker (T-SET-06).
+    const target = (k: string) => req.values[k] ?? MOCK_SETTING_DEFAULTS[k];
+    const needsSim = Object.keys(req.values).filter((k) => SIMULATED_KEYS.has(k) && (target(k) !== this.settings[k] || (req.values[k] === null && this.settingsMeta.has(k))));
     if (needsSim.length > 0) {
       const sim = req.simulationId ? this.simulations.get(req.simulationId) : undefined;
       if (!sim) throw new ApiError({ status: 422, code: 'simulation_expired', detail: 'Lancez une nouvelle simulation avant d’enregistrer.' });
     }
     for (const [key, value] of Object.entries(req.values)) {
       if (!(key in MOCK_SETTING_DEFAULTS)) throw new ApiError({ status: 422, code: 'validation_failed', detail: `Réglage inconnu : ${key}` });
-      this.settings[key] = value;
-      if (value === MOCK_SETTING_DEFAULTS[key]) this.settingsMeta.delete(key);
+      const next = value ?? (MOCK_SETTING_DEFAULTS[key] as string | number | boolean);
+      this.settings[key] = next;
+      // Shop scope: a value equal to the default is not stored (Worker decision 73).
+      if (next === MOCK_SETTING_DEFAULTS[key]) this.settingsMeta.delete(key);
       else this.settingsMeta.set(key, { origin: 'shop', by: 'Camille' });
     }
     return this.settingsResponse(req.scope);

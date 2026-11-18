@@ -2,7 +2,7 @@
  * The ONE typed client of the Serialis internal API (`/api/v1/...`, spec 14).
  *
  *  - every call goes through `HttpClient.call`, which resolves method and path from the shared route
- *    table of the contract (`ALL_ROUTES`), so a method cannot target a route that does not exist;
+ *    table of the contract (`INTERNAL_ROUTES` = `ALL_ROUTES` + `API_KEY_ROUTES`), so a method cannot target a route that does not exist;
  *  - `Authorization: Bearer <App Bridge session token>` (fresh token per request);
  *  - `Idempotency-Key` on every POST (14.1): callers that retry the SAME user action after a cut
  *    must pass the same `idempotencyKey` (15.5 "Envois sûrs");
@@ -11,10 +11,13 @@
  * `mock.ts` implements the same `ApiClient` interface with in-memory fixtures (VITE_API_MOCK=1).
  */
 import {
-  ALL_ROUTES,
   INTERNAL_BASE,
-  type AnyRouteName,
+  INTERNAL_ROUTES,
+  type InternalRouteName,
   type Anomaly,
+  type ApiKey,
+  type CreateApiKeyRequest,
+  type CreateApiKeyResponse,
   type AutomationStateResponse,
   type CheckUnitsBatchResponse,
   type CreateImportRequest,
@@ -96,6 +99,11 @@ export interface ApiClient {
 
   pause(opts?: WriteOptions): Promise<AutomationStateResponse>;
   resume(opts?: WriteOptions): Promise<AutomationStateResponse>;
+
+  /** API keys (15.4 "Réglages › API", administrators): the full key is only in the creation response. */
+  listApiKeys(): Promise<Page<ApiKey>>;
+  createApiKey(req: CreateApiKeyRequest): Promise<CreateApiKeyResponse>;
+  revokeApiKey(prefix: string): Promise<void>;
 }
 
 /** Contract route used by each client method (checked by `client.contract.test.ts`). */
@@ -121,7 +129,10 @@ export const CLIENT_ROUTES = {
   confirmImport: 'confirmImport',
   pause: 'pause',
   resume: 'resume',
-} as const satisfies Record<keyof ApiClient, AnyRouteName>;
+  listApiKeys: 'listApiKeys',
+  createApiKey: 'createApiKey',
+  revokeApiKey: 'revokeApiKey',
+} as const satisfies Record<keyof ApiClient, InternalRouteName>;
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -207,8 +218,8 @@ export class HttpClient implements ApiClient {
     this.getToken = options.getToken ?? getSessionToken;
   }
 
-  private async call<T>(name: AnyRouteName, init: CallInit = {}): Promise<T> {
-    const { method, template } = splitRoute(ALL_ROUTES[name]);
+  private async call<T>(name: InternalRouteName, init: CallInit = {}): Promise<T> {
+    const { method, template } = splitRoute(INTERNAL_ROUTES[name]);
     const path = template.replace(/\{(\w+)\}/g, (_m, key: string) => {
       const value = init.pathParams?.[key];
       if (value === undefined) throw new Error(`Missing path parameter "${key}" for ${name}`);
@@ -330,6 +341,16 @@ export class HttpClient implements ApiClient {
   }
   resume(opts: WriteOptions = {}) {
     return this.call<AutomationStateResponse>('resume', { idempotencyKey: opts.idempotencyKey });
+  }
+  listApiKeys() {
+    return this.call<Page<ApiKey>>('listApiKeys');
+  }
+  /** Not replayed by the server (the response carries the secret): a retry creates another key. */
+  createApiKey(req: CreateApiKeyRequest) {
+    return this.call<CreateApiKeyResponse>('createApiKey', { body: req });
+  }
+  revokeApiKey(prefix: string) {
+    return this.call<void>('revokeApiKey', { pathParams: { prefix } });
   }
 }
 

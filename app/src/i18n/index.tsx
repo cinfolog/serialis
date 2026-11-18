@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { hasMessage, translate, type BaseKey, type Locale, type Params } from './core';
 import { anomalies } from './messages/anomalies';
+import { apikeys } from './messages/apikeys';
 import { common } from './messages/common';
 import { home } from './messages/home';
 import { imports } from './messages/imports';
@@ -11,10 +12,10 @@ import { tracked } from './messages/tracked';
 import { units } from './messages/units';
 import { wizard } from './messages/wizard';
 
-const modules = [common, shell, home, refs, wizard, units, tracked, anomalies, imports, settings];
+const modules = [common, shell, home, refs, wizard, units, tracked, anomalies, imports, settings, apikeys];
 
-const fr = Object.assign({}, ...modules.map((m) => m.fr)) as typeof common.fr & typeof shell.fr & typeof home.fr & typeof refs.fr & typeof wizard.fr & typeof units.fr & typeof tracked.fr & typeof anomalies.fr & typeof imports.fr & typeof settings.fr;
-const en = Object.assign({}, ...modules.map((m) => m.en)) as typeof common.en & typeof shell.en & typeof home.en & typeof refs.en & typeof wizard.en & typeof units.en & typeof tracked.en & typeof anomalies.en & typeof imports.en & typeof settings.en;
+const fr = Object.assign({}, ...modules.map((m) => m.fr)) as typeof common.fr & typeof shell.fr & typeof home.fr & typeof refs.fr & typeof wizard.fr & typeof units.fr & typeof tracked.fr & typeof anomalies.fr & typeof imports.fr & typeof settings.fr & typeof apikeys.fr;
+const en = Object.assign({}, ...modules.map((m) => m.en)) as typeof common.en & typeof shell.en & typeof home.en & typeof refs.en & typeof wizard.en & typeof units.en & typeof tracked.en & typeof anomalies.en & typeof imports.en & typeof settings.en & typeof apikeys.en;
 
 export const dictionaries: Record<Locale, Record<string, string>> = { fr, en };
 

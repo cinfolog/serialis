@@ -215,7 +215,7 @@ export const SETTINGS: Catalogue = {
     kind: 'enum',
     values: ['auto', 'on_decision'],
     default: 'auto',
-    scopes: ['tracked_item'],
+    scopes: ['shop', 'tracked_item'],
     changeRule: 'immediate',
     warning: {
       values: ['on_decision'],

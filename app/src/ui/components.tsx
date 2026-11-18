@@ -3,7 +3,7 @@
  * React component and a custom element: events are native DOM events read from the host element,
  * and boolean attributes must be omitted (not "false") when off.
  */
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useElementEvent } from './hooks';
 
 type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'critical';
@@ -161,9 +161,40 @@ export function Section(props: { heading?: string; children: ReactNode; padding?
   );
 }
 
+type ModalElement = HTMLElement & { showOverlay?: () => void; hideOverlay?: () => void };
+
+/** Element that has the keyboard focus, looking inside open shadow roots. */
+function deepActiveElement(): HTMLElement | null {
+  let a: Element | null = document.activeElement;
+  while (a && (a as HTMLElement).shadowRoot?.activeElement) a = (a as HTMLElement).shadowRoot!.activeElement;
+  return a instanceof HTMLElement ? a : null;
+}
+
+/** Cancels a pending fallback timer, if any. */
+function clear(timer: { current: ReturnType<typeof setTimeout> | null }) {
+  if (timer.current !== null) clearTimeout(timer.current);
+  timer.current = null;
+}
+
+/** Time given to Polaris to send `afterhide` before the modal leaves the document anyway. */
+const AFTERHIDE_FALLBACK_MS = 1000;
+
 /**
- * Modal confirmation that names the exact effect (15.1, 15.7). Rendered only while open; the
- * Polaris modal is shown on mount and `onClose` is called when it is dismissed.
+ * Modal confirmation that names the exact effect (15.1, 15.7).
+ *
+ * In the admin, a shown `s-modal` greys the Shopify top bar and menu until it is hidden, so the
+ * element must never leave the document while shown (decision 33). Rules:
+ * - `open` true: the element is rendered and shown (`showOverlay`) in a layout effect;
+ * - `open` false: `hideOverlay()` is called while the element is still in the document; the element
+ *   and its content stay until `afterhide` (or a fallback delay), then leave; the focus goes back to
+ *   the control that opened the dialog when it is lost;
+ * - a close decided by Polaris (its close button, its own Escape) arrives as `hide` / `afterhide`
+ *   and calls `onClose`, so the app state always follows;
+ * - unmounting while shown (screen left, banner gone) hides the modal in the layout-effect cleanup,
+ *   which React runs before it removes the element;
+ * - Escape closes without acting, wherever the focus is while the dialog is open (decision 34).
+ * Every close of the app goes through `onClose` → `open` false: one path for Cancel, Escape,
+ * success and error.
  */
 export function ConfirmDialog(props: {
   open: boolean;
@@ -176,15 +207,89 @@ export function ConfirmDialog(props: {
   onConfirm: () => void;
   onClose: () => void;
 }) {
-  const ref = useRef<HTMLElement & { showOverlay?: () => void; hideOverlay?: () => void }>(null);
+  const ref = useRef<ModalElement>(null);
+  const [mounted, setMounted] = useState(props.open);
+  if (props.open && !mounted) setMounted(true); // adjusted during render, no effect (decision 29)
+  const openRef = useRef(props.open);
+  openRef.current = props.open;
+  const onClose = useRef(props.onClose);
+  onClose.current = props.onClose;
+  const shown = useRef(false);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const fallback = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const finish = useCallback(() => {
+    clear(fallback);
+    shown.current = false;
+    setMounted(false);
+    const target = returnFocus.current;
+    returnFocus.current = null;
+    const el = ref.current;
+    const active = deepActiveElement();
+    const lost = active === null || active === document.body || (el !== null && (el === active || el.contains(active)));
+    if (target?.isConnected && lost) target.focus();
+  }, []);
+
+  // Show and hide follow `open`; layout effect: same commit as the element, before paint.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (props.open) {
+      clear(fallback);
+      if (!shown.current) {
+        const active = deepActiveElement();
+        if (active && !el.contains(active)) returnFocus.current = active;
+        shown.current = true;
+        el.showOverlay?.();
+      }
+      return;
+    }
+    if (!shown.current || typeof el.hideOverlay !== 'function') {
+      // Already hidden by Polaris, or element not upgraded (no Polaris): nothing to wait for.
+      finish();
+      return;
+    }
+    el.hideOverlay();
+    clear(fallback);
+    fallback.current = setTimeout(finish, AFTERHIDE_FALLBACK_MS);
+  }, [props.open, mounted, finish]);
+
+  // Unmounted while shown: hide first. React runs layout-effect cleanups of a removed subtree
+  // before it detaches the host element, so the modal can still reach the admin.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    return () => {
+      clear(fallback);
+      if (shown.current) {
+        shown.current = false;
+        el?.hideOverlay?.();
+      }
+    };
+  }, [mounted]);
+
+  // Close decided by Polaris (close button, its own Escape handling).
+  useElementEvent(ref, 'hide', mounted ? () => { if (openRef.current) onClose.current(); } : undefined);
+  useElementEvent(ref, 'afterhide', mounted ? () => {
+    shown.current = false;
+    if (openRef.current) onClose.current();
+    else finish();
+  } : undefined);
+
+  // Escape closes without acting, wherever the focus is (inside the modal, in its shadow root,
+  // or lost to the page behind). Capture phase: runs before Polaris and the page handlers.
   useEffect(() => {
     if (!props.open) return;
-    const el = ref.current;
-    el?.showOverlay?.();
-    return () => el?.hideOverlay?.();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !openRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose.current();
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
   }, [props.open]);
-  useElementEvent(ref, 'afterhide', props.open ? () => props.onClose() : undefined);
-  if (!props.open) return null;
+
+  if (!mounted) return null;
   return (
     <s-modal ref={ref} heading={props.heading} role="dialog" aria-modal="true">
       {props.children}

@@ -174,3 +174,55 @@ test.describe('keyboard: navigation and focus', () => {
     await expect(page).toHaveURL(/\/anomalies/);
   });
 });
+
+test.describe('keyboard: confirmation dialogs (15.7, browser recette)', () => {
+  /**
+   * In the real admin, Escape did not close the emergency-stop dialog: the Polaris modal does not close
+   * itself on Escape there, while the offline shim is a native <dialog> that does (so this suite used to
+   * pass for the wrong reason). The native close is switched off here, so only the app's own Escape
+   * handling can close the dialog.
+   */
+  async function withoutNativeEscape(page: import('@playwright/test').Page) {
+    await page.evaluate(() => {
+      const dialog = document.querySelector('s-modal')?.shadowRoot?.querySelector('dialog');
+      dialog?.addEventListener('cancel', (e) => e.preventDefault());
+    });
+  }
+
+  test('emergency stop: Escape closes the dialog without acting, wherever the focus is inside it, and the focus goes back', async ({ page }) => {
+    await open(page, '/settings');
+    for (const target of ['dialog-cancel', 'dialog-confirm']) {
+      await tabTo(page, 'emergency-toggle', 200);
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('dialog-confirm')).toBeVisible();
+      await withoutNativeEscape(page);
+      const at = await focusInfo(page);
+      if (!at?.chain.includes(target)) await tabTo(page, target, 10);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('dialog-confirm')).toHaveCount(0);
+      await expect(page.locator('s-modal')).toHaveCount(0);
+      expect(await mockState(page, (m) => m.emergencyStop as boolean)).toBe(false);
+      expect(await mockState(page, (m) => m.postLog.length as number)).toBe(0);
+      expect((await focusInfo(page))?.chain).toContain('emergency-toggle');
+    }
+  });
+
+  test('emergency stop: Cancel and a confirmed stop leave no modal shown behind', async ({ page }) => {
+    await open(page, '/settings');
+    await tabTo(page, 'emergency-toggle', 200);
+    await page.keyboard.press('Enter');
+    await tabTo(page, 'dialog-cancel', 10);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('s-modal')).toHaveCount(0);
+    expect((await focusInfo(page))?.chain).toContain('emergency-toggle');
+    await page.keyboard.press('Enter');
+    await tabTo(page, 'dialog-confirm', 10);
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('banner-emergency')).toBeVisible();
+    await expect(page.locator('s-modal')).toHaveCount(0);
+    // Nothing modal is left open in the page: the rest of the page takes clicks again.
+    expect(await page.evaluate(() => document.querySelectorAll('dialog[open]').length + [...document.querySelectorAll('*')].filter((e) => e.shadowRoot?.querySelector('dialog[open]')).length)).toBe(0);
+    await goTo(page, t('nav.anomalies'));
+    await expect(page).toHaveURL(/\/anomalies/);
+  });
+});

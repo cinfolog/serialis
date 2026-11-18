@@ -1,0 +1,11 @@
+api_version = "2026-10"
+
+[[extensions]]
+type = "ui_extension"
+name = "t:name"
+handle = "serialis-product-block"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "admin.product-details.block.render"
+  module = "./src/index.tsx"

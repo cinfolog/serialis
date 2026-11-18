@@ -4,7 +4,7 @@ import m0001 from '../../db/shop/0001_init.sql';
 import m0002 from '../../db/shop/0002_allowed_transitions.sql';
 import m0003 from '../../db/shop/0003_platform.sql';
 import m0004 from '../../db/shop/0004_domain.sql';
-import m0005 from '../../db/shop/0005_operations.sql';
+import m0006 from '../../db/shop/0006_operations.sql';
 import { handleApiCall } from './api/router.js';
 import type { ApiCall, ApiResult } from './api/http.js';
 import type { DomainContext } from './domain/context.js';
@@ -32,7 +32,7 @@ const MIGRATIONS: ReadonlyArray<{ version: number; sql: string }> = [
   { version: 2, sql: m0002 },
   { version: 3, sql: m0003 },
   { version: 4, sql: m0004 },
-  { version: 5, sql: m0005 },
+  { version: 6, sql: m0006 },
 ];
 
 export type ShopState = 'active' | 'frozen' | 'uninstalled';

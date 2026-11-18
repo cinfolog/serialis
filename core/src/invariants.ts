@@ -127,3 +127,61 @@ function checkUnique(ul: UniqueVariantLevel, units: readonly Unit[]): InvariantV
   if (ul.available > maxAvailable) return { ...base, actual: ul.available, expected: maxAvailable, detail: 'available' };
   return null;
 }
+
+// ------------------------------------------------------------------------------------------------
+// Allocation ↔ unit consistency (11.2)
+
+/** Minimal views of the rows checked by `checkAllocationConsistency` (the store passes raw rows). */
+export interface ConsistencyUnit {
+  readonly id: string;
+  readonly status: Unit['status'];
+}
+
+export interface ConsistencyAllocation {
+  readonly id: string;
+  readonly unitId: string;
+  readonly status: 'active' | 'fulfilled' | 'released' | 'returned';
+}
+
+export interface ConsistencyViolation {
+  readonly unitId: string;
+  readonly status: Unit['status'];
+  readonly active: number;
+  readonly fulfilled: number;
+  readonly detail: 'allocated_without_one_active' | 'shipped_with_active' | 'shipped_with_several_fulfilled' | 'engaged_in_other_state';
+}
+
+/**
+ * Rule of 11.2: an ALLOCATED unit has exactly one `active` allocation; a SHIPPED or RETURN_PENDING
+ * unit has no `active` allocation and at most one `fulfilled` (none for a historical sale); any other
+ * unit has neither. SQLite has no deferred trigger and the sync plan passes through legitimate
+ * intermediate states, so the store runs this check at the end of the transaction that applies a plan
+ * (workers/DECISIONS.md) and the daily audit R4 runs it over the whole base. Never throws.
+ */
+export function checkAllocationConsistency(
+  units: readonly ConsistencyUnit[],
+  allocations: readonly ConsistencyAllocation[],
+): ConsistencyViolation[] {
+  const counts = new Map<string, { active: number; fulfilled: number }>();
+  for (const a of allocations) {
+    if (a.status !== 'active' && a.status !== 'fulfilled') continue;
+    const c = counts.get(a.unitId) ?? { active: 0, fulfilled: 0 };
+    if (a.status === 'active') c.active += 1;
+    else c.fulfilled += 1;
+    counts.set(a.unitId, c);
+  }
+  const out: ConsistencyViolation[] = [];
+  for (const u of units) {
+    const { active, fulfilled } = counts.get(u.id) ?? { active: 0, fulfilled: 0 };
+    const base = { unitId: u.id, status: u.status, active, fulfilled };
+    if (u.status === 'ALLOCATED') {
+      if (active !== 1 || fulfilled !== 0) out.push({ ...base, detail: 'allocated_without_one_active' });
+    } else if (u.status === 'SHIPPED' || u.status === 'RETURN_PENDING') {
+      if (active > 0) out.push({ ...base, detail: 'shipped_with_active' });
+      else if (fulfilled > 1) out.push({ ...base, detail: 'shipped_with_several_fulfilled' });
+    } else if (active > 0 || fulfilled > 0) {
+      out.push({ ...base, detail: 'engaged_in_other_state' });
+    }
+  }
+  return out;
+}

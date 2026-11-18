@@ -318,6 +318,126 @@ export const ROUTES = {
 export type RouteName = keyof typeof ROUTES;
 
 // ---------------------------------------------------------------------------
+// Additions for the embedded admin app (all additive; existing types are unchanged)
+// ---------------------------------------------------------------------------
+
+/** Banner states shown at the top of every screen (15.4 "Bandeau d'état", 15.7). */
+export type StatusBanner = 'frozen' | 'reconnect_required' | 'restoring' | 'read_only';
+
+/** Admin UI extensions that report their first render to the server (15.4 "Démarrage", T-UX-08). */
+export type ExtensionKey = 'variant_block' | 'product_block' | 'order_block' | 'order_action';
+
+/**
+ * Optional fields of `MeResponse` added for the admin app, returned by `GET /me` next to the
+ * existing ones (the Worker fills them; the app treats a missing value as the default).
+ */
+export interface MeResponseAdminExtras {
+  /** 15.8: "admin" for the owner and designated admins, "operator" otherwise. Default "admin" when absent. */
+  role?: 'admin' | 'operator';
+  /** Persistent banners other than the emergency stop (that one is `emergencyStop`). */
+  banners?: StatusBanner[];
+  /** True once each extension has been rendered at least once in the Shopify admin. */
+  extensionsShown?: Record<ExtensionKey, boolean>;
+}
+
+/** GET /api/v1/stats/home — home screen (EF-31, reduced for the MVP, 19.4). */
+export interface HomeStatsResponse {
+  sync: {
+    /** Green / orange / red summary of the indicators below. */
+    level: 'green' | 'orange' | 'red';
+    lastWebhookAt: IsoDateTime | null;
+    lastReconciliationAt: IsoDateTime | null;
+    /** Current processing delay in seconds (0 when none). */
+    delaySeconds: number;
+    /** Writes to Shopify waiting in the outbox. */
+    pendingWrites: number;
+  };
+  /** "À traiter maintenant": each count opens the filtered list. */
+  toDo: {
+    linesWithoutUnit: number;
+    criticalAnomalies: number;
+    returnsToIdentify: number;
+    shippedUnitsToDesignate: number;
+  };
+  unitsByState: Array<{ locationId: string; state: UnitState; count: number }>;
+  /** Share of tracked lines allocated in under 60 s, read from `daily_stats` (0..1). */
+  assignedUnder60s: {
+    rate: number | null;
+    sample: number;
+    history30d: Array<{ date: string; rate: number | null }>;
+  };
+}
+
+/** POST /api/v1/units/batch/check — same body as `POST /units/batch`, writes nothing (15.3, 15.5). */
+export type RefCheckStatus = 'ready' | 'duplicate_in_list' | 'already_known' | 'invalid_format' | 'beyond_gap';
+export interface CheckUnitsBatchResponse {
+  rows: Array<{ index: number; ref: string; status: RefCheckStatus; detail?: string }>;
+  ready: number;
+  /** Stock written in Shopify if the batch is confirmed (0 when `alreadyCounted`). */
+  stockWrite: number;
+  /** Remaining gap (Shopify on_hand − registered units) at this location before the batch, or null if unknown. */
+  gapBefore: number | null;
+}
+
+/** GET /units/{id}/events → Page<UnitEvent> */
+export interface UnitEvent {
+  id: string;
+  at: IsoDateTime;
+  /** Who: a person (first name), "api", "pos" or "system". */
+  actor: string;
+  type: string;
+  fromState: UnitState | null;
+  toState: UnitState | null;
+  /** Cause or reason, short text without customer data. */
+  reason: string | null;
+  /** Effect on the Shopify stock, e.g. "+1 at location X" or "no write". */
+  stockEffect: string | null;
+}
+
+/** POST /anomalies/{id}/acknowledge ("je m'en occupe", 15.4) → Anomaly */
+
+/** POST /settings/simulate — effect of a "simulation" setting change; id valid 10 min (14.2, 6.6.1). */
+export interface SimulateSettingsRequest {
+  scope: SettingScope;
+  values: Record<string, string | number | boolean>;
+}
+export interface SettingsSimulation {
+  simulationId: string;
+  expiresAt: IsoDateTime;
+  effects: Array<{ key: string; count: number; summary: string }>;
+  /** Values that weaken a guarantee, with their exact effect (6.6.1). */
+  warnings: string[];
+}
+
+/** Body of POST /imports: the CSV text with header `ref,sku,variant_id,location,already_counted`. */
+export interface CreateImportRequest {
+  filename?: string;
+  csv: string;
+}
+/** Optional fields added to the simulation report (15.4 "Imports et exports"). */
+export interface ImportReportExtras {
+  /** Lines beyond the Shopify gap (already counted but no gap left). */
+  beyondGap?: number;
+  /** Stock written in Shopify when confirmed. */
+  stockWrites?: number;
+}
+
+/** POST /automation/pause | /automation/resume */
+export interface AutomationStateResponse {
+  emergencyStop: boolean;
+}
+
+/** Routes added for the admin app (kept apart from `ROUTES` to avoid merge conflicts; spec 14.2). */
+export const ADMIN_APP_ROUTES = {
+  homeStats: 'GET /stats/home',
+  checkUnitsBatch: 'POST /units/batch/check',
+  acknowledgeAnomaly: 'POST /anomalies/{id}/acknowledge',
+  simulateSettings: 'POST /settings/simulate',
+} as const;
+
+export const ALL_ROUTES = { ...ROUTES, ...ADMIN_APP_ROUTES } as const;
+export type AnyRouteName = keyof typeof ALL_ROUTES;
+
 // Additions for the admin UI extensions (additive only; existing types untouched)
 // ---------------------------------------------------------------------------
 

@@ -1,4 +1,5 @@
 import { render } from 'preact';
+import { useMemo, useState } from 'preact/hooks';
 import { createApiClient, fromShopifyI18n } from '@serialis/extensions-shared';
 import { OrderBlock } from './OrderBlock';
 
@@ -6,20 +7,25 @@ import { OrderBlock } from './OrderBlock';
 const ACTION_HANDLE = 'serialis-order-units-action';
 
 // Order details block (spec 13.5, 15.6): refs per unit under each tracked line.
-export default async () => {
+function Root() {
+  const [summary, setSummary] = useState('');
   const orderGid = shopify.data.selected[0]?.id ?? '';
-  render(
-    <s-admin-block heading={shopify.i18n.translate('orderBlock.heading')}>
+  const api = useMemo(() => createApiClient(), []);
+  const t = useMemo(() => fromShopifyI18n(shopify.i18n), []);
+  return (
+    <s-admin-block heading={shopify.i18n.translate('orderBlock.heading')} collapsedSummary={summary || undefined}>
       <OrderBlock
-        api={createApiClient()}
-        t={fromShopifyI18n(shopify.i18n)}
+        api={api}
+        t={t}
         orderGid={orderGid}
         onEdit={() => shopify.navigation.navigate(`extension://${ACTION_HANDLE}`)}
-        formatDateTime={(iso) =>
-          shopify.i18n.formatDate(new Date(iso), { dateStyle: 'short', timeStyle: 'short' })
-        }
+        formatDateTime={(iso) => shopify.i18n.formatDate(new Date(iso), { dateStyle: 'short', timeStyle: 'short' })}
+        onSummary={setSummary}
       />
-    </s-admin-block>,
-    document.body,
+    </s-admin-block>
   );
+}
+
+export default async () => {
+  render(<Root />, document.body);
 };

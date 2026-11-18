@@ -13,11 +13,13 @@ import {
   POLL_INTERVAL_MS,
   buildLineViews,
   canEdit,
+  compactLines,
   originKey,
   shouldPoll,
   statusView,
   untrackedLineCount,
   type LineView,
+  type UnitRow,
 } from './logic';
 
 export interface OrderBlockProps {
@@ -29,10 +31,15 @@ export interface OrderBlockProps {
   /** Formats the last synchronization time in the user's locale. */
   formatDateTime?: (iso: string) => string;
   pollMs?: number;
+  /** Receives the collapsed summary of the block (`collapsedSummary` of `<s-admin-block>`). */
+  onSummary?: (summary: string) => void;
 }
 
-/** Order block (spec 15.6): one row per unit under each tracked line, missing units, synchronization state. */
-export function OrderBlock({ api, t, orderGid, onEdit, formatDateTime, pollMs = POLL_INTERVAL_MS }: OrderBlockProps) {
+/**
+ * Order block (spec 15.6): one row per unit under each tracked line, missing units, synchronization state.
+ * Capped to 2 lines and 4 unit rows; the rest is counted next to « Modifier les unités » (DECISIONS.md).
+ */
+export function OrderBlock({ api, t, orderGid, onEdit, formatDateTime, pollMs = POLL_INTERVAL_MS, onSummary }: OrderBlockProps) {
   const res = useResource((signal) => api.orderAllocations(orderGid, { signal }), [orderGid]);
   const online = useOnline();
   const polls = useRef(0);
@@ -48,32 +55,55 @@ export function OrderBlock({ api, t, orderGid, onEdit, formatDateTime, pollMs = 
     return () => clearTimeout(id);
   }, [syncState, res.status === 'ready' ? res.data : null, pollMs, reload]);
 
+  const summary = res.status === 'ready' ? orderSummary(t, res.data) : '';
+  useEffect(() => {
+    if (summary) onSummary?.(summary);
+  }, [summary, onSummary]);
+
   if (res.status === 'loading') return <Loading t={t} />;
   if (res.status === 'error') return <ErrorBanner t={t} error={res.error} onRetry={res.reload} />;
 
   const data = res.data;
   const lines = buildLineViews(data);
   const untracked = untrackedLineCount(data);
+  const compact = compactLines(lines);
+  const more = [
+    compact.hiddenUnits > 0 ? t('orderBlock.moreUnits', { count: compact.hiddenUnits }) : null,
+    compact.hiddenLines > 0 ? t('orderBlock.moreLines', { count: compact.hiddenLines }) : null,
+    untracked > 0 && lines.length > 0 ? t('orderBlock.untrackedLines', { count: untracked }) : null,
+  ].filter((x): x is string => x !== null);
 
   return (
-    <s-stack gap="base">
+    <s-stack gap="small-200">
       {!online ? <OfflineBanner t={t} /> : null}
       <SyncBanner t={t} data={data} formatDateTime={formatDateTime} stalled={!shouldPoll(data.syncState, polls.current) && data.syncState === 'pending'} />
       {lines.length === 0 ? (
         <s-text>{t('orderBlock.noTrackedLine')}</s-text>
       ) : (
-        lines.map((v) => <LineSection key={v.line.lineItemGid} t={t} view={v} />)
+        compact.shown.map((s) => <LineSection key={s.view.line.lineItemGid} t={t} view={s.view} rows={s.rows} />)
       )}
-      {untracked > 0 && lines.length > 0 ? <s-text color="subdued">{t('orderBlock.untrackedLines', { count: untracked })}</s-text> : null}
-      {canEdit(data) ? (
-        <s-stack direction="inline">
-          <s-button variant="secondary" onClick={onEdit}>
-            {t('orderBlock.edit')}
-          </s-button>
+      {canEdit(data) || more.length > 0 ? (
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          {canEdit(data) ? (
+            <s-button variant="secondary" onClick={onEdit}>
+              {t('orderBlock.edit')}
+            </s-button>
+          ) : null}
+          {more.length > 0 ? <s-text color="subdued">{more.join(' · ')}</s-text> : null}
         </s-stack>
       ) : null}
     </s-stack>
   );
+}
+
+/** Collapsed summary of the block (`collapsedSummary`, 30 characters at most). */
+export function orderSummary(t: Translate, data: OrderAllocationsResponse): string {
+  if (data.syncState === 'pending') return t('orderBlock.pendingTitle');
+  if (data.syncState === 'error') return t('orderBlock.errorTitle');
+  const lines = buildLineViews(data);
+  if (lines.length === 0) return '';
+  const missing = lines.reduce((n, v) => n + v.missing, 0);
+  return missing > 0 ? t('orderBlock.missing', { count: missing }) : t('orderBlock.allAllocated');
 }
 
 function SyncBanner(p: {
@@ -104,8 +134,9 @@ function SyncBanner(p: {
   return null;
 }
 
-function LineSection({ t, view }: { t: Translate; view: LineView }) {
-  const { line, rows } = view;
+/** A tracked line: title, quantity and units to allocate on one row, then one compact row per shown unit. */
+function LineSection({ t, view, rows }: { t: Translate; view: LineView; rows: UnitRow[] }) {
+  const { line } = view;
   return (
     <s-stack gap="small-300">
       <s-stack direction="inline" gap="small-200" alignItems="center">
@@ -116,37 +147,21 @@ function LineSection({ t, view }: { t: Translate; view: LineView }) {
       {rows.length === 0 ? (
         <s-text>{t('orderBlock.noUnits')}</s-text>
       ) : (
-        <s-table>
-          <s-table-header-row>
-            <s-table-header>{t('orderBlock.colRef')}</s-table-header>
-            <s-table-header>{t('orderBlock.colState')}</s-table-header>
-            <s-table-header>{t('orderBlock.colOrigin')}</s-table-header>
-          </s-table-header-row>
-          <s-table-body>
-            {rows.map((row) =>
-              row.kind === 'allocation' ? (
-                <s-table-row key={row.allocation.id}>
-                  <s-table-cell>{row.allocation.ref}</s-table-cell>
-                  <s-table-cell>
-                    <s-stack direction="inline" gap="small-300">
-                      <s-badge tone={statusView(row.allocation.status).tone}>{t(statusView(row.allocation.status).key)}</s-badge>
-                      {row.allocation.toConfirm ? <s-badge tone="warning">{t('orderBlock.toConfirm')}</s-badge> : null}
-                    </s-stack>
-                  </s-table-cell>
-                  <s-table-cell>{t(originKey(row.allocation.source))}</s-table-cell>
-                </s-table-row>
-              ) : (
-                <s-table-row key={`missing-${row.position}`}>
-                  <s-table-cell>{t('orderBlock.toAllocate')}</s-table-cell>
-                  <s-table-cell>
-                    <s-badge tone="warning">{t('orderBlock.status_missing')}</s-badge>
-                  </s-table-cell>
-                  <s-table-cell>–</s-table-cell>
-                </s-table-row>
-              ),
-            )}
-          </s-table-body>
-        </s-table>
+        rows.map((row) =>
+          row.kind === 'allocation' ? (
+            <s-stack key={row.allocation.id} direction="inline" gap="small-300" alignItems="center">
+              <s-text type="strong">{row.allocation.ref}</s-text>
+              <s-badge tone={statusView(row.allocation.status).tone}>{t(statusView(row.allocation.status).key)}</s-badge>
+              {row.allocation.toConfirm ? <s-badge tone="warning">{t('orderBlock.toConfirm')}</s-badge> : null}
+              <s-text color="subdued">{t(originKey(row.allocation.source))}</s-text>
+            </s-stack>
+          ) : (
+            <s-stack key={`missing-${row.position}`} direction="inline" gap="small-300" alignItems="center">
+              <s-text>{t('orderBlock.toAllocate')}</s-text>
+              <s-badge tone="warning">{t('orderBlock.status_missing')}</s-badge>
+            </s-stack>
+          ),
+        )
       )}
     </s-stack>
   );

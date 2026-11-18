@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { Gid, Location, TrackedItem } from '@serialis/contract';
 import {
   ErrorBanner,
@@ -13,31 +13,44 @@ import {
   type Translate,
 } from '@serialis/extensions-shared';
 import {
+  MAX_INLINE_REFS,
+  MAX_LOCATION_ROWS,
   buildAddPlan,
+  countStates,
   defaultKind,
-  filterUnits,
   loadVariantData,
+  pickLocations,
+  recentUnits,
   summarizeBatch,
   summarizeLocations,
   toBatchRequest,
+  totals,
+  unitsAppHref,
   type AddKind,
   type BatchOutcome,
   type LocationSummary,
   type VariantData,
 } from './logic';
 
-const LIST_PAGE = 25;
-
 export interface VariantBlockProps {
   api: ApiClient;
   t: Translate;
   variantGid: Gid;
+  /** Receives the collapsed summary of the block (`collapsedSummary` of `<s-admin-block>`). */
+  onSummary?: (summary: string) => void;
 }
 
-/** Variant block (spec 15.6, 19.4): refs per location and state, gap with Shopify, adding refs, tracking. */
-export function VariantBlock({ api, t, variantGid }: VariantBlockProps) {
+/**
+ * Variant block (spec 15.6, 19.4): refs per location and state, gap with Shopify, adding refs, tracking.
+ * Compact by design: the essential view fits the 300 px of a collapsed admin block (DECISIONS.md).
+ */
+export function VariantBlock({ api, t, variantGid, onSummary }: VariantBlockProps) {
   const res = useResource((signal) => loadVariantData(api, variantGid, signal), [variantGid]);
   const online = useOnline();
+  const summary = res.status === 'ready' ? collapsedSummary(t, res.data) : '';
+  useEffect(() => {
+    if (summary) onSummary?.(summary);
+  }, [summary, onSummary]);
 
   if (res.status === 'loading') return <Loading t={t} />;
   if (res.status === 'error') return <ErrorBanner t={t} error={res.error} onRetry={res.reload} />;
@@ -108,8 +121,10 @@ function UntrackedView(p: { api: ApiClient; t: Translate; variantGid: Gid; onlin
 }
 
 // ---------------------------------------------------------------------------
-// Tracked: summary table, units list, add refs, untrack
+// Tracked: compact summary (one line per location, 3 recent refs, actions), or the add form in its place
 // ---------------------------------------------------------------------------
+
+type TrackedMode = 'summary' | 'add' | 'untrack';
 
 function TrackedView(p: {
   api: ApiClient;
@@ -122,21 +137,11 @@ function TrackedView(p: {
 }) {
   const { t, data, item } = p;
   const summaries = useMemo(() => summarizeLocations(item, data.units, data.locations), [item, data]);
+  const [mode, setMode] = useState<TrackedMode>('summary');
 
-  return (
-    <s-stack gap="large-100">
-      {item.initializing ? (
-        <s-banner tone="info" heading={t('variantBlock.initializingTitle')}>
-          <s-text>{t('variantBlock.initializingBody')}</s-text>
-        </s-banner>
-      ) : null}
-      {data.truncated ? (
-        <s-banner tone="warning">
-          <s-text>{t('variantBlock.truncated', { count: data.units.length })}</s-text>
-        </s-banner>
-      ) : null}
-      <LocationTable t={t} summaries={summaries} />
-      <UnitList t={t} data={data} />
+  // The add form replaces the summary instead of stacking under it (block height, DECISIONS.md).
+  if (mode === 'add') {
+    return (
       <AddRefs
         api={p.api}
         t={t}
@@ -147,111 +152,134 @@ function TrackedView(p: {
         knownRefs={data.units.map((u) => u.ref)}
         online={p.online}
         reload={p.reload}
+        onBack={() => setMode('summary')}
       />
-      <Untrack api={p.api} t={t} variantGid={p.variantGid} online={p.online} reload={p.reload} />
+    );
+  }
+
+  const gap = totals(item).gap;
+  return (
+    <s-stack gap="small-200">
+      {data.truncated ? (
+        <s-banner tone="warning">
+          <s-text>{t('variantBlock.truncated', { count: data.units.length })}</s-text>
+        </s-banner>
+      ) : null}
+      {item.initializing && gap > 0 ? <s-text color="subdued">{t('variantBlock.initializingHint')}</s-text> : null}
+      <Locations t={t} summaries={summaries} />
+      {/* With the location table (3+ locations) there is no room left for refs: the link opens the full list. */}
+      <RecentRefs t={t} data={data} max={summaries.length >= MAX_LOCATION_ROWS ? 0 : MAX_INLINE_REFS} />
+      {mode === 'untrack' ? (
+        <Untrack api={p.api} t={t} variantGid={p.variantGid} online={p.online} reload={p.reload} onCancel={() => setMode('summary')} />
+      ) : (
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-button variant="primary" onClick={() => setMode('add')}>
+            {t('variantBlock.addTitle')}
+          </s-button>
+          {data.units.length > 0 ? (
+            <s-button variant="tertiary" href={unitsAppHref(p.variantGid)}>
+              {t('variantBlock.seeAllRefs', { count: data.units.length })}
+            </s-button>
+          ) : null}
+          <s-button variant="tertiary" icon="menu-horizontal" accessibilityLabel={t('variantBlock.moreActions')} commandFor="serialis-variant-more" command="--toggle" />
+          <s-menu id="serialis-variant-more" accessibilityLabel={t('variantBlock.moreActions')}>
+            <s-button tone="critical" onClick={() => setMode('untrack')}>
+              {t('variantBlock.untrack')}
+            </s-button>
+          </s-menu>
+        </s-stack>
+      )}
     </s-stack>
   );
 }
 
-function gapLabel(t: Translate, s: LocationSummary): string {
-  if (s.gap === null) return '';
-  if (s.gap === 0) return t('variantBlock.gapNone');
-  return s.gap > 0 ? t('variantBlock.gapToRegister', { count: s.gap }) : t('variantBlock.gapExtra', { count: -s.gap });
+function gapLabel(t: Translate, gap: number): string {
+  if (gap === 0) return t('variantBlock.gapNone');
+  return gap > 0 ? t('variantBlock.gapToRegister', { count: gap }) : t('variantBlock.gapExtra', { count: -gap });
 }
 
-function LocationTable({ t, summaries }: { t: Translate; summaries: LocationSummary[] }) {
+function GapBadge({ t, gap }: { t: Translate; gap: number | null }) {
+  if (gap === null) return null;
+  return <s-badge tone={gap === 0 ? 'success' : gap > 0 ? 'warning' : 'critical'}>{gapLabel(t, gap)}</s-badge>;
+}
+
+/** Collapsed summary of the block (`collapsedSummary`, 30 characters at most): « 3 refs · 2 à enregistrer ». */
+export function collapsedSummary(t: Translate, data: VariantData): string {
+  if (!data.item) return t('variantBlock.notTrackedShort');
+  const { registered, gap } = totals(data.item);
+  return t('variantBlock.collapsed', { refs: t('variantBlock.refsCount', { count: registered }), status: gapLabel(t, gap) });
+}
+
+/** One line per location (« Entrepôt · Shopify 10 · 0 ref [10 à enregistrer] »); a capped table from 3 locations. */
+function Locations({ t, summaries }: { t: Translate; summaries: LocationSummary[] }) {
   if (summaries.length === 0) return <s-text>{t('variantBlock.noStock')}</s-text>;
+  const name = (s: LocationSummary) => s.name ?? t('variantBlock.noLocation');
+  const refs = (s: LocationSummary) => s.registeredUnits ?? s.total;
+  if (summaries.length < MAX_LOCATION_ROWS) {
+    return (
+      <s-stack gap="small-300">
+        {summaries.map((s) => (
+          <s-stack key={s.locationId ?? 'none'} direction="inline" gap="small-300" alignItems="center">
+            <s-text>
+              {s.shopifyOnHand === null
+                ? t('variantBlock.locationLineNoStock', { location: name(s), refs: t('variantBlock.refsCount', { count: refs(s) }) })
+                : t('variantBlock.locationLine', { location: name(s), onHand: s.shopifyOnHand, refs: t('variantBlock.refsCount', { count: refs(s) }) })}
+            </s-text>
+            <GapBadge t={t} gap={s.gap} />
+          </s-stack>
+        ))}
+      </s-stack>
+    );
+  }
+  const { shown, hidden } = pickLocations(summaries);
   return (
     <s-stack gap="small-300">
-      <s-heading>{t('variantBlock.byLocation')}</s-heading>
       <s-table>
         <s-table-header-row>
           <s-table-header>{t('variantBlock.colLocation')}</s-table-header>
           <s-table-header>{t('variantBlock.colShopify')}</s-table-header>
           <s-table-header>{t('variantBlock.colRegistered')}</s-table-header>
           <s-table-header>{t('variantBlock.colGap')}</s-table-header>
-          <s-table-header>{t('variantBlock.colStates')}</s-table-header>
         </s-table-header-row>
         <s-table-body>
-          {summaries.map((s) => (
+          {shown.map((s) => (
             <s-table-row key={s.locationId ?? 'none'}>
-              <s-table-cell>{s.name ?? t('variantBlock.noLocation')}</s-table-cell>
+              <s-table-cell>{name(s)}</s-table-cell>
               <s-table-cell>{s.shopifyOnHand ?? '–'}</s-table-cell>
-              <s-table-cell>{s.registeredUnits ?? s.total}</s-table-cell>
-              <s-table-cell>
-                {s.gap === null ? '–' : <s-badge tone={s.gap === 0 ? 'success' : s.gap > 0 ? 'warning' : 'critical'}>{gapLabel(t, s)}</s-badge>}
-              </s-table-cell>
-              <s-table-cell>
-                <s-stack direction="inline" gap="small-300">
-                  {s.counts.map((c) => (
-                    <s-stack key={c.state} direction="inline" gap="small-400" alignItems="center">
-                      <StateBadge t={t} state={c.state} />
-                      <s-text>{c.count}</s-text>
-                    </s-stack>
-                  ))}
-                </s-stack>
-              </s-table-cell>
+              <s-table-cell>{refs(s)}</s-table-cell>
+              <s-table-cell>{s.gap === null ? '–' : <GapBadge t={t} gap={s.gap} />}</s-table-cell>
             </s-table-row>
           ))}
         </s-table-body>
       </s-table>
+      {hidden > 0 ? <s-text color="subdued">{t('variantBlock.otherLocations', { count: hidden })}</s-text> : null}
     </s-stack>
   );
 }
 
-function UnitList({ t, data }: { t: Translate; data: VariantData }) {
-  const [query, setQuery] = useState('');
-  const [shown, setShown] = useState(LIST_PAGE);
+/** Counts by state on one line, then the `max` most recent refs; the full list is in the app. */
+function RecentRefs({ t, data, max }: { t: Translate; data: VariantData; max: number }) {
   const names = useMemo(() => new Map(data.locations.map((l) => [l.id, l.name])), [data.locations]);
-  const filtered = useMemo(() => filterUnits(data.units, query), [data.units, query]);
-
-  if (data.units.length === 0) {
-    return (
-      <s-stack gap="small-300">
-        <s-heading>{t('variantBlock.refsTitle')}</s-heading>
-        <s-text>{t('variantBlock.refsEmpty')}</s-text>
-      </s-stack>
-    );
-  }
+  const recent = useMemo(() => recentUnits(data.units, max), [data.units, max]);
+  const states = useMemo(() => countStates(data.units), [data.units]);
+  if (data.units.length === 0) return <s-text color="subdued">{t('variantBlock.refsEmpty')}</s-text>;
   return (
     <s-stack gap="small-300">
-      <s-heading>{t('variantBlock.refsTitle')}</s-heading>
-      <s-search-field
-        label={t('variantBlock.refsSearch')}
-        labelAccessibilityVisibility="exclusive"
-        value={query}
-        onInput={(e: Event) => {
-          setQuery((e.currentTarget as HTMLInputElement).value);
-          setShown(LIST_PAGE);
-        }}
-      />
-      {filtered.length === 0 ? (
-        <s-text>{t('variantBlock.refsNoMatch')}</s-text>
-      ) : (
-        <s-table>
-          <s-table-header-row>
-            <s-table-header>{t('variantBlock.colRef')}</s-table-header>
-            <s-table-header>{t('variantBlock.colState')}</s-table-header>
-            <s-table-header>{t('variantBlock.colLocation')}</s-table-header>
-          </s-table-header-row>
-          <s-table-body>
-            {filtered.slice(0, shown).map((u) => (
-              <s-table-row key={u.id}>
-                <s-table-cell>{u.ref}</s-table-cell>
-                <s-table-cell>
-                  <StateBadge t={t} state={u.state} />
-                </s-table-cell>
-                <s-table-cell>{u.locationId ? (names.get(u.locationId) ?? u.locationId) : t('variantBlock.noLocation')}</s-table-cell>
-              </s-table-row>
-            ))}
-          </s-table-body>
-        </s-table>
-      )}
-      {filtered.length > shown ? (
-        <s-button variant="secondary" onClick={() => setShown(shown + LIST_PAGE)}>
-          {t('variantBlock.showMore', { count: filtered.length - shown })}
-        </s-button>
-      ) : null}
+      <s-stack direction="inline" gap="small-300" alignItems="center">
+        {states.map((c) => (
+          <s-stack key={c.state} direction="inline" gap="small-400" alignItems="center">
+            <StateBadge t={t} state={c.state} />
+            <s-text>{c.count}</s-text>
+          </s-stack>
+        ))}
+      </s-stack>
+      {recent.map((u) => (
+        <s-stack key={u.id} direction="inline" gap="small-300" alignItems="center">
+          <s-text type="strong">{u.ref}</s-text>
+          <StateBadge t={t} state={u.state} />
+          <s-text color="subdued">{u.locationId ? (names.get(u.locationId) ?? u.locationId) : t('variantBlock.noLocation')}</s-text>
+        </s-stack>
+      ))}
     </s-stack>
   );
 }
@@ -270,6 +298,7 @@ function AddRefs(p: {
   knownRefs: string[];
   online: boolean;
   reload: () => void;
+  onBack: () => void;
 }) {
   const { t } = p;
   const stockLocations = p.item.stock.map((s) => s.locationId);
@@ -330,21 +359,29 @@ function AddRefs(p: {
     : null;
 
   return (
-    <s-stack gap="base">
-      <s-heading>{t('variantBlock.addTitle')}</s-heading>
+    <s-stack gap="small-200">
+      {/* Heading and location on one row: the form replaces the summary and stays within the block budget. */}
+      <s-stack direction="inline" gap="small-200" alignItems="center">
+        <s-heading>{t('variantBlock.addTitle')}</s-heading>
+        {options.length > 1 ? (
+          <s-select
+            label={t('variantBlock.addLocation')}
+            labelAccessibilityVisibility="exclusive"
+            value={locationId}
+            disabled={busy}
+            onChange={(e: Event) => changeLocation((e.currentTarget as HTMLSelectElement).value)}
+          >
+            {options.map((l) => (
+              <s-option key={l.id} value={l.id}>
+                {l.name}
+              </s-option>
+            ))}
+          </s-select>
+        ) : (
+          <s-text color="subdued">{t('variantBlock.addAt', { location: locationName })}</s-text>
+        )}
+      </s-stack>
       {outcome ? <OutcomeView t={t} outcome={outcome} /> : null}
-      <s-select
-        label={t('variantBlock.addLocation')}
-        value={locationId}
-        disabled={busy}
-        onChange={(e: Event) => changeLocation((e.currentTarget as HTMLSelectElement).value)}
-      >
-        {options.map((l) => (
-          <s-option key={l.id} value={l.id}>
-            {l.name}
-          </s-option>
-        ))}
-      </s-select>
       <s-choice-list
         label={t('variantBlock.addKind')}
         name="kind"
@@ -365,7 +402,7 @@ function AddRefs(p: {
       <s-text-area
         label={t('variantBlock.addRefs')}
         details={t('variantBlock.addRefsHelp')}
-        rows={5}
+        rows={3}
         value={text}
         disabled={busy}
         onInput={(e: Event) => {
@@ -384,9 +421,14 @@ function AddRefs(p: {
       {error ? <ErrorBanner t={t} error={error} /> : null}
 
       {step === 'edit' ? (
-        <s-button variant="primary" disabled={plan.blocked !== null || !p.online} onClick={() => setStep('confirm')}>
-          {t('variantBlock.addReview', { count: plan.readyRefs.length })}
-        </s-button>
+        <s-stack direction="inline" gap="small-200">
+          <s-button variant="primary" disabled={plan.blocked !== null || !p.online} onClick={() => setStep('confirm')}>
+            {t('variantBlock.addReview', { count: plan.readyRefs.length })}
+          </s-button>
+          <s-button variant="secondary" disabled={busy} onClick={p.onBack}>
+            {t('variantBlock.addBack')}
+          </s-button>
+        </s-stack>
       ) : (
         <s-banner tone="info" heading={t('variantBlock.confirmTitle')}>
           <s-stack gap="small-200">
@@ -467,9 +509,8 @@ function OutcomeView({ t, outcome }: { t: Translate; outcome: BatchOutcome }) {
 // Untrack (EF-01): effect announced before confirmation
 // ---------------------------------------------------------------------------
 
-function Untrack(p: { api: ApiClient; t: Translate; variantGid: Gid; online: boolean; reload: () => void }) {
+function Untrack(p: { api: ApiClient; t: Translate; variantGid: Gid; online: boolean; reload: () => void; onCancel: () => void }) {
   const { t } = p;
-  const [step, setStep] = useState<'idle' | 'confirm'>('idle');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const keeper = useMemo(() => new IdempotencyKeeper(), []);
@@ -488,13 +529,6 @@ function Untrack(p: { api: ApiClient; t: Translate; variantGid: Gid; online: boo
     }
   };
 
-  if (step === 'idle') {
-    return (
-      <s-button variant="tertiary" tone="critical" onClick={() => setStep('confirm')}>
-        {t('variantBlock.untrack')}
-      </s-button>
-    );
-  }
   return (
     <s-stack gap="small-200">
       {error ? <ErrorBanner t={t} error={error} /> : null}
@@ -505,7 +539,7 @@ function Untrack(p: { api: ApiClient; t: Translate; variantGid: Gid; online: boo
             <s-button tone="critical" variant="primary" loading={busy} disabled={busy || !p.online} onClick={untrack}>
               {t('variantBlock.untrackConfirm')}
             </s-button>
-            <s-button variant="secondary" disabled={busy} onClick={() => setStep('idle')}>
+            <s-button variant="secondary" disabled={busy} onClick={p.onCancel}>
               {t('common.cancel')}
             </s-button>
           </s-stack>

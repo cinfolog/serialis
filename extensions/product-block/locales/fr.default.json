@@ -65,21 +65,22 @@
     "variantsUnavailable": "Les variantes n'ont pas pu être lues dans Shopify : seules les variantes suivies sont affichées.",
     "empty": "Ce produit n'a aucune variante.",
     "summary": {
-      "one": "{{count}} variante suivie sur {{total}}.",
-      "many": "{{count}} variantes suivies sur {{total}}.",
-      "other": "{{count}} variantes suivies sur {{total}}."
+      "one": "{{count}} variante suivie sur {{total}}",
+      "many": "{{count}} variantes suivies sur {{total}}",
+      "other": "{{count}} variantes suivies sur {{total}}"
     },
-    "colVariant": "Variante",
-    "colTracking": "Suivi",
-    "colAvailable": "Unités disponibles",
-    "colGap": "Écart Shopify",
-    "colLink": "Détail",
     "tracked": "Suivie",
     "trackedInit": "Suivie (initialisation)",
     "notTracked": "Non suivie",
     "noneAvailable": "Aucune",
     "gapNone": "Aligné",
     "gapValue": "{{sign}}{{count}}",
-    "openVariant": "Voir la variante"
+    "available": "Disponibles : {{list}}",
+    "otherVariants": {
+      "one": "+{{count}} autre variante",
+      "many": "+{{count}} autres variantes",
+      "other": "+{{count}} autres variantes"
+    },
+    "openApp": "Ouvrir dans Serialis"
   }
 }

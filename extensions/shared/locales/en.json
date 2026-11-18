@@ -68,28 +68,22 @@
     "untrackConfirmTitle": "Stop tracking?",
     "untrackEffect": "Units in stock become untracked with no write: Shopify stock does not change and the variant stays sellable. Not possible while units are allocated, in transit or awaiting a return.",
     "untrackConfirm": "Stop tracking",
-    "initializingTitle": "Initialization phase",
-    "initializingBody": "Enter existing stock as “already counted” (no stock write). The gap with Shopify shrinks as you register refs.",
-    "truncated": "Only the first {{count}} refs are loaded: the figures below are partial. Open the Serialis app for the full list.",
+    "truncated": "Partial figures: only the first {{count}} refs are loaded.",
     "noStock": "No stock and no refs yet.",
-    "byLocation": "By location",
     "colLocation": "Location",
     "colShopify": "Shopify stock",
     "colRegistered": "Registered refs",
     "colGap": "Gap",
-    "colStates": "By state",
     "colRef": "Ref",
-    "colState": "State",
     "colStatus": "Status",
     "noLocation": "No location",
     "gapNone": "Aligned",
     "gapToRegister": "{{count}} to register",
-    "gapExtra": "{{count}} extra",
-    "refsTitle": "Refs",
+    "gapExtra": {
+      "one": "{{count}} extra",
+      "other": "{{count}} extra"
+    },
     "refsEmpty": "No refs registered for this variant.",
-    "refsSearch": "Search a ref",
-    "refsNoMatch": "No ref matches.",
-    "showMore": "Show {{count}} more refs",
     "addTitle": "Add refs",
     "addLocation": "Location",
     "addKind": "These units are…",
@@ -128,7 +122,27 @@
     "outcomeRejected": {
       "one": "{{count}} ref rejected, left in the field for correction:",
       "other": "{{count}} refs rejected, left in the field for correction:"
-    }
+    },
+    "initializingHint": "Initialization: register existing stock as “already counted”.",
+    "refsCount": {
+      "one": "{{count}} ref",
+      "other": "{{count}} refs"
+    },
+    "locationLine": "{{location}} · Shopify {{onHand}} · {{refs}}",
+    "locationLineNoStock": "{{location}} · {{refs}}",
+    "otherLocations": {
+      "one": "+{{count}} other location",
+      "other": "+{{count}} other locations"
+    },
+    "seeAllRefs": {
+      "one": "See the ref",
+      "other": "See all {{count}} refs"
+    },
+    "collapsed": "{{refs}} · {{status}}",
+    "notTrackedShort": "Not tracked",
+    "moreActions": "More actions",
+    "addAt": "Location: {{location}}",
+    "addBack": "Back"
   },
   "productBlock": {
     "heading": "Serialis refs",
@@ -136,21 +150,21 @@
     "variantsUnavailable": "The variants could not be read from Shopify: only tracked variants are shown.",
     "empty": "This product has no variants.",
     "summary": {
-      "one": "{{count}} of {{total}} variants tracked.",
-      "other": "{{count}} of {{total}} variants tracked."
+      "one": "{{count}} of {{total}} variants tracked",
+      "other": "{{count}} of {{total}} variants tracked"
     },
-    "colVariant": "Variant",
-    "colTracking": "Tracking",
-    "colAvailable": "Available units",
-    "colGap": "Shopify gap",
-    "colLink": "Details",
     "tracked": "Tracked",
     "trackedInit": "Tracked (initializing)",
     "notTracked": "Not tracked",
     "noneAvailable": "None",
     "gapNone": "Aligned",
     "gapValue": "{{sign}}{{count}}",
-    "openVariant": "Open variant"
+    "available": "Available: {{list}}",
+    "otherVariants": {
+      "one": "+{{count}} more variant",
+      "other": "+{{count}} more variants"
+    },
+    "openApp": "Open in Serialis"
   },
   "orderBlock": {
     "heading": "Serialis refs",
@@ -171,9 +185,6 @@
       "other": "{{count}} units to allocate"
     },
     "noUnits": "No unit for this line.",
-    "colRef": "Ref",
-    "colState": "State",
-    "colOrigin": "Origin",
     "toAllocate": "To allocate",
     "toConfirm": "To confirm",
     "status_active": "Allocated",
@@ -188,7 +199,16 @@
     "origin_api": "API",
     "origin_late": "Designated afterwards",
     "origin_migration": "Migration",
-    "edit": "Edit units"
+    "edit": "Edit units",
+    "moreUnits": {
+      "one": "+{{count}} more unit",
+      "other": "+{{count}} more units"
+    },
+    "moreLines": {
+      "one": "+{{count}} more tracked line",
+      "other": "+{{count}} more tracked lines"
+    },
+    "allAllocated": "All allocated"
   },
   "orderAction": {
     "heading": "Edit units",

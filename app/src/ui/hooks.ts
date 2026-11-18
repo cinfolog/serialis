@@ -28,6 +28,8 @@ export interface AsyncState<T> {
   error: unknown;
   loading: boolean;
   reload: () => void;
+  /** Replaces the data with a value the caller already has (e.g. the response of a write), without a new request. */
+  replace: (data: T) => void;
 }
 
 /** Runs `fn` on mount and when `deps` change; keeps the previous data while reloading. */
@@ -53,7 +55,8 @@ export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList): AsyncSt
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);
   const reload = useCallback(() => setTick((n) => n + 1), []);
-  return { ...state, reload };
+  const replace = useCallback((data: T) => setState({ data, error: undefined, loading: false }), []);
+  return { ...state, reload, replace };
 }
 
 /** True once `active` has been true for `ms` milliseconds ("Encore un instant", 15.7). */

@@ -94,6 +94,22 @@ export function pressKey(el: HTMLElement, key: string): void {
   fireEvent.keyDown(el, { key });
 }
 
+/**
+ * Runs `action` on the element `[data-testid=testId]` at the earliest moment a user could touch it:
+ * in the MutationObserver callback of the commit that inserts it, before React has flushed that
+ * commit's passive effects (`useEffect`). Used to prove that no effect overwrites an early input
+ * (decision 29). Call it before rendering.
+ */
+export function actOnFirstAppearance(testId: string, action: (el: HTMLElement) => void): void {
+  const observer = new MutationObserver(() => {
+    const el = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+    if (!el) return;
+    observer.disconnect();
+    action(el);
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
 export async function flush(): Promise<void> {
   await act(async () => {
     await new Promise((r) => setTimeout(r, 0));

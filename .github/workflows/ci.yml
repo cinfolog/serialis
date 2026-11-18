@@ -23,7 +23,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Transition seed is up to date
         run: pnpm gen:transitions && git diff --exit-code db/shop/0002_allowed_transitions.sql
+      - name: Admin app build (served by the Worker from app/dist)
+        run: pnpm --filter @serialis/admin build
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Worker bundle
+        run: pnpm exec wrangler deploy --dry-run --env staging --outdir /tmp/wo
       - name: Dependency audit
         run: pnpm audit --prod --audit-level high

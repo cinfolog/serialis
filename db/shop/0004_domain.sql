@@ -240,6 +240,8 @@ CREATE TABLE order_sync (
   has_tracked_lines  INTEGER NOT NULL DEFAULT 0 CHECK (has_tracked_lines IN (0, 1)),
   last_synced_at     INTEGER,
   shopify_updated_at INTEGER,
+  -- Creation time of the order in Shopify (share of lines allocated in under 60 s, 19.4).
+  order_created_at   INTEGER,
   attempts           INTEGER NOT NULL DEFAULT 0,
   last_error         TEXT
 );

@@ -5,22 +5,25 @@ import { installFromSessionToken } from './install.js';
 import { errorMessage, logEvent } from './log.js';
 import { markUninstalled, resolveRouting, shopStub } from './routing.js';
 import { isComplianceTopic } from './topics.js';
+import { API_PREFIX, handleInternalApi } from './api/internal.js';
+import { serveAdminApp } from './assets.js';
 
 export { ShopStore } from './shop-store.js';
 
 /**
  * Main Worker `serialis-web` (spec 10.2). Routes:
- *  - GET  /            embedded app shell (App Bridge)
- *  - GET  /healthz
- *  - GET  /api/me      session-token authentication, installation, shop status
- *  - POST /webhooks/shopify — signature check, routing, idempotent storage in the shop's object.
+ *  - /api/v1/*   internal API (api/contract), session or ID token, CORS for the admin extensions
+ *  - GET /api/me session-token authentication, installation, shop status (lot 0)
+ *  - POST /webhooks/shopify — signature check, routing, idempotent storage in the shop's object
+ *  - GET /healthz
+ *  - anything else: the embedded admin app (`app/dist` through the `ASSETS` binding)
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    if (request.method === 'GET' && url.pathname === '/') {
-      return appShell(env);
+    if (url.pathname === API_PREFIX || url.pathname.startsWith(`${API_PREFIX}/`)) {
+      return handleInternalApi(request, env, url);
     }
 
     if (request.method === 'GET' && url.pathname === '/healthz') {
@@ -35,45 +38,13 @@ export default {
       return handleWebhook(request, env);
     }
 
+    if (request.method === 'GET' || request.method === 'HEAD') {
+      return serveAdminApp(request, env, url);
+    }
+
     return new Response('Not found', { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
-
-/**
- * Embedded app entry (placeholder until the React Router app, spec 10.2): loads App Bridge, which adds
- * the session token to `fetch` calls, and shows the installation status from `/api/me`.
- */
-function appShell(env: Env): Response {
-  const html = `<!doctype html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="shopify-api-key" content="${env.SHOPIFY_API_KEY}">
-<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
-<title>Serialis</title>
-</head>
-<body style="font-family: system-ui, sans-serif; padding: 24px">
-<h1 style="font-size: 20px">Serialis</h1>
-<p id="status">Connexion à la boutique… / Connecting to the shop…</p>
-<script>
-fetch('/api/me').then(function (r) { return r.json(); }).then(function (me) {
-  document.getElementById('status').textContent = me.shop
-    ? 'Boutique / Shop : ' + me.shop + ' (' + me.status + ', ' + me.token + ')'
-    : 'Session refusée / Session refused';
-}).catch(function () {
-  document.getElementById('status').textContent = 'Service indisponible / Service unavailable';
-});
-</script>
-</body>
-</html>`;
-  return new Response(html, {
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      // The admin frames the app: allow Shopify domains only.
-      'Content-Security-Policy': 'frame-ancestors https://*.myshopify.com https://admin.shopify.com',
-    },
-  });
-}
 
 /** `GET /api/me`: verifies the session token, installs or reactivates the shop if needed, returns its status. */
 async function handleMe(request: Request, env: Env, url: URL): Promise<Response> {

@@ -10,6 +10,7 @@
  */
 import { AdminGraphqlClient, exchangeForOnlineToken, type SessionToken } from '@serialis/shopify';
 import type { Env } from './env.js';
+import { shopifyFetch } from './shopify-fetch.js';
 import { placementFor, registerInstall, resolveRouting, shopStub, type ShopRouting } from './routing.js';
 import type { InstallResult } from './shop-store.js';
 
@@ -26,8 +27,13 @@ export async function installFromSessionToken(env: Env, session: SessionToken): 
     // Reinstallation before redaction: same object, same placement.
     routing = await registerInstall(env, session.shop, { placement: routing, shopifyShopGid: null });
   } else if (!routing) {
-    const online = await exchangeForOnlineToken(session.raw, { shop: session.shop, apiKey: env.SHOPIFY_API_KEY, apiSecret: env.SHOPIFY_API_SECRET });
-    const client = new AdminGraphqlClient({ shop: session.shop, accessToken: online.accessToken, maxRetries: 2 });
+    const online = await exchangeForOnlineToken(session.raw, {
+      shop: session.shop,
+      apiKey: env.SHOPIFY_API_KEY,
+      apiSecret: env.SHOPIFY_API_SECRET,
+      fetch: ((input: string, init: RequestInit) => shopifyFetch()(input, init)) as typeof fetch,
+    });
+    const client = new AdminGraphqlClient({ shop: session.shop, accessToken: online.accessToken, maxRetries: 2, fetch: (input, init) => shopifyFetch()(input, init) });
     const { data } = await client.request<{ shop: { id: string; billingAddress: { countryCodeV2: string | null } | null } }>(SHOP_QUERY, { estimatedCost: 2 });
     routing = await registerInstall(env, session.shop, {
       placement: placementFor(data.shop.billingAddress?.countryCodeV2),

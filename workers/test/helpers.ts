@@ -1,4 +1,4 @@
-import { env, SELF } from 'cloudflare:test';
+import { env, runInDurableObject, SELF } from 'cloudflare:test';
 import { vi } from 'vitest';
 import { registerInstall, shopStub, type ShopRouting } from '../src/routing.js';
 
@@ -55,11 +55,27 @@ export async function sendWebhook(options: WebhookOptions): Promise<Response> {
   });
 }
 
-/** Registers and installs a shop without Shopify access (no token exchange). */
-export async function installShop(shop: string, placement: Pick<ShopRouting, 'jurisdiction' | 'locationHint'> = { jurisdiction: null, locationHint: null }) {
+/**
+ * Registers and installs a shop without Shopify access (no token exchange). By default a tracked
+ * item is seeded so that order webhooks schedule their task (12.1 filters events of untracked shops).
+ */
+export async function installShop(
+  shop: string,
+  placement: Pick<ShopRouting, 'jurisdiction' | 'locationHint'> = { jurisdiction: null, locationHint: null },
+  options: { seedTrackedItem?: boolean } = {},
+) {
   const routing = await registerInstall(env, shop, { placement, shopifyShopGid: null });
   const stub = shopStub(env, routing);
   await stub.install({ shopDomain: shop, objectName: routing.objectName, sessionToken: null });
+  if (options.seedTrackedItem ?? true) {
+    await runInDurableObject(stub, (_s: unknown, state: DurableObjectState) => {
+      state.storage.sql.exec(
+        `INSERT INTO tracked_items (id, product_gid, variant_gid, inventory_item_gid, mode, activated_at, created_at, updated_at)
+         VALUES ('seed-item', 'gid://shopify/Product/1', 'gid://shopify/ProductVariant/1', 'gid://shopify/InventoryItem/1', 'pooled', 0, 0, 0)
+         ON CONFLICT DO NOTHING`,
+      );
+    });
+  }
   return { routing, stub };
 }
 

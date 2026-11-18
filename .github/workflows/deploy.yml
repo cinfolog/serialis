@@ -33,6 +33,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Admin app build (served by the Worker from app/dist)
+        run: pnpm --filter @serialis/admin build
       - run: pnpm typecheck && pnpm test
 
       - name: Registry migrations (D1)

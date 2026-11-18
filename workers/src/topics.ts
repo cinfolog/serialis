@@ -48,8 +48,11 @@ export function topicAction(topic: string, body: unknown): TopicAction {
 
   const [resource] = topic.split('/');
   switch (resource) {
-    case 'orders':
-      return syncOrder(gid('Order', b.admin_graphql_api_id ?? b.id), topic);
+    case 'orders': {
+      // `orders/edited` carries the order in `order_edit.order_id`.
+      const edit = b.order_edit && typeof b.order_edit === 'object' ? (b.order_edit as Body) : null;
+      return syncOrder(gid('Order', edit ? edit.order_id : (b.admin_graphql_api_id ?? b.id)), topic);
+    }
     case 'fulfillments':
     case 'refunds':
       return syncOrder(gid('Order', b.order_id), topic);

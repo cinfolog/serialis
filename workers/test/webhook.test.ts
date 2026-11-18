@@ -35,7 +35,7 @@ describe('webhook reception (lot 0 exit criterion)', () => {
     expect(await retry.json()).toEqual({ stored: false, reason: 'duplicate', shopState: 'active' });
 
     expect(await stub.inboxCount()).toBe(1);
-    expect(await stub.schemaVersion()).toBe(6);
+    expect(await stub.schemaVersion()).toBe(7);
   });
 
   it('acknowledges and ignores a webhook for an unknown shop without creating its database', async () => {

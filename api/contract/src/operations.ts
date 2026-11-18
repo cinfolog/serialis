@@ -101,12 +101,22 @@ export interface HealthResponse {
 export type ReviveTaskRequest = Record<string, never>;
 
 /**
- * POST /health/writes/{id}/retry (admin) → 204 No Content. Puts a `dead` outbox row back to
+ * POST /outbox/{id}/retry (admin) → 204 No Content. Puts a `dead` outbox row back to
  * `pending` at its next revision (new idempotency key, request prepared again, attempts reset, 12.4);
  * its `outbox_dead` anomaly closes when the row is sent. `id` is `HealthResponse.deadWrites[].id`.
  * Empty body. Same 403 / 404 (`write_not_dead`) / 409 answers as `reviveTask`.
  */
 export type RetryWriteRequest = Record<string, never>;
+
+/**
+ * POST /outbox/{id}/abandon (admin) → 204 No Content (12.4 « l'abandonner, ce qui débloque la suite et
+ * déclenche une réconciliation de l'objet concerné »). Shopify will never receive this write: the row
+ * becomes final (`failed`, marked abandoned), the following rows of the same Shopify object run again,
+ * the object is reconciled (level check of the item at the location, or order sync for the order
+ * metafield) and its `outbox_dead` anomaly is resolved. Journaled (`outbox.abandon`). Empty body.
+ * Same 403 / 404 (`write_not_dead`) / 409 answers as `retryWrite`.
+ */
+export type AbandonWriteRequest = Record<string, never>;
 
 /** Routes of this file (internal surface `/api/v1`, never on the public API). */
 export const OPERATIONS_ROUTES = {
@@ -114,5 +124,6 @@ export const OPERATIONS_ROUTES = {
   patchAppUser: 'PATCH /app-users',
   health: 'GET /health',
   reviveTask: 'POST /health/tasks/{key}/revive',
-  retryWrite: 'POST /health/writes/{id}/retry',
+  retryWrite: 'POST /outbox/{id}/retry',
+  abandonWrite: 'POST /outbox/{id}/abandon',
 } as const;

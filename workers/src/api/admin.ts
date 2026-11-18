@@ -24,7 +24,7 @@ import { requestOrderSync } from '../domain/sync-order.js';
 import { newId, parseJson } from '../domain/util.js';
 import { ApiError, checkIfMatch, iso, json, parseBody, queryOne, type ApiResult } from './http.js';
 import type { ApiContext } from './present.js';
-import { roleOf } from './users.js';
+import { isOwner, roleOf } from './users.js';
 import { healthCounters, type HealthInfo } from './health.js';
 
 const LOCATIONS_TTL_MS = 10 * 60_000;
@@ -51,6 +51,8 @@ export function me(ctx: ApiContext, info: { shop: string; tokenStatus: string; s
     emergencyStop: repo.automationPaused(),
     locale: ctx.locale,
     role: roleOf(ctx.d, ctx.call.principal),
+    owner: isOwner(ctx.d, ctx.call.principal),
+    userId: ctx.call.principal.surface === 'internal' && ctx.call.principal.actor.type === 'user' ? ctx.call.principal.actor.id : null,
     banners,
     extensionsShown: shown,
   };

@@ -6,6 +6,7 @@ import m0003 from '../../db/shop/0003_platform.sql';
 import m0004 from '../../db/shop/0004_domain.sql';
 import m0005 from '../../db/shop/0005_api_keys.sql';
 import m0006 from '../../db/shop/0006_operations.sql';
+import m0007 from '../../db/shop/0007_outbox_abandon.sql';
 import { handleApiCall } from './api/router.js';
 import { problem, type ApiCall, type ApiResult } from './api/http.js';
 import { registerAppUser, roleOf } from './api/users.js';
@@ -38,6 +39,7 @@ const MIGRATIONS: ReadonlyArray<{ version: number; sql: string }> = [
   { version: 4, sql: m0004 },
   { version: 5, sql: m0005 },
   { version: 6, sql: m0006 },
+  { version: 7, sql: m0007 },
 ];
 
 export type ShopState = 'active' | 'frozen' | 'uninstalled';
@@ -167,6 +169,12 @@ export class ShopStore extends DurableObject<Env> {
         if (!this.outbox.retryDead(id, now)) return false;
         this.tasks.enqueue({ key: OUTBOX_TASK_KEY, kind: 'process_outbox', priority: TASK_PRIORITY.process_outbox }, now);
         return true;
+      },
+      abandonOutbox: (id, by, now = Date.now()) => {
+        const row = this.outbox.abandonDead(id, by, now);
+        // The rows behind it on its serial key can run again: wake the outbox task.
+        if (row) this.tasks.enqueue({ key: OUTBOX_TASK_KEY, kind: 'process_outbox', priority: TASK_PRIORITY.process_outbox }, now);
+        return row;
       },
     };
     // Pending migrations run before any other call (blockConcurrencyWhile, 30 s limit), then

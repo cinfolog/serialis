@@ -106,6 +106,9 @@ export type OutboxRow = {
   stale_since: number | null;
 };
 
+/** A row abandoned by an operator (`Outbox.abandonDead`). */
+export type AbandonedOutboxRow = Pick<OutboxRow, 'id' | 'kind' | 'serial_key' | 'revision' | 'last_error'> & { payload: StoredPayload };
+
 /** Transient user errors of stock mutations: retry with the same key (spec 12.4). */
 const TRANSIENT_USER_ERRORS = new Set(['IDEMPOTENCY_CONCURRENT_REQUEST', 'ADJUST_QUANTITIES_FAILED', 'MOVE_QUANTITIES_FAILED', 'SERVICE_UNAVAILABLE']);
 
@@ -181,6 +184,36 @@ export class Outbox {
         id,
       ).rowsWritten > 0
     );
+  }
+
+  /**
+   * Operator abandon of a `dead` row (12.4 « ou de l'abandonner, ce qui débloque la suite »): the row
+   * becomes final without being sent. Status `failed` (the 0003 CHECK has no other final status that
+   * unblocks the serial key) with `abandoned_at` / `abandoned_by` to tell it from a refusal by Shopify;
+   * `last_error` is kept. Rows behind it on the serial key are no longer blocked; a row that depends on
+   * it (`depends_on`) is failed by the executor, as after any failed dependency (a two-step write never
+   * runs its second step alone). No hook: the caller closes the anomaly and requests the reconciliation.
+   * Synchronous; null when the row does not exist or is not `dead`.
+   */
+  abandonDead(id: number, by: string | null, now = Date.now()): AbandonedOutboxRow | null {
+    const row = this.sql
+      .exec<{ id: number; kind: OutboxKind; serial_key: string; payload: string; revision: number; last_error: string | null }>(
+        "SELECT id, kind, serial_key, payload, revision, last_error FROM outbox WHERE id = ? AND status = 'dead'",
+        id,
+      )
+      .toArray()[0];
+    if (!row) return null;
+    const written = this.sql.exec(
+      "UPDATE outbox SET status = 'failed', lease_until = NULL, abandoned_at = ?, abandoned_by = ?, completed_at = ?, updated_at = ? WHERE id = ? AND status = 'dead'",
+      now,
+      by,
+      now,
+      now,
+      id,
+    ).rowsWritten;
+    if (written === 0) return null;
+    logEvent('warn', 'outbox.abandoned', { id, kind: row.kind });
+    return { id: row.id, kind: row.kind, serial_key: row.serial_key, revision: row.revision, last_error: row.last_error, payload: JSON.parse(row.payload) as StoredPayload };
   }
 
   /** In-flight rows whose lease expired go back to pending, same payload and key (spec 12.2, T-CH-05). */

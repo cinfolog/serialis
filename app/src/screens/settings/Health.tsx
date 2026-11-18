@@ -1,11 +1,13 @@
 import type { HealthAlert, HealthResponse } from '@serialis/contract';
+import { useState } from 'react';
+import { ApiError } from '../../api/client';
 import { useAnnounce, useClient, useSession } from '../../context';
 import { useI18n, type MessageKey } from '../../i18n';
 import { Badge, Banner, Button, Section, Stack } from '../../ui/components';
 import { useAsync } from '../../ui/hooks';
 import { Link } from '../../ui/Link';
 import { Page } from '../../ui/Page';
-import { ErrorState, Loading } from '../../ui/states';
+import { ErrorState, Loading, useErrorMessage } from '../../ui/states';
 
 /** Database size thresholds of 17.2 (alert at 5 GB, critical at 8 GB). */
 const SIZE_WARNING_BYTES = 5_000_000_000;
@@ -34,11 +36,64 @@ export function Health() {
   return <HealthReport back={back} />;
 }
 
+/** Refusals of the retry routes with their own explanation (`workers/src/api/health.ts`). */
+const RETRY_ERRORS: Record<string, MessageKey> = {
+  shop_frozen: 'health.retry.error.shop_frozen',
+  reconnect_required: 'health.retry.error.reconnect_required',
+  task_not_dead: 'health.retry.error.not_dead',
+  write_not_dead: 'health.retry.error.not_dead',
+};
+
+type RetryTarget = { type: 'task'; key: string } | { type: 'write'; id: number };
+
+/**
+ * « Relancer » of a dead task or given-up write (12.7): no confirmation (nothing is lost, the work is only
+ * put back in the queue), busy state on the pressed button, toast on success then a fresh report, an
+ * error banner in the list otherwise (also refreshed: the item may have been revived meanwhile).
+ */
+function useRetry(onDone: () => void) {
+  const { t } = useI18n();
+  const client = useClient();
+  const announce = useAnnounce();
+  const errorMessage = useErrorMessage();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<{ target: 'task' | 'write'; message: string } | null>(null);
+  const [done, setDone] = useState<{ target: 'task' | 'write'; message: string } | null>(null);
+  async function retry(target: RetryTarget) {
+    const id = target.type === 'task' ? `task:${target.key}` : `write:${target.id}`;
+    if (busy) return;
+    setBusy(id);
+    setError(null);
+    setDone(null);
+    try {
+      if (target.type === 'task') await client.reviveTask(target.key);
+      else await client.retryWrite(target.id);
+      const message = t(target.type === 'task' ? 'health.retry.task_done' : 'health.retry.write_done');
+      // Toast in the admin (App Bridge), banner in the list everywhere (the row leaves it after the refresh).
+      announce(message, { toast: true });
+      setDone({ target: target.type, message });
+      onDone();
+    } catch (e) {
+      const known = e instanceof ApiError && e.detail ? RETRY_ERRORS[e.detail] : undefined;
+      const message = known ? t(known) : errorMessage(e);
+      setError({ target: target.type, message });
+      announce(message);
+      if (e instanceof ApiError && e.status === 404) onDone();
+    } finally {
+      setBusy(null);
+    }
+  }
+  return { busy, error, done, retry };
+}
+
+type Retry = ReturnType<typeof useRetry>;
+
 function HealthReport({ back }: { back: React.ReactNode }) {
   const { t, dateTime } = useI18n();
   const client = useClient();
   const announce = useAnnounce();
   const state = useAsync(async () => ({ report: await client.health(), at: new Date().toISOString() }), [client]);
+  const retry = useRetry(state.reload);
 
   if (!state.data) {
     return (
@@ -57,8 +112,8 @@ function HealthReport({ back }: { back: React.ReactNode }) {
       <ShopSection report={report} />
       <QueuesSection report={report} />
       <PassesSection report={report} />
-      <DeadTasksSection report={report} />
-      <DeadWritesSection report={report} />
+      <DeadTasksSection report={report} retry={retry} />
+      <DeadWritesSection report={report} retry={retry} />
       <Section>
         <Stack direction="inline" gap="base" alignItems="center">
           <Button
@@ -214,68 +269,118 @@ function PassesSection({ report }: { report: HealthResponse }) {
   );
 }
 
-function DeadTasksSection({ report }: { report: HealthResponse }) {
+function RetryOutcome({ retry, target }: { retry: Retry; target: 'task' | 'write' }) {
+  if (retry.error?.target === target) {
+    return (
+      <Banner tone="critical" testId={`health-retry-${target}-error`}>
+        {retry.error.message}
+      </Banner>
+    );
+  }
+  if (retry.done?.target === target) {
+    return (
+      <Banner tone="success" testId={`health-retry-${target}-done`}>
+        {retry.done.message}
+      </Banner>
+    );
+  }
+  return null;
+}
+
+function DeadTasksSection({ report, retry }: { report: HealthResponse; retry: Retry }) {
   const { t, dateTime, number } = useI18n();
   return (
     <Section heading={t('health.dead_tasks.heading')}>
-      {report.deadTasks.length === 0 ? (
-        <s-paragraph data-testid="health-dead-tasks-empty">{t('health.dead_tasks.empty')}</s-paragraph>
-      ) : (
-        <s-table data-testid="health-dead-tasks">
-          <s-table-header-row>
-            <s-table-header>{t('health.dead_tasks.task')}</s-table-header>
-            <s-table-header format="numeric">{t('health.dead_tasks.attempts')}</s-table-header>
-            <s-table-header>{t('health.dead_tasks.error')}</s-table-header>
-            <s-table-header>{t('health.dead_tasks.at')}</s-table-header>
-          </s-table-header-row>
-          <s-table-body>
-            {report.deadTasks.map((d) => (
-              <s-table-row key={d.key}>
-                <s-table-cell>
-                  <code style={{ overflowWrap: 'anywhere' }}>{d.kind}</code>
-                </s-table-cell>
-                <s-table-cell>{number(d.attempts)}</s-table-cell>
-                <s-table-cell>
-                  <span style={{ overflowWrap: 'anywhere' }}>{d.lastError ?? t('health.no_error')}</span>
-                </s-table-cell>
-                <s-table-cell>{dateTime(d.updatedAt)}</s-table-cell>
-              </s-table-row>
-            ))}
-          </s-table-body>
-        </s-table>
-      )}
+      <Stack gap="small">
+        <RetryOutcome retry={retry} target="task" />
+        {report.deadTasks.length === 0 ? (
+          <s-paragraph data-testid="health-dead-tasks-empty">{t('health.dead_tasks.empty')}</s-paragraph>
+        ) : (
+          <s-table data-testid="health-dead-tasks">
+            <s-table-header-row>
+              <s-table-header>{t('health.dead_tasks.task')}</s-table-header>
+              <s-table-header format="numeric">{t('health.dead_tasks.attempts')}</s-table-header>
+              <s-table-header>{t('health.dead_tasks.error')}</s-table-header>
+              <s-table-header>{t('health.dead_tasks.at')}</s-table-header>
+              <s-table-header>{t('health.retry.column')}</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {report.deadTasks.map((d) => (
+                <s-table-row key={d.key}>
+                  <s-table-cell>
+                    <code style={{ overflowWrap: 'anywhere' }}>{d.kind}</code>
+                  </s-table-cell>
+                  <s-table-cell>{number(d.attempts)}</s-table-cell>
+                  <s-table-cell>
+                    <span style={{ overflowWrap: 'anywhere' }}>{d.lastError ?? t('health.no_error')}</span>
+                  </s-table-cell>
+                  <s-table-cell>{dateTime(d.updatedAt)}</s-table-cell>
+                  <s-table-cell>
+                    <Button
+                      variant="secondary"
+                      loading={retry.busy === `task:${d.key}`}
+                      disabled={retry.busy !== null && retry.busy !== `task:${d.key}`}
+                      onPress={() => void retry.retry({ type: 'task', key: d.key })}
+                      accessibilityLabel={t('health.retry.task_accessibility', { kind: d.kind })}
+                      testId={`health-revive-task-${d.key}`}
+                    >
+                      {t('health.retry')}
+                    </Button>
+                  </s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
+        )}
+      </Stack>
     </Section>
   );
 }
 
-function DeadWritesSection({ report }: { report: HealthResponse }) {
+function DeadWritesSection({ report, retry }: { report: HealthResponse; retry: Retry }) {
   const { t, dateTime } = useI18n();
   return (
     <Section heading={t('health.dead_writes.heading')}>
-      {report.deadWrites.length === 0 ? (
-        <s-paragraph data-testid="health-dead-writes-empty">{t('health.dead_writes.empty')}</s-paragraph>
-      ) : (
-        <s-table data-testid="health-dead-writes">
-          <s-table-header-row>
-            <s-table-header>{t('health.dead_writes.write')}</s-table-header>
-            <s-table-header>{t('health.dead_writes.error')}</s-table-header>
-            <s-table-header>{t('health.dead_writes.at')}</s-table-header>
-          </s-table-header-row>
-          <s-table-body>
-            {report.deadWrites.map((w) => (
-              <s-table-row key={w.id}>
-                <s-table-cell>
-                  <code style={{ overflowWrap: 'anywhere' }}>{`${w.kind} #${w.id}`}</code>
-                </s-table-cell>
-                <s-table-cell>
-                  <span style={{ overflowWrap: 'anywhere' }}>{w.lastError ?? t('health.no_error')}</span>
-                </s-table-cell>
-                <s-table-cell>{dateTime(w.updatedAt)}</s-table-cell>
-              </s-table-row>
-            ))}
-          </s-table-body>
-        </s-table>
-      )}
+      <Stack gap="small">
+        <RetryOutcome retry={retry} target="write" />
+        {report.deadWrites.length === 0 ? (
+          <s-paragraph data-testid="health-dead-writes-empty">{t('health.dead_writes.empty')}</s-paragraph>
+        ) : (
+          <s-table data-testid="health-dead-writes">
+            <s-table-header-row>
+              <s-table-header>{t('health.dead_writes.write')}</s-table-header>
+              <s-table-header>{t('health.dead_writes.error')}</s-table-header>
+              <s-table-header>{t('health.dead_writes.at')}</s-table-header>
+              <s-table-header>{t('health.retry.column')}</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {report.deadWrites.map((w) => (
+                <s-table-row key={w.id}>
+                  <s-table-cell>
+                    <code style={{ overflowWrap: 'anywhere' }}>{`${w.kind} #${w.id}`}</code>
+                  </s-table-cell>
+                  <s-table-cell>
+                    <span style={{ overflowWrap: 'anywhere' }}>{w.lastError ?? t('health.no_error')}</span>
+                  </s-table-cell>
+                  <s-table-cell>{dateTime(w.updatedAt)}</s-table-cell>
+                  <s-table-cell>
+                    <Button
+                      variant="secondary"
+                      loading={retry.busy === `write:${w.id}`}
+                      disabled={retry.busy !== null && retry.busy !== `write:${w.id}`}
+                      onPress={() => void retry.retry({ type: 'write', id: w.id })}
+                      accessibilityLabel={t('health.retry.write_accessibility', { write: `${w.kind} #${w.id}` })}
+                      testId={`health-retry-write-${w.id}`}
+                    >
+                      {t('health.retry')}
+                    </Button>
+                  </s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
+        )}
+      </Stack>
     </Section>
   );
 }

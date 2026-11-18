@@ -96,8 +96,12 @@ export interface MockOptions {
   empty?: boolean;
   /** Start with every extension already displayed. */
   extensionsShown?: boolean;
-  /** Health of the shop (`GET /health`): all green by default, or with dead tasks/writes and alerts. */
-  health?: 'ok' | 'degraded';
+  /**
+   * Health of the shop (`GET /health`): all green by default; `stopped` = one dead task and one given-up
+   * write that can be retried; `degraded` = the same plus every other alert, Shopify access to restore
+   * (a retry then answers 409 `reconnect_required`, like the Worker).
+   */
+  health?: 'ok' | 'stopped' | 'degraded';
   now?: () => Date;
 }
 
@@ -695,6 +699,39 @@ export class MockClient implements ApiClient {
     key.revokedAt ??= this.iso();
   }
 
+  /** Dead tasks and writes put back to work by `reviveTask` / `retryWrite` (they leave the report). */
+  readonly revivedTasks = new Set<string>();
+  readonly retriedWrites = new Set<number>();
+
+  async reviveTask(key: string, opts: WriteOptions = {}): Promise<void> {
+    await this.tick();
+    this.adminOnly();
+    return this.idempotent('reviveTask', opts.idempotencyKey, () => {
+      if (!this.healthReport().deadTasks.some((t) => t.key === key)) throw new ApiError({ status: 404, code: 'not_found', detail: 'task_not_dead' });
+      this.retryAllowed();
+      this.revivedTasks.add(key);
+      return undefined;
+    });
+  }
+
+  async retryWrite(id: number, opts: WriteOptions = {}): Promise<void> {
+    await this.tick();
+    this.adminOnly();
+    return this.idempotent('retryWrite', opts.idempotencyKey, () => {
+      if (!this.healthReport().deadWrites.some((w) => w.id === id)) throw new ApiError({ status: 404, code: 'not_found', detail: 'write_not_dead' });
+      this.retryAllowed();
+      this.retriedWrites.add(id);
+      return undefined;
+    });
+  }
+
+  /** Same refusals as the Worker (`workers/src/api/health.ts`): pointless while frozen or without Shopify access. */
+  private retryAllowed(): void {
+    const report = this.healthReport();
+    if (report.shopState === 'frozen') throw new ApiError({ status: 409, code: 'invalid_transition', detail: 'shop_frozen' });
+    if (report.token === 'reconnect_required') throw new ApiError({ status: 409, code: 'invalid_transition', detail: 'reconnect_required' });
+  }
+
   async health(): Promise<HealthResponse> {
     await this.tick();
     this.adminOnly();
@@ -703,7 +740,17 @@ export class MockClient implements ApiClient {
 
   /** Health report of the scenario (same shape and thresholds as the Worker, `workers/src/api/health.ts`). */
   healthReport(): HealthResponse {
+    const report = this.baseHealthReport();
+    const deadTasks = report.deadTasks.filter((t) => !this.revivedTasks.has(t.key));
+    const deadWrites = report.deadWrites.filter((w) => !this.retriedWrites.has(w.id));
+    const counters = { ...report.counters, tasksDead: deadTasks.length, outboxDead: deadWrites.length };
+    const alerts = report.alerts.filter((a) => (a === 'task_dead' ? deadTasks.length > 0 : a === 'outbox_dead' ? deadWrites.length > 0 : true));
+    return { ...report, counters, alerts, deadTasks, deadWrites };
+  }
+
+  private baseHealthReport(): HealthResponse {
     const degraded = this.options.health === 'degraded';
+    const stopped = this.options.health === 'stopped';
     const passes: HealthResponse['passes'] = [
       { pass: 'R1', lastRunAt: this.iso(1), nextRunAt: this.iso(-1) },
       { pass: 'R2', lastRunAt: this.iso(9), nextRunAt: this.iso(-6) },
@@ -711,6 +758,22 @@ export class MockClient implements ApiClient {
       { pass: 'R4', lastRunAt: degraded ? null : this.iso(510), nextRunAt: this.iso(-930) },
       { pass: 'purge', lastRunAt: this.iso(390), nextRunAt: this.iso(-1050) },
     ];
+    const deadTasks: HealthResponse['deadTasks'] = [{ key: 'sync_order:gid://shopify/Order/1001', kind: 'sync_order', attempts: 8, lastError: 'Shopify GraphQL THROTTLED', updatedAt: this.iso(35) }];
+    const deadWrites: HealthResponse['deadWrites'] = [{ id: 42, kind: 'inventory_adjust', lastError: 'userErrors: CHANGE_FROM_QUANTITY_STALE', updatedAt: this.iso(50) }];
+    if (stopped) {
+      return {
+        shopState: 'active',
+        token: 'valid',
+        schemaVersion: 6,
+        databaseBytes: 3_457_024,
+        counters: { tasksDead: 1, tasksOverdue: 0, outboxDead: 1, outboxPending: 0, outboxPendingOver1h: 0, outboxOldestPendingSeconds: null, reconnectRequired: false, frozen: false },
+        alerts: ['task_dead', 'outbox_dead'],
+        lastWebhookAt: this.iso(2),
+        passes,
+        deadTasks,
+        deadWrites,
+      };
+    }
     if (!degraded) {
       return {
         shopState: 'active',
@@ -734,8 +797,8 @@ export class MockClient implements ApiClient {
       alerts: ['task_dead', 'task_overdue', 'outbox_dead', 'outbox_stuck', 'reconnect_required', 'webhook_silence'],
       lastWebhookAt: this.iso(420),
       passes,
-      deadTasks: [{ key: 'sync_order:gid://shopify/Order/1001', kind: 'sync_order', attempts: 8, lastError: 'Shopify GraphQL THROTTLED', updatedAt: this.iso(35) }],
-      deadWrites: [{ id: 42, kind: 'inventory_adjust', lastError: 'userErrors: CHANGE_FROM_QUANTITY_STALE', updatedAt: this.iso(50) }],
+      deadTasks,
+      deadWrites,
     };
   }
 

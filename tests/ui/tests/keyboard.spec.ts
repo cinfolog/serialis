@@ -118,6 +118,18 @@ test.describe('keyboard: navigation and focus', () => {
     });
   }
 
+  test('health: a given-up write is retried from the keyboard, focus stays in the page (12.7)', async ({ page }) => {
+    await open(page, '/settings/health?mock_health=stopped');
+    await tabTo(page, 'health-retry-write-42');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('health-retry-write-done')).toContainText(t('health.retry.write_done'));
+    await expect(page.getByTestId('live-region')).toContainText(t('health.retry.write_done'));
+    expect(await mockState(page, (m) => m.postLog.map((p: { name: string }) => p.name) as string[])).toEqual(['retryWrite']);
+    // The row left the list with its button: Tab goes on inside the page instead of being lost.
+    await page.keyboard.press('Tab');
+    expect(await focusInfo(page)).not.toBeNull();
+  });
+
   test('global search: a ref typed then Enter opens the unit sheet', async ({ page }) => {
     await open(page, '/');
     await tabTo(page, 'global-search');

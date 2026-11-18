@@ -108,6 +108,10 @@ export interface ApiClient {
 
   /** Health of the shop (17.1, 17.2), administrators only: state, counters, passes, dead tasks and writes. */
   health(): Promise<HealthResponse>;
+  /** Revives a dead task (12.7 `task_dead`, administrators): 204; 404 when not dead; 409 frozen or reconnect required. */
+  reviveTask(key: string, opts?: WriteOptions): Promise<void>;
+  /** Retries a given-up write (12.7 `outbox_dead`, administrators): 204; 404 when not dead; 409 frozen or reconnect required. */
+  retryWrite(id: number, opts?: WriteOptions): Promise<void>;
 }
 
 /** Contract route used by each client method (checked by `client.contract.test.ts`). */
@@ -137,6 +141,8 @@ export const CLIENT_ROUTES = {
   createApiKey: 'createApiKey',
   revokeApiKey: 'revokeApiKey',
   health: 'health',
+  reviveTask: 'reviveTask',
+  retryWrite: 'retryWrite',
 } as const satisfies Record<keyof ApiClient, InternalRouteName>;
 
 // ---------------------------------------------------------------------------
@@ -359,6 +365,12 @@ export class HttpClient implements ApiClient {
   }
   health() {
     return this.call<HealthResponse>('health');
+  }
+  reviveTask(key: string, opts: WriteOptions = {}) {
+    return this.call<void>('reviveTask', { pathParams: { key }, body: {}, idempotencyKey: opts.idempotencyKey });
+  }
+  retryWrite(id: number, opts: WriteOptions = {}) {
+    return this.call<void>('retryWrite', { pathParams: { id: String(id) }, body: {}, idempotencyKey: opts.idempotencyKey });
   }
 }
 

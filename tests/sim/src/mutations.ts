@@ -334,6 +334,36 @@ export function metafieldsSet(env: MutationEnv, args: Obj): MutationResult {
   return { payload: { __typename: 'Payload', metafields: out, userErrors: [] }, failed: false };
 }
 
+/** `metafieldsDelete`: removes order or variant metafields; an order change fires `orders/updated`, a missing one is a no-op. */
+export function metafieldsDelete(env: MutationEnv, args: Obj): MutationResult {
+  const shop = env.ctx.shop;
+  const inputs = asArr(args['metafields']);
+  const deleted: Obj[] = [];
+  const touched = new Set<string>();
+  for (const m of inputs) {
+    const ownerId = String(m['ownerId']);
+    const order = shop.orders.get(ownerId);
+    const variant = shop.variants.get(ownerId);
+    if (order) env.ctx.requireAny(['write_orders']);
+    else if (variant) env.ctx.requireAny(['write_products']);
+    const owner = (order ?? variant) as { metafields: Metafield[] } | undefined;
+    const idx = owner ? owner.metafields.findIndex((x) => x.namespace === m['namespace'] && x.key === m['key']) : -1;
+    if (!owner || idx < 0) {
+      deleted.push(null as unknown as Obj);
+      continue;
+    }
+    owner.metafields.splice(idx, 1);
+    deleted.push({ __typename: 'MetafieldIdentifier', ownerId, namespace: m['namespace'], key: m['key'] });
+    if (order) touched.add(order.id);
+  }
+  for (const id of touched) {
+    const order = shop.order(id);
+    shop.touchOrder(order);
+    shop.emit('orders/updated', orderPayload(shop, order));
+  }
+  return { payload: { __typename: 'Payload', deletedMetafields: deleted, userErrors: [] }, failed: false };
+}
+
 const HOLD_LIMIT = 10;
 
 export function fulfillmentOrderHold(env: MutationEnv, args: Obj): MutationResult {
@@ -404,6 +434,7 @@ export const MUTATIONS: Record<string, (env: MutationEnv, args: Obj) => Mutation
   inventoryActivate,
   inventoryItemUpdate,
   metafieldsSet,
+  metafieldsDelete,
   fulfillmentOrderHold,
   fulfillmentOrderReleaseHold,
   bulkOperationRunQuery,
@@ -424,6 +455,7 @@ export const NULL_PAYLOAD: Record<string, Obj> = {
   inventoryActivate: { inventoryLevel: null },
   inventoryItemUpdate: { inventoryItem: null },
   metafieldsSet: { metafields: [] },
+  metafieldsDelete: { deletedMetafields: [] },
   fulfillmentOrderHold: { fulfillmentHold: null, fulfillmentOrder: null, remainingFulfillmentOrder: null },
   fulfillmentOrderReleaseHold: { fulfillmentOrder: null },
   bulkOperationRunQuery: { bulkOperation: null },

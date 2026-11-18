@@ -17,7 +17,7 @@ import { domainOutboxHooks } from './domain/writes.js';
 import { shopifyFetch } from './shopify-fetch.js';
 import type { Env } from './env.js';
 import { taskHandler } from './handlers.js';
-import { errorMessage, logEvent } from './log.js';
+import { errorMessage, logEvent, withLogContext } from './log.js';
 import { Outbox, type OutboxEnqueueInput } from './outbox.js';
 import { OUTBOX_TASK_KEY, TASK_PRIORITY } from './task-kinds.js';
 import { ALARM_BUDGET_MS, TaskQueue, type EnqueueTaskInput, type TaskHandler } from './tasks.js';
@@ -82,6 +82,10 @@ function parseBody(payload: string): Record<string, unknown> {
   }
 }
 
+function taskDeadKey(taskKey: string): string {
+  return `task_dead|task=${taskKey}`;
+}
+
 /** Budget of the outbox inside one alarm run (the alarm has 25 s of work in total, spec 12.2). */
 const OUTBOX_BUDGET_MS = 20_000;
 
@@ -103,8 +107,17 @@ export class ShopStore extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
-    this.tasks = new TaskQueue(ctx.storage);
     this.repo = new DomainRepo(this.sql);
+    this.tasks = new TaskQueue(ctx.storage, Math.random, {
+      // 12.2: a dead task opens a critical anomaly (and the operations alert, 17.2); it closes when the task runs again.
+      onDead: (t) => {
+        this.repo.openAnomaly({ type: 'task_dead', subject: {}, fingerprintKey: taskDeadKey(t.key), details: { task: t.key, kind: t.kind, attempts: t.attempts, error: t.error }, now: Date.now() });
+      },
+      onCompleted: (t) => {
+        const live = this.repo.liveAnomalyByKey(taskDeadKey(t.key));
+        if (live) this.repo.closeAnomaly(live.id, 'auto_resolved', { by: 'task_completed' }, Date.now());
+      },
+    });
     this.outbox = new Outbox(
       ctx.storage,
       () => this.meta('outbox_key_prefix') ?? 'serialis',
@@ -121,6 +134,7 @@ export class ShopStore extends DurableObject<Env> {
       apiSecret: env.SHOPIFY_API_SECRET,
       encryptionKey: env.TOKEN_ENCRYPTION_KEY,
       fetch: (input, init) => shopifyFetch()(input, init),
+      onStatusChange: (status) => this.onTokenStatus(status),
     });
     const self = this;
     this.domain = {
@@ -167,6 +181,10 @@ export class ShopStore extends DurableObject<Env> {
 
   /** Idempotent: first call creates the schema, a call after `app/uninstalled` reactivates. */
   async install(input: InstallInput): Promise<InstallResult> {
+    return this.logged(() => this.installImpl(input), input.shopDomain);
+  }
+
+  private async installImpl(input: InstallInput): Promise<InstallResult> {
     const created = this.schemaVersion() === 0;
     let reactivated = false;
     const now = Date.now();
@@ -241,6 +259,10 @@ export class ShopStore extends DurableObject<Env> {
    * duplicates are ignored (same webhook id). Idempotent, so RPC retries are harmless.
    */
   async ingest(input: IngestInput): Promise<IngestResult> {
+    return this.logged(() => this.ingestImpl(input));
+  }
+
+  private async ingestImpl(input: IngestInput): Promise<IngestResult> {
     if (this.schemaVersion() === 0) return { stored: false, reason: 'not_installed' };
     let body: unknown = null;
     try {
@@ -358,6 +380,10 @@ export class ShopStore extends DurableObject<Env> {
   }
 
   override async alarm(): Promise<void> {
+    return this.logged(() => this.alarmImpl());
+  }
+
+  private async alarmImpl(): Promise<void> {
     // Never throws (spec 12.2): every task has its own error block and the alarm is always re-armed.
     try {
       if (this.schemaVersion() === 0) return;
@@ -440,6 +466,10 @@ export class ShopStore extends DurableObject<Env> {
    * verified the session token or API key and chosen this object from it.
    */
   async api(call: ApiCall): Promise<ApiResult> {
+    return this.logged(() => this.apiImpl(call));
+  }
+
+  private async apiImpl(call: ApiCall): Promise<ApiResult> {
     if (this.schemaVersion() === 0) return { status: 403, headers: { 'Content-Type': 'application/problem+json' }, body: JSON.stringify({ type: 'https://serialis.dev/problems/forbidden', title: 'Forbidden', status: 403, code: 'forbidden', detail: 'shop_not_installed' }) };
     this.repo.setMeta('last_activity_at', String(Date.now()));
     try {
@@ -473,6 +503,35 @@ export class ShopStore extends DurableObject<Env> {
       },
     });
     return this.client;
+  }
+
+  // ---------------------------------------------------------------- observability (spec 17.1)
+
+  /** Runs an entry point with the shop in every log line and the per-shop order digest key. */
+  private logged<T>(fn: () => T, shopDomain?: string): T {
+    const installed = this.schemaVersion() > 0;
+    return withLogContext({ shop: shopDomain ?? (installed ? (this.meta('shop_domain') ?? undefined) : undefined), ...(installed ? { orderKey: this.logSecret() } : {}) }, fn);
+  }
+
+  private logSecret(): string {
+    let secret = this.meta('log_secret');
+    if (!secret) {
+      secret = crypto.randomUUID();
+      this.setMeta('log_secret', secret);
+    }
+    return secret;
+  }
+
+  /** `reconnect_required` (12.7, 13.9): critical anomaly while no usable token exists, closed by the next valid token. */
+  private onTokenStatus(status: 'valid' | 'reconnect_required'): void {
+    if (this.schemaVersion() === 0) return;
+    const now = Date.now();
+    if (status === 'reconnect_required') {
+      this.repo.openAnomaly({ type: 'reconnect_required', subject: {}, fingerprintKey: 'reconnect_required', details: {}, now });
+      return;
+    }
+    const live = this.repo.liveAnomalyByKey('reconnect_required');
+    if (live) this.repo.closeAnomaly(live.id, 'auto_resolved', { by: 'token_valid' }, now);
   }
 
   // ---------------------------------------------------------------- helpers

@@ -37,6 +37,8 @@ export interface TokenManagerConfig {
   encryptionKey: string | undefined;
   /** Outbound fetch for the OAuth endpoint (tests inject the simulator). */
   fetch?: (input: string, init: RequestInit) => Promise<Response>;
+  /** Token state changes for the domain (critical anomaly `reconnect_required`, 12.7, 13.9). Synchronous. */
+  onStatusChange?: (status: 'valid' | 'reconnect_required') => void;
 }
 
 export class TokenManager {
@@ -118,7 +120,8 @@ export class TokenManager {
       }
     }
     this.sql.exec("UPDATE shopify_token SET status = 'reconnect_required', updated_at = ? WHERE id = 1", Date.now());
-    // TODO(lot 0, observability): critical anomaly and merchant e-mail (spec 13.9).
+    // Critical anomaly through the hook; the merchant e-mail comes with the notifications (S-40, lot 5).
+    this.notify('reconnect_required');
     logEvent('error', 'token.reconnect_required', { shop: this.config.shop(), error: errorMessage(lastError) });
     throw new ReconnectRequiredError('Shopify refused the refresh tokens');
   }
@@ -152,6 +155,15 @@ export class TokenManager {
         now,
       );
     });
+    this.notify('valid');
+  }
+
+  private notify(status: 'valid' | 'reconnect_required'): void {
+    try {
+      this.config.onStatusChange?.(status);
+    } catch (error) {
+      logEvent('error', 'token.on_status_failed', { error: errorMessage(error) });
+    }
   }
 
   private row(): TokenRow | undefined {

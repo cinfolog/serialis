@@ -1,0 +1,111 @@
+{
+  "name": "Add refs (variant)",
+  "description": "Variant page action: add refs by typing or pasting, received or already counted.",
+  "common": {
+    "loading": "Loading…",
+    "stillLoading": "Just a moment…",
+    "errorTitle": "Something went wrong",
+    "retry": "Try again",
+    "reload": "Reload",
+    "cancel": "Cancel",
+    "back": "Back",
+    "close": "Close",
+    "offlineTitle": "You are offline",
+    "offlineBody": "Submitting is not possible until the network is back. What you typed is kept.",
+    "conflictTitle": "Conflicting change"
+  },
+  "designation": {
+    "exact": "Unit recognized: {{ref}}.",
+    "suffix": "Unit recognized by its last 4 characters: {{ref}}. Check that it is the right one.",
+    "ambiguous": "{{count}} units match: type the full ref.",
+    "tooShort": "Type at least 4 characters, or the full ref.",
+    "unknown": "None of the proposed units matches this ref.",
+    "suggestions": "Ref suggestions"
+  },
+  "errors": {
+    "unauthenticated": "Your session has expired. Reload the Shopify admin page.",
+    "forbidden": "You do not have the rights for this action.",
+    "not_found": "Not found: it may have been deleted.",
+    "validation_failed": "The submitted data is not valid.",
+    "idempotency_conflict": "This request was already sent with different content. Reload and try again.",
+    "precondition_failed": "This unit was changed in the meantime. Reload to see the current values.",
+    "rate_limited": "Too many requests. Wait a few seconds and try again.",
+    "unit_not_available": "This unit is not available: it is already allocated to an order, on hold or locked.",
+    "identifier_conflict": "This ref already exists.",
+    "invalid_transition": "This action is not possible in the current state of the unit or order (for example, already being prepared or shipped).",
+    "variant_mismatch": "This ref belongs to another variant.",
+    "location_mismatch": "This unit is not at the right location.",
+    "ambiguous_ref": "Several units match: type the full ref.",
+    "unknown_ref": "Unknown ref.",
+    "not_tracked": "This variant is not tracked by Serialis.",
+    "emergency_stop": "Emergency stop is on: actions are suspended. Lift it from the Serialis app.",
+    "simulation_expired": "The simulation has expired. Run it again.",
+    "incompatible_settings": "This action is incompatible with the current settings.",
+    "network_error": "Could not connect. Check your network and try again.",
+    "unknown": "An unexpected error occurred. Try again."
+  },
+  "states": {
+    "INCOMING": "Incoming",
+    "AVAILABLE": "Available",
+    "HELD": "On hold",
+    "ALLOCATED": "Allocated",
+    "QUALITY_CONTROL": "Quality control",
+    "DAMAGED": "Damaged",
+    "IN_TRANSIT": "In transit",
+    "SHIPPED": "Shipped",
+    "RETURN_PENDING": "Return pending",
+    "TO_VERIFY": "To verify",
+    "LOST": "Lost",
+    "SCRAPPED": "Scrapped",
+    "UNTRACKED": "Untracked"
+  },
+  "variantAction": {
+    "heading": "Add refs",
+    "addLocation": "Location",
+    "addKind": "These units are…",
+    "kindAlreadyCounted": "Already counted in Shopify (no stock write)",
+    "kindReceived": "Received now (Shopify stock +1 per unit)",
+    "addRefs": "Refs to add",
+    "addRefsHelp": "One ref per line; spaces, commas and semicolons are also accepted.",
+    "previewSummary": "{{ready}} ready, {{duplicate}} duplicate(s) in the list, {{known}} already known, {{invalid}} invalid format.",
+    "line_duplicate": "Duplicate in the list",
+    "line_known": "Already known",
+    "line_invalid": "Invalid format",
+    "addNoGap": "No gap in Shopify: use “Received” to add stock.",
+    "addTooMany": "1,000 refs at most per add: split the list.",
+    "addExceedsGap": "You are adding {{count}} “already counted” refs for a gap of {{gap}}: the server will refuse those beyond the gap.",
+    "confirmTitle": "Confirm the add",
+    "effectReceived": {
+      "one": "{{count}} unit will be created at “{{location}}” and Shopify stock will increase by {{count}}.",
+      "other": "{{count}} units will be created at “{{location}}” and Shopify stock will increase by {{count}}."
+    },
+    "effectCounted": {
+      "one": "{{count}} unit will be created at “{{location}}” with no write to Shopify stock (already counted).",
+      "other": "{{count}} units will be created at “{{location}}” with no write to Shopify stock (already counted)."
+    },
+    "confirmAdd": {
+      "one": "Add {{count}} ref",
+      "other": "Add {{count}} refs"
+    },
+    "outcomeTitle": {
+      "one": "{{count}} ref added",
+      "other": "{{count}} refs added"
+    },
+    "outcomeRejected": {
+      "one": "{{count}} ref rejected, left in the field for correction:",
+      "other": "{{count}} refs rejected, left in the field for correction:"
+    },
+    "addAt": "Location: {{location}}",
+    "colRef": "Ref",
+    "colStatus": "Status",
+    "notTracked": "This variant is not tracked by Serialis: turn tracking on from the variant's “Serialis refs” block.",
+    "noLocation": "No location can receive refs.",
+    "initializingHint": "Initialization: existing stock is registered as “already counted”.",
+    "confirmSubmit": {
+      "one": "Confirm adding {{count}} ref",
+      "other": "Confirm adding {{count}} refs"
+    },
+    "addMore": "Add more refs",
+    "doneHint": "The variant block updates once this window is closed."
+  }
+}

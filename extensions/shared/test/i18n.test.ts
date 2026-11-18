@@ -90,7 +90,7 @@ describe('locales (FR default, EN)', () => {
   });
 
   it('every extension ships fr.default.json and en.json', () => {
-    for (const ext of ['variant-block', 'product-block', 'order-block', 'order-action']) {
+    for (const ext of ['variant-block', 'variant-action', 'product-block', 'order-block', 'order-action']) {
       const files = readdirSync(join(extRoot, ext, 'locales')).sort();
       expect(files, ext).toEqual(['en.json', 'fr.default.json']);
     }
@@ -106,7 +106,7 @@ describe('translation keys used in code exist in every extension (no hard-coded 
   const forms = (prefix: string, values: string[]) => values.map((v) => `${prefix}${v}`);
   const dynamic: Record<string, string[]> = {
     'states.${state}': forms('states.', ['INCOMING', 'AVAILABLE', 'HELD', 'ALLOCATED', 'QUALITY_CONTROL', 'DAMAGED', 'IN_TRANSIT', 'SHIPPED', 'RETURN_PENDING', 'TO_VERIFY', 'LOST', 'SCRAPPED', 'UNTRACKED']),
-    'variantBlock.line_${l.status}': forms('variantBlock.line_', ['duplicate', 'known', 'invalid']),
+    'variantAction.line_${l.status}': forms('variantAction.line_', ['duplicate', 'known', 'invalid']),
     'orderBlock.status_${allocation.status}': forms('orderBlock.status_', ['active', 'fulfilled', 'released', 'returned']),
     'orderAction.title_${action.type}': forms('orderAction.title_', ['allocate', 'replace', 'remove']),
     'orderAction.confirm_${action.type}': forms('orderAction.confirm_', ['allocate', 'replace', 'remove']),
@@ -117,10 +117,17 @@ describe('translation keys used in code exist in every extension (no hard-coded 
     ...forms('orderAction.done_', ['allocate', 'replace', 'remove']),
     ...forms('orderAction.effect_', ['allocate', 'replace', 'remove']),
     ...forms('designation.', ['exact', 'suffix', 'ambiguous', 'tooShort', 'unknown']),
-    'variantBlock.heading', 'productBlock.heading', 'orderBlock.heading',
+    'variantBlock.heading', 'variantAction.heading', 'productBlock.heading', 'orderBlock.heading',
   ];
 
-  for (const ext of ['variant-block', 'product-block', 'order-block', 'order-action']) {
+  const OWN_NAMESPACES: Record<string, string[]> = {
+    'variant-block': ['variantBlock'],
+    'variant-action': ['variantAction'],
+    'product-block': ['productBlock'],
+    'order-block': ['orderBlock'],
+    'order-action': ['orderBlock', 'orderAction'],
+  };
+  for (const ext of Object.keys(OWN_NAMESPACES)) {
     it(ext, () => {
       const files = [...walk(join(extRoot, ext, 'src')), ...walk(join(extRoot, 'shared', 'src'))].filter((f) => !f.endsWith('testing.ts'));
       const used = new Set<string>(fixed);
@@ -140,7 +147,7 @@ describe('translation keys used in code exist in every extension (no hard-coded 
       used.add('description');
       for (const [file, lang] of [['fr.default.json', 'fr'], ['en.json', 'en']] as const) {
         const t = createTranslator(readJson(join(extRoot, ext, 'locales', file)), lang);
-        const own = ext === 'order-action' ? ['orderBlock', 'orderAction'] : [ext === 'order-block' ? 'orderBlock' : ext === 'product-block' ? 'productBlock' : 'variantBlock'];
+        const own = OWN_NAMESPACES[ext]!;
         const relevant = [...used].filter((k) => ['common', 'errors', 'designation', 'states', 'name', 'description', ...own].includes(k.split('.')[0]!));
         const missing = relevant.filter((k) => t(k, { count: 2 }) === k);
         expect(missing, `${ext} ${lang}`).toEqual([]);

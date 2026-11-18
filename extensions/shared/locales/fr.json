@@ -74,8 +74,6 @@
     "colShopify": "Stock Shopify",
     "colRegistered": "Refs enregistrées",
     "colGap": "Écart",
-    "colRef": "Ref",
-    "colStatus": "Statut",
     "noLocation": "Sans emplacement",
     "gapNone": "Aligné",
     "gapToRegister": "{{count}} à enregistrer",
@@ -86,6 +84,30 @@
     },
     "refsEmpty": "Aucune ref enregistrée pour cette variante.",
     "addTitle": "Ajouter des refs",
+    "initializingHint": "Initialisation : saisissez le stock existant en « déjà comptées ».",
+    "refsCount": {
+      "one": "{{count}} ref",
+      "many": "{{count}} refs",
+      "other": "{{count}} refs"
+    },
+    "locationLine": "{{location}} · Shopify {{onHand}} · {{refs}}",
+    "locationLineNoStock": "{{location}} · {{refs}}",
+    "otherLocations": {
+      "one": "+{{count}} autre emplacement",
+      "many": "+{{count}} autres emplacements",
+      "other": "+{{count}} autres emplacements"
+    },
+    "seeAllRefs": {
+      "one": "Voir la ref",
+      "many": "Voir les {{count}} refs",
+      "other": "Voir les {{count}} refs"
+    },
+    "collapsed": "{{refs}} · {{status}}",
+    "notTrackedShort": "Non suivie",
+    "moreActions": "Plus d'actions"
+  },
+  "variantAction": {
+    "heading": "Ajouter des refs",
     "addLocation": "Emplacement",
     "addKind": "Ces unités sont…",
     "kindAlreadyCounted": "Déjà comptées dans Shopify (aucune écriture de stock)",
@@ -99,11 +121,6 @@
     "addNoGap": "Aucun écart dans Shopify : utilisez « Reçues » pour ajouter du stock.",
     "addTooMany": "1 000 refs au maximum par ajout : découpez la liste.",
     "addExceedsGap": "Vous ajoutez {{count}} refs « déjà comptées » pour un écart de {{gap}} : le serveur refusera celles qui dépassent l'écart.",
-    "addReview": {
-      "one": "Vérifier l'ajout de {{count}} ref",
-      "many": "Vérifier l'ajout de {{count}} refs",
-      "other": "Vérifier l'ajout de {{count}} refs"
-    },
     "confirmTitle": "Confirmer l'ajout",
     "effectReceived": {
       "one": "{{count}} unité sera créée à « {{location}} » et le stock Shopify augmentera de {{count}}.",
@@ -130,29 +147,19 @@
       "many": "{{count}} refs refusées, laissées dans le champ pour correction :",
       "other": "{{count}} refs refusées, laissées dans le champ pour correction :"
     },
-    "initializingHint": "Initialisation : saisissez le stock existant en « déjà comptées ».",
-    "refsCount": {
-      "one": "{{count}} ref",
-      "many": "{{count}} refs",
-      "other": "{{count}} refs"
-    },
-    "locationLine": "{{location}} · Shopify {{onHand}} · {{refs}}",
-    "locationLineNoStock": "{{location}} · {{refs}}",
-    "otherLocations": {
-      "one": "+{{count}} autre emplacement",
-      "many": "+{{count}} autres emplacements",
-      "other": "+{{count}} autres emplacements"
-    },
-    "seeAllRefs": {
-      "one": "Voir la ref",
-      "many": "Voir les {{count}} refs",
-      "other": "Voir les {{count}} refs"
-    },
-    "collapsed": "{{refs}} · {{status}}",
-    "notTrackedShort": "Non suivie",
-    "moreActions": "Plus d'actions",
     "addAt": "Emplacement : {{location}}",
-    "addBack": "Retour"
+    "colRef": "Ref",
+    "colStatus": "Statut",
+    "notTracked": "Cette variante n'est pas suivie par Serialis : activez le suivi depuis le bloc « Refs Serialis » de la variante.",
+    "noLocation": "Aucun emplacement ne peut recevoir de refs.",
+    "initializingHint": "Initialisation : le stock existant s'enregistre en « déjà comptées ».",
+    "confirmSubmit": {
+      "one": "Confirmer l'ajout de {{count}} ref",
+      "many": "Confirmer l'ajout de {{count}} refs",
+      "other": "Confirmer l'ajout de {{count}} refs"
+    },
+    "addMore": "Ajouter d'autres refs",
+    "doneHint": "Le bloc de la variante se met à jour après la fermeture."
   },
   "productBlock": {
     "heading": "Refs Serialis",
@@ -261,7 +268,7 @@
   "extensionMeta": {
     "variant-block": {
       "name": "Refs Serialis (variante)",
-      "description": "Bloc de la page variante : refs par emplacement et par état, écart avec le stock Shopify, ajout de refs."
+      "description": "Bloc de la page variante : refs par emplacement et par état, écart avec le stock Shopify, bouton qui ouvre l’action « Ajouter des refs »."
     },
     "product-block": {
       "name": "Refs Serialis (produit)",
@@ -274,6 +281,10 @@
     "order-action": {
       "name": "Modifier les unités",
       "description": "Attribuer, remplacer ou retirer les unités d'une commande."
+    },
+    "variant-action": {
+      "name": "Ajouter des refs (variante)",
+      "description": "Action de la page variante : ajout de refs par saisie ou collage, reçues ou déjà comptées."
     }
   }
 }

@@ -1,0 +1,11 @@
+api_version = "2026-10"
+
+[[extensions]]
+type = "ui_extension"
+name = "t:name"
+handle = "serialis-variant-refs-action"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "admin.product-variant-details.action.render"
+  module = "./src/index.tsx"

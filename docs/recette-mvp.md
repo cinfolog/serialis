@@ -27,7 +27,7 @@ Les tests automatiques (Vitest, workerd avec le simulateur, Playwright) couvrent
 | 0.1.3 | Vérifier que `SHOPIFY_API_SECRET`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` et `SHOPIFY_CLI_TOKEN` sont présents dans le même environnement. | Les 4 sont listés. | README | ☐ |
 | 0.1.4 | GitHub › Actions › **Deploy** › *Run workflow* › environnement `staging`. | Toutes les étapes vertes : tests, migrations D1, Worker, secrets, test de fumée, puis `shopify app deploy` (pas d'avertissement « SHOPIFY_CLI_TOKEN manquant »). | README « Déploiement » | ☐ |
 | 0.1.5 | `curl -s https://staging.serialis.dev/healthz` | Réponse 200. | test de fumée | ☐ |
-| 0.1.6 | Dev Dashboard › app Serialis › Versions. | Une nouvelle version contient les 4 extensions (bloc variante, bloc produit, bloc commande, action « Modifier les unités »). | 19.4 écrans et extensions | ☐ |
+| 0.1.6 | Dev Dashboard › app Serialis › Versions. | Une nouvelle version contient les 5 extensions (bloc variante, action « Ajouter des refs », bloc produit, bloc commande, action « Modifier les unités »). | 19.4 écrans et extensions | ☐ |
 
 ### 0.2 Boutique et données de test
 
@@ -77,13 +77,13 @@ Les tests automatiques (Vitest, workerd avec le simulateur, Playwright) couvrent
 | # | Action | Résultat attendu | Couvre | ☐ |
 |---|---|---|---|---|
 | 3.1 | Fiche « Vélo recette » › variante M › bloc « Refs Serialis » › « Suivre les refs » › confirmer. | Confirmation qui annonce « aucune écriture » ; la variante devient suivie, phase d'initialisation affichée. | EF-01, 15.7 | ☐ |
-| 3.2 | Bloc variante M › Ajouter des refs › emplacement A › « Reçues maintenant » › coller 50 refs `VR-M-A-001` à `VR-M-A-050` (une par ligne) › Vérifier › confirmer. | Effet annoncé « 50 unités … stock Shopify augmentera de 50 » ; « 50 refs ajoutées » ; stock Shopify de M en A = 50 sous 60 s (Produits › Stock). | T-MVP-01 | ☐ |
-| 3.3 | Recommencer avec la même liste plus `VR-M-A-051`, une ligne `mauvaise ref!` et un doublon dans la liste. | Résumé avant envoi : doublon, déjà connues, format invalide ; seule `VR-M-A-051` est créée, les refusées restent dans le champ avec leur motif ; stock +1. | T-MVP-01, T-UX-02 | ☐ |
-| 3.4 | Produits › Stock : passer M en B à 5 à la main. Bloc variante › emplacement B › « Déjà comptées » › 7 refs `VR-M-B-001…007`. | Avertissement « vous ajoutez 7 refs pour un écart de 5 » ; 5 créées, 2 refusées ; **aucune** écriture de stock (B reste à 5). | T-MVP-01, 7.2 | ☐ |
-| 3.5 | Bloc variante M, avec écart nul en B : « Déjà comptées » › 1 ref. | Refus dans le bloc : « Aucun écart dans Shopify : utilisez « Reçues » ». | 15.7 | ☐ |
+| 3.2 | Bloc variante M › « Ajouter des refs » : la fenêtre « Ajouter des refs » s'ouvre (le bloc garde son résumé, sans « Show more »). Emplacement A (liste déroulante seulement s'il y a 2 emplacements ou plus, sinon une ligne « Emplacement : … ») › « Reçues maintenant » › coller 50 refs `VR-M-A-001` à `VR-M-A-050` (une par ligne) › « Ajouter 50 refs » › « Confirmer l'ajout de 50 refs » › « Fermer ». | Décompte en direct « 50 prête(s) » ; effet annoncé « 50 unités … stock Shopify augmentera de 50 » ; « 50 refs ajoutées » ; après la fermeture, le bloc affiche les nouvelles refs en quelques secondes sans recharger la page ; stock Shopify de M en A = 50 sous 60 s (Produits › Stock). | T-MVP-01, `extensions/DECISIONS.md` 2 | ☐ |
+| 3.3 | Fenêtre « Ajouter des refs » (depuis le bloc ou le menu « Plus d'actions » de la variante) : recommencer avec la même liste plus `VR-M-A-051`, une ligne `mauvaise ref!` et un doublon dans la liste. | Résumé avant envoi : doublon, déjà connues, format invalide ; seule `VR-M-A-051` est créée ; stock +1. | T-MVP-01, T-UX-02 | ☐ |
+| 3.4 | Produits › Stock : passer M en B à 5 à la main. Bloc variante › « Ajouter des refs » › emplacement B › « Déjà comptées » (proposé par défaut) › 7 refs `VR-M-B-001…007`. | Avertissement « vous ajoutez 7 refs pour un écart de 5 » ; 5 créées, 2 refusées et laissées dans le champ avec leur motif ; **aucune** écriture de stock (B reste à 5). | T-MVP-01, 7.2 | ☐ |
+| 3.5 | Fenêtre « Ajouter des refs » de M, avec écart nul en B : « Déjà comptées » › 1 ref. | Refus dans la fenêtre, bouton « Ajouter » désactivé : « Aucun écart dans Shopify : utilisez « Reçues » ». | 15.7 | ☐ |
 | 3.6 | Bloc variante : tableau « Par emplacement ». | A : Shopify 51, refs 51, « Aligné » ; B : 5 / 5 « Aligné ». | 8, 15.6 | ☐ |
-| 3.7 | Tout faire 3.2 au clavier seulement (Tab, Entrée, Échap). | Même résultat ; focus visible partout ; Échap annule le dialogue sans écrire. | T-UX-02 (bloc variante), 15.9 | ☐ |
-| 3.8 | Couper le Wi-Fi pendant un ajout, puis le rétablir et valider de nouveau. | Bandeau « Hors connexion », saisie conservée ; au retour, l'ajout n'est appliqué qu'une fois (stock +n une seule fois). | T-UX-02, 15.5 | ☐ |
+| 3.7 | Tout faire 3.2 au clavier seulement (Tab, Entrée, Échap). | Même résultat ; focus visible partout ; Échap ferme la fenêtre sans écrire. | T-UX-02 (action variante), 15.9 | ☐ |
+| 3.8 | Fenêtre « Ajouter des refs » : couper le Wi-Fi pendant un ajout, puis le rétablir et valider de nouveau. | Bandeau « Hors connexion », saisie conservée ; au retour, l'ajout n'est appliqué qu'une fois (stock +n une seule fois). | T-UX-02, 15.5 | ☐ |
 | 3.9 | Fiche produit › bloc produit. | « 1 variante suivie sur 2 », unités disponibles et écart par variante ; le lien « Voir la variante » ouvre la bonne variante (format `shopify:admin/products/{id}/variants/{id}` à confirmer). | 15.6, `extensions/DECISIONS.md` | ☐ |
 | 3.10 | App › Imports : coller `ref,sku,location,already_counted` puis 3 lignes pour la variante L (SKU de L, emplacement A, `non`) et une ligne avec un emplacement inconnu › Simuler › Confirmer. | Rapport de simulation : 3 valides, 1 en erreur ; confirmation qui nomme l'effet ; 3 unités créées, stock L en A +3. | 19.4 capacité 2, 9.10 | ☐ |
 
@@ -111,7 +111,7 @@ Base : `BASE=https://staging.serialis.dev/public/v1` (`workers/DECISIONS.md` 46)
 | 5.3 | Commande › Metafields (ou `GET $BASE/orders/<id>/allocations`). | `serialis.units` liste les 3 refs pour la ligne ; aucune propriété de ligne ajoutée ; ligne Antivol intacte. | T-MVP-02, 13.4 | ☐ |
 | 5.4 | Créer une commande dans l'admin (Commandes › Créer), et une commande par paiement accéléré depuis la fiche produit (Shop Pay / bouton « Acheter maintenant »). | Mêmes résultats que 5.2 pour chacune. | T-MVP-04 | ☐ |
 | 5.5 | Commande sur un emplacement où M n'a plus d'unité libre (ou plus de quantité que d'unités). | Unités disponibles attribuées, `insufficient_units` (ou `awaiting_unit`) ouverte ; **aucune** mise en attente posée sur l'ordre d'expédition. | T-MVP-04, T-MVP-08 | ☐ |
-| 5.6 | Ajouter ensuite une unité « Reçue » au bon emplacement depuis le bloc variante. | L'unité est attribuée à la ligne en attente, l'anomalie se ferme. | T-MVP-04, T-MVP-08 | ☐ |
+| 5.6 | Ajouter ensuite une unité « Reçue » au bon emplacement depuis le bloc variante (fenêtre « Ajouter des refs »). | L'unité est attribuée à la ligne en attente, l'anomalie se ferme. | T-MVP-04, T-MVP-08 | ☐ |
 | 5.7 | Accueil de l'app. | Part des lignes attribuées en moins de 60 s affichée et proche de 100 % ; anomalies listées. | 19.4 critères de réussite | ☐ |
 
 ## 6. Bloc commande et « Modifier les unités » (capacité 3)
@@ -226,7 +226,7 @@ Base : `BASE=https://staging.serialis.dev/public/v1` (`workers/DECISIONS.md` 46)
 | T-MVP-09 | 10.1, 10.2 | |
 | T-MVP-10 | 7.1 | |
 | Droits (15.8), abandon (12.4) | 11.3 à 11.3c, 12.2 à 12.4 | |
-| T-UX-02 (bloc variante, admin réel) | 3.3, 3.7, 3.8 | |
+| T-UX-02 (action variante, admin réel) | 3.3, 3.7, 3.8 | |
 | T-UX-03, T-UX-05 (vrai CDN) | 1.9, 14.1 à 14.5 | |
 | T-UX-07 (admin réel) | 6.3 | |
 | PV-3 | 9.3 | levée / repli |

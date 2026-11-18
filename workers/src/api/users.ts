@@ -1,7 +1,7 @@
 /**
  * App users and access rights (spec 15.8): the user is known by the `sub` of the session token or of
  * the admin extensions' ID token; the first user seen by the shop's base is its owner and administrator
- * (workers/DECISIONS.md 46); administrators designate others among the users who already opened the app.
+ * (workers/DECISIONS.md 57); administrators designate others among the users who already opened the app.
  * The public API (14.1) maps the `admin` scope to the administration level.
  */
 import type { AppUser, AppUserRole, ListAppUsersResponse, PatchAppUserRequest } from '@serialis/contract';

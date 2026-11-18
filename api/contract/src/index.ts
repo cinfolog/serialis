@@ -471,3 +471,99 @@ export type TrackItemsResponse = Page<TrackedItem>;
 
 /** `GET /locations` → `Page<Location>` (active and inactive locations; `nextCursor` is null when the list is complete). */
 export type ListLocationsResponse = Page<Location>;
+
+// ---------------------------------------------------------------------------
+// Public API and API keys (spec 14.1, 11.2 `api_keys`, 15.4 "Réglages › API") — additive only
+// ---------------------------------------------------------------------------
+
+/**
+ * Public surface: `https://api.serialis.dev/v1/...` in production; `https://<app host>/public/v1/...`
+ * on the staging and pilot hosts (the production app host does not serve it). Same resources and
+ * rules as the internal surface, authenticated by an API key in `Authorization: Bearer`.
+ */
+export const PUBLIC_BASE = '/v1' as const;
+export const PUBLIC_PATH_BASE = '/public/v1' as const;
+
+/** Scopes of an API key (14.1). `webhooks:manage` comes with the outgoing webhooks (lot 4). */
+export type ApiScope = 'units:read' | 'units:write' | 'allocations:read' | 'allocations:write' | 'anomalies:read' | 'anomalies:write' | 'admin';
+export const API_SCOPES: readonly ApiScope[] = ['units:read', 'units:write', 'allocations:read', 'allocations:write', 'anomalies:read', 'anomalies:write', 'admin'];
+
+/** An API key as listed in the admin app; the secret is never returned after creation. */
+export interface ApiKey {
+  /** Identifier of the key (public part), used to revoke it. */
+  prefix: string;
+  name: string;
+  scopes: ApiScope[];
+  /** Start of the key as shown in the list, e.g. `srl_1_eu_shop.myshopify.com_ab12…`. */
+  hint: string;
+  createdAt: IsoDateTime;
+  createdBy: string | null;
+  lastUsedAt: IsoDateTime | null;
+  revokedAt: IsoDateTime | null;
+}
+
+/** POST /api-keys (internal surface, administrators only; O5: never through the public API). */
+export interface CreateApiKeyRequest {
+  name: string;
+  scopes: ApiScope[];
+}
+/** The full key is returned ONCE, in this response; only a hash of its secret is stored. */
+export interface CreateApiKeyResponse {
+  apiKey: ApiKey;
+  key: string;
+}
+
+/** Key management routes, internal surface only: GET → Page<ApiKey>, POST → CreateApiKeyResponse, DELETE → 204. */
+export const API_KEY_ROUTES = {
+  listApiKeys: 'GET /api-keys',
+  createApiKey: 'POST /api-keys',
+  revokeApiKey: 'DELETE /api-keys/{prefix}',
+} as const;
+
+/** Every route of the internal surface `/api/v1` (admin app client). */
+export const INTERNAL_ROUTES = { ...ALL_ROUTES, ...API_KEY_ROUTES } as const;
+export type InternalRouteName = keyof typeof INTERNAL_ROUTES;
+
+/** POST /units (public API, 14.2, 19.4 capability 1): one unit; same rules as `POST /units/batch` in atomic mode. Response: `Unit` (201, ETag). */
+export interface CreateUnitRequest {
+  variantGid: Gid;
+  locationId: string;
+  ref: string;
+  alreadyCounted: boolean;
+}
+
+/**
+ * Routes of the public API and the scope each one requires (14.1 table, MVP subset). A resolution of
+ * anomaly that writes the Shopify stock (`writesStock`) requires `admin` instead of `anomalies:write`.
+ * `GET /me` and `GET /stats/home` (session and home screen) are not part of the public API.
+ */
+export const PUBLIC_ROUTES = {
+  listTrackedItems: { route: 'GET /tracked-items', scope: 'units:read' },
+  trackItems: { route: 'POST /tracked-items', scope: 'admin' },
+  listUnits: { route: 'GET /units', scope: 'units:read' },
+  createUnit: { route: 'POST /units', scope: 'units:write' },
+  getUnit: { route: 'GET /units/{id}', scope: 'units:read' },
+  createUnitsBatch: { route: 'POST /units/batch', scope: 'units:write' },
+  checkUnitsBatch: { route: 'POST /units/batch/check', scope: 'units:write' },
+  lookup: { route: 'GET /lookup', scope: 'units:read' },
+  unitEvents: { route: 'GET /units/{id}/events', scope: 'units:read' },
+  orderAllocations: { route: 'GET /orders/{orderId}/allocations', scope: 'allocations:read' },
+  createAllocation: { route: 'POST /allocations', scope: 'allocations:write' },
+  deleteAllocation: { route: 'DELETE /allocations/{id}', scope: 'allocations:write' },
+  replaceAllocation: { route: 'POST /allocations/{id}/replace', scope: 'allocations:write' },
+  confirmShipped: { route: 'POST /allocations/{id}/confirm-shipped', scope: 'allocations:write' },
+  identifyReturn: { route: 'POST /returns/{returnId}/identify', scope: 'units:write' },
+  listAnomalies: { route: 'GET /anomalies', scope: 'anomalies:read' },
+  acknowledgeAnomaly: { route: 'POST /anomalies/{id}/acknowledge', scope: 'anomalies:write' },
+  resolveAnomaly: { route: 'POST /anomalies/{id}/resolve', scope: 'anomalies:write' },
+  listLocations: { route: 'GET /locations', scope: 'units:read' },
+  getSettings: { route: 'GET /settings', scope: 'admin' },
+  simulateSettings: { route: 'POST /settings/simulate', scope: 'admin' },
+  patchSettings: { route: 'PATCH /settings', scope: 'admin' },
+  createImport: { route: 'POST /imports', scope: 'units:write' },
+  getImport: { route: 'GET /imports/{id}', scope: 'units:read' },
+  confirmImport: { route: 'POST /imports/{id}/confirm', scope: 'units:write' },
+  pause: { route: 'POST /automation/pause', scope: 'admin' },
+  resume: { route: 'POST /automation/resume', scope: 'admin' },
+} as const satisfies Record<string, { route: string; scope: ApiScope }>;
+export type PublicRouteName = keyof typeof PUBLIC_ROUTES;

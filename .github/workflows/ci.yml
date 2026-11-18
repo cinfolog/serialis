@@ -31,3 +31,34 @@ jobs:
         run: pnpm exec wrangler deploy --dry-run --env staging --outdir /tmp/wo
       - name: Dependency audit
         run: pnpm audit --prod --audit-level high
+
+  ui:
+    # Browser tests (Playwright + axe) on the admin app built in mock mode. The Polaris CDN script is replaced by an
+    # offline shim (tests/ui/fixtures/polaris-shim.js); set UI_TESTS_REAL_CDN=1 to run against the real components.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Admin app build (mock mode)
+        run: pnpm --filter @serialis/admin build
+        env:
+          VITE_API_MOCK: '1'
+      - name: Install Chromium
+        run: pnpm --filter @serialis/ui-tests exec playwright install --with-deps chromium
+      - name: Browser tests
+        run: pnpm --filter @serialis/ui-tests e2e
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            tests/ui/playwright-report
+            tests/ui/test-results
+          retention-days: 7

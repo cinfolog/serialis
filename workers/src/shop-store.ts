@@ -4,9 +4,11 @@ import m0001 from '../../db/shop/0001_init.sql';
 import m0002 from '../../db/shop/0002_allowed_transitions.sql';
 import m0003 from '../../db/shop/0003_platform.sql';
 import m0004 from '../../db/shop/0004_domain.sql';
+import m0005 from '../../db/shop/0005_api_keys.sql';
 import m0006 from '../../db/shop/0006_operations.sql';
 import { handleApiCall } from './api/router.js';
-import type { ApiCall, ApiResult } from './api/http.js';
+import { problem, type ApiCall, type ApiResult } from './api/http.js';
+import { registerAppUser, roleOf } from './api/users.js';
 import type { DomainContext } from './domain/context.js';
 import { recordOrderEdit, shouldSchedule } from './domain/ingest.js';
 import { runInventoryLevelCheck } from './domain/levels.js';
@@ -18,6 +20,8 @@ import { domainOutboxHooks } from './domain/writes.js';
 import { shopifyFetch } from './shopify-fetch.js';
 import type { Env } from './env.js';
 import { taskHandler } from './handlers.js';
+import { handleApiKeysCall, handlePublicCall, invalidKey, isApiKeysPath, type PublicApiInput } from './public-api/object.js';
+import { TokenBucketLimiter } from './public-api/rate-limit.js';
 import { errorMessage, logEvent, withLogContext } from './log.js';
 import { Outbox, type OutboxEnqueueInput } from './outbox.js';
 import { OUTBOX_TASK_KEY, TASK_PRIORITY } from './task-kinds.js';
@@ -32,6 +36,7 @@ const MIGRATIONS: ReadonlyArray<{ version: number; sql: string }> = [
   { version: 2, sql: m0002 },
   { version: 3, sql: m0003 },
   { version: 4, sql: m0004 },
+  { version: 5, sql: m0005 },
   { version: 6, sql: m0006 },
 ];
 
@@ -108,6 +113,8 @@ export class ShopStore extends DurableObject<Env> {
   private readonly outbox: Outbox;
   private readonly tokens: TokenManager;
   private readonly throttle = new CostThrottle();
+  /** Public API rate limit per key (14.1), in memory. */
+  private readonly apiLimiter = new TokenBucketLimiter();
   private client: AdminGraphqlClient | null = null;
   private readonly repo: DomainRepo;
   private readonly domain: DomainContext;
@@ -496,11 +503,38 @@ export class ShopStore extends DurableObject<Env> {
     if (this.schemaVersion() === 0) return { status: 403, headers: { 'Content-Type': 'application/problem+json' }, body: JSON.stringify({ type: 'https://serialis.dev/problems/forbidden', title: 'Forbidden', status: 403, code: 'forbidden', detail: 'shop_not_installed' }) };
     this.repo.setMeta('last_activity_at', String(Date.now()));
     try {
+      if (isApiKeysPath(call.path)) {
+        // 15.8: API keys are an administration action.
+        registerAppUser(this.domain, call.principal, Date.now());
+        if (roleOf(this.domain, call.principal) !== 'admin') return problem(403, 'forbidden', 'admin_required');
+        return await handleApiKeysCall(this.domain, this.env, call);
+      }
       return await handleApiCall(this.domain, call, () => ({
         shop: this.meta('shop_domain') ?? '',
         tokenStatus: this.tokens.status().status,
         shopState: this.shopState(),
       }));
+    } finally {
+      await this.armAlarm();
+    }
+  }
+
+  /**
+   * Public API call (spec 14.1): the Worker has verified the key's seal and chose this object from
+   * it; the secret, revocation, scopes and rate limit are checked here. An object without a base
+   * refuses the key without creating anything (10.5).
+   */
+  async publicApi(input: PublicApiInput): Promise<ApiResult> {
+    return this.logged(() => this.publicApiImpl(input));
+  }
+
+  private async publicApiImpl(input: PublicApiInput): Promise<ApiResult> {
+    if (this.schemaVersion() === 0) return invalidKey();
+    try {
+      return await handlePublicCall(this.domain, input, {
+        limiter: this.apiLimiter,
+        info: () => ({ shop: this.meta('shop_domain') ?? '', tokenStatus: this.tokens.status().status, shopState: this.shopState() }),
+      });
     } finally {
       await this.armAlarm();
     }

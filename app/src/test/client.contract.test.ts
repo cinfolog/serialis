@@ -1,4 +1,4 @@
-import { ALL_ROUTES, ROUTES, ADMIN_APP_ROUTES, INTERNAL_BASE } from '@serialis/contract';
+import { ROUTES, ADMIN_APP_ROUTES, API_KEY_ROUTES, INTERNAL_BASE, INTERNAL_ROUTES } from '@serialis/contract';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError, CLIENT_ROUTES, HttpClient, type ApiClient } from '../api/client';
 import { MockClient } from '../api/mock';
@@ -43,6 +43,9 @@ const INVOCATIONS: { [K in keyof ApiClient]: (c: ApiClient) => Promise<unknown> 
   confirmImport: (c) => c.confirmImport('imp-1'),
   pause: (c) => c.pause(),
   resume: (c) => c.resume(),
+  listApiKeys: (c) => c.listApiKeys(),
+  createApiKey: (c) => c.createApiKey({ name: 'ERP', scopes: ['units:read'] }),
+  revokeApiKey: (c) => c.revokeApiKey('abcdefghijklmnop'),
 };
 
 const methods = Object.keys(INVOCATIONS) as Array<keyof ApiClient>;
@@ -50,16 +53,18 @@ const methods = Object.keys(INVOCATIONS) as Array<keyof ApiClient>;
 describe('Client API ↔ contrat', () => {
   it('declares a route for every client method, and each route exists in the contract', () => {
     expect(Object.keys(CLIENT_ROUTES).sort()).toEqual([...methods].sort());
-    for (const route of Object.values(CLIENT_ROUTES)) expect(ALL_ROUTES).toHaveProperty(route);
+    for (const route of Object.values(CLIENT_ROUTES)) expect(INTERNAL_ROUTES).toHaveProperty(route);
   });
 
   it('only uses routes of ROUTES (shared contract) or the documented additions', () => {
-    const additions = new Set(Object.keys(ADMIN_APP_ROUTES));
+    const additions = new Set([...Object.keys(ADMIN_APP_ROUTES), ...Object.keys(API_KEY_ROUTES)]);
     for (const route of Object.values(CLIENT_ROUTES)) {
       expect(route in ROUTES || additions.has(route)).toBe(true);
     }
     // Spec 14.2: the additions are real resources of the public list.
     expect(Object.values(ADMIN_APP_ROUTES)).toEqual(['GET /stats/home', 'POST /units/batch/check', 'POST /anomalies/{id}/acknowledge', 'POST /settings/simulate']);
+    // Key management: the declared exception of 14.2 (interface only, O5).
+    expect(Object.values(API_KEY_ROUTES)).toEqual(['GET /api-keys', 'POST /api-keys', 'DELETE /api-keys/{prefix}']);
   });
 
   it('the HTTP client implements exactly the methods of the interface, and so does the mock', () => {
@@ -75,7 +80,7 @@ describe('Client API ↔ contrat', () => {
     await INVOCATIONS[name](client);
     expect(calls).toHaveLength(1);
     const call = calls[0]!;
-    const [verb, template] = ALL_ROUTES[CLIENT_ROUTES[name]].split(' ') as [string, string];
+    const [verb, template] = INTERNAL_ROUTES[CLIENT_ROUTES[name]].split(' ') as [string, string];
     expect(call.method).toBe(verb);
     const path = new URL(call.url, 'https://app.example').pathname;
     const pattern = new RegExp(`^${INTERNAL_BASE}${template.replace(/\{\w+\}/g, '[^/]+')}$`);

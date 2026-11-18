@@ -6,7 +6,7 @@
  *    batch comes back a minute later instead of holding the object.
  *  - R4 audit: webhook silence, dead outbox rows and tasks without their anomaly, allocation ↔ unit
  *    consistency over the whole base (11.2). Expired reservations and overdue transits have no object
- *    in the MVP (workers/DECISIONS.md 49).
+ *    in the MVP (workers/DECISIONS.md 60).
  */
 import { checkAllocationConsistency, type ConsistencyViolation } from '@serialis/core';
 import { logEvent } from '../log.js';

@@ -16,7 +16,7 @@ import { chunks, newId, numericOf, placeholders } from './util.js';
 
 /**
  * Raised inside the transaction of a plan application when the allocation ↔ unit rule of 11.2 does not
- * hold at its end: the whole transaction rolls back (workers/DECISIONS.md 51).
+ * hold at its end: the whole transaction rolls back (workers/DECISIONS.md 59).
  */
 export class ConsistencyError extends Error {
   override readonly name = 'ConsistencyError';

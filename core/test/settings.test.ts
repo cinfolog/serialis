@@ -134,7 +134,7 @@ describe('settings catalogue — spec 6.6 and 19.4', () => {
   it('T-SET-08 — every non-default value references a test that exists, runs and is not skipped in the suite', () => {
     // Suites run by `pnpm test` (and in CI, where any failing test fails the job): a referenced test
     // that exists once, is neither skipped nor marked todo or failing, in a suite file without `.only`,
-    // is therefore a passing test of the suite (6.6.1, workers/DECISIONS.md 55).
+    // is therefore a passing test of the suite (6.6.1, workers/DECISIONS.md 65).
     const root = fileURLToPath(new URL('../../', import.meta.url));
     const SUITES = ['core/test/', 'workers/test/'];
     const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

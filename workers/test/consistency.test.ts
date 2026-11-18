@@ -1,5 +1,5 @@
 /**
- * End-of-transaction check of the allocation ↔ unit rule (spec 11.2, workers/DECISIONS.md 51): a plan
+ * End-of-transaction check of the allocation ↔ unit rule (spec 11.2, workers/DECISIONS.md 59): a plan
  * application that would leave an inconsistent unit is rolled back as a whole and opens the critical
  * anomaly `consistency_violation`; the next consistent synchronization closes it.
  */

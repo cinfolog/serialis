@@ -3,7 +3,7 @@
 
 -- Users of the shop who opened the app (15.8): Shopify user id (`sub` of the session or ID token),
 -- first name only when provided, never an e-mail. `is_owner` = first user seen by the base (installer,
--- workers/DECISIONS.md 46); administrators are the owner and the users they designate.
+-- workers/DECISIONS.md 57); administrators are the owner and the users they designate.
 CREATE TABLE app_users (
   shopify_user_id       TEXT PRIMARY KEY,
   first_name            TEXT,

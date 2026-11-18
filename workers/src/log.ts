@@ -6,7 +6,7 @@
  * `task_kind`), kept in an AsyncLocalStorage around each entry point of the object (17.1). An order
  * id, which links a unit to a customer, never appears in clear: any `gid://shopify/Order/<n>` in a
  * field is replaced by a keyed digest computed with a secret of the shop (`meta.log_secret`), useless
- * without that shop's base (17.1; workers/DECISIONS.md 54).
+ * without that shop's base (17.1; workers/DECISIONS.md 63).
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { sha256Hex } from './domain/util.js';

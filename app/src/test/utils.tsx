@@ -45,6 +45,14 @@ export function button(label: string | RegExp, root: ParentNode = document): HTM
   return found;
 }
 
+/** Link of the in-page navigation (shown when App Bridge is absent), e.g. navLink('Anomalies'). */
+export function navLink(label: string): HTMLElement {
+  const links = [...document.querySelectorAll<HTMLElement>('nav s-link')];
+  const found = links.find((l) => text(l) === label);
+  if (!found) throw new Error(`Nav link "${label}" not found. Links: ${links.map(text).join(' | ')}`);
+  return found;
+}
+
 export async function findButton(label: string | RegExp, root: ParentNode = document): Promise<HTMLElement> {
   return waitFor(() => button(label, root));
 }

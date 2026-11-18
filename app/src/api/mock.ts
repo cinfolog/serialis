@@ -72,6 +72,7 @@ export const MOCK_SETTING_DEFAULTS: MockSettingDefaults = {
   'S-36.strip_spaces': true,
   'S-36.normalize_upper': true,
   'S-37': 'none',
+  'S-37.pattern': '',
   'S-38': true,
   'S-40': 'owner_digest',
 };

@@ -1,0 +1,243 @@
+{
+  "common": {
+    "loading": "Loading…",
+    "stillLoading": "Just a moment…",
+    "errorTitle": "Something went wrong",
+    "retry": "Try again",
+    "reload": "Reload",
+    "cancel": "Cancel",
+    "back": "Back",
+    "close": "Close",
+    "offlineTitle": "You are offline",
+    "offlineBody": "Submitting is not possible until the network is back. What you typed is kept.",
+    "conflictTitle": "Conflicting change"
+  },
+  "designation": {
+    "exact": "Unit recognized: {{ref}}.",
+    "suffix": "Unit recognized by its last 4 characters: {{ref}}. Check that it is the right one.",
+    "ambiguous": "{{count}} units match: type the full ref.",
+    "tooShort": "Type at least 4 characters, or the full ref.",
+    "unknown": "None of the proposed units matches this ref.",
+    "suggestions": "Ref suggestions"
+  },
+  "states": {
+    "INCOMING": "Incoming",
+    "AVAILABLE": "Available",
+    "HELD": "On hold",
+    "ALLOCATED": "Allocated",
+    "QUALITY_CONTROL": "Quality control",
+    "DAMAGED": "Damaged",
+    "IN_TRANSIT": "In transit",
+    "SHIPPED": "Shipped",
+    "RETURN_PENDING": "Return pending",
+    "TO_VERIFY": "To verify",
+    "LOST": "Lost",
+    "SCRAPPED": "Scrapped",
+    "UNTRACKED": "Untracked"
+  },
+  "errors": {
+    "unauthenticated": "Your session has expired. Reload the Shopify admin page.",
+    "forbidden": "You do not have the rights for this action.",
+    "not_found": "Not found: it may have been deleted.",
+    "validation_failed": "The submitted data is not valid.",
+    "idempotency_conflict": "This request was already sent with different content. Reload and try again.",
+    "precondition_failed": "This unit was changed in the meantime. Reload to see the current values.",
+    "rate_limited": "Too many requests. Wait a few seconds and try again.",
+    "unit_not_available": "This unit is not available: it is already allocated to an order, on hold or locked.",
+    "identifier_conflict": "This ref already exists.",
+    "invalid_transition": "This action is not possible in the current state of the unit or order (for example, already being prepared or shipped).",
+    "variant_mismatch": "This ref belongs to another variant.",
+    "location_mismatch": "This unit is not at the right location.",
+    "ambiguous_ref": "Several units match: type the full ref.",
+    "unknown_ref": "Unknown ref.",
+    "not_tracked": "This variant is not tracked by Serialis.",
+    "emergency_stop": "Emergency stop is on: actions are suspended. Lift it from the Serialis app.",
+    "simulation_expired": "The simulation has expired. Run it again.",
+    "incompatible_settings": "This action is incompatible with the current settings.",
+    "network_error": "Could not connect. Check your network and try again.",
+    "unknown": "An unexpected error occurred. Try again."
+  },
+  "variantBlock": {
+    "heading": "Serialis refs",
+    "notTracked": "This variant is not tracked by Serialis yet.",
+    "track": "Track refs",
+    "trackConfirmTitle": "Turn on ref tracking?",
+    "trackEffect": "No write to Shopify stock. Existing stock is registered ref by ref (“already counted”); open orders are not changed.",
+    "trackConfirm": "Turn on tracking",
+    "untrack": "Stop tracking this variant",
+    "untrackConfirmTitle": "Stop tracking?",
+    "untrackEffect": "Units in stock become untracked with no write: Shopify stock does not change and the variant stays sellable. Not possible while units are allocated, in transit or awaiting a return.",
+    "untrackConfirm": "Stop tracking",
+    "initializingTitle": "Initialization phase",
+    "initializingBody": "Enter existing stock as “already counted” (no stock write). The gap with Shopify shrinks as you register refs.",
+    "truncated": "Only the first {{count}} refs are loaded: the figures below are partial. Open the Serialis app for the full list.",
+    "noStock": "No stock and no refs yet.",
+    "byLocation": "By location",
+    "colLocation": "Location",
+    "colShopify": "Shopify stock",
+    "colRegistered": "Registered refs",
+    "colGap": "Gap",
+    "colStates": "By state",
+    "colRef": "Ref",
+    "colState": "State",
+    "colStatus": "Status",
+    "noLocation": "No location",
+    "gapNone": "Aligned",
+    "gapToRegister": "{{count}} to register",
+    "gapExtra": "{{count}} extra",
+    "refsTitle": "Refs",
+    "refsEmpty": "No refs registered for this variant.",
+    "refsSearch": "Search a ref",
+    "refsNoMatch": "No ref matches.",
+    "showMore": "Show {{count}} more refs",
+    "addTitle": "Add refs",
+    "addLocation": "Location",
+    "addKind": "These units are…",
+    "kindAlreadyCounted": "Already counted in Shopify (no stock write)",
+    "kindReceived": "Received now (Shopify stock +1 per unit)",
+    "addRefs": "Refs to add",
+    "addRefsHelp": "One ref per line; spaces, commas and semicolons are also accepted.",
+    "previewSummary": "{{ready}} ready, {{duplicate}} duplicate(s) in the list, {{known}} already known, {{invalid}} invalid format.",
+    "line_duplicate": "Duplicate in the list",
+    "line_known": "Already known",
+    "line_invalid": "Invalid format",
+    "addNoGap": "No gap in Shopify: use “Received” to add stock.",
+    "addTooMany": "1,000 refs at most per add: split the list.",
+    "addExceedsGap": "You are adding {{count}} “already counted” refs for a gap of {{gap}}: the server will refuse those beyond the gap.",
+    "addReview": {
+      "one": "Review adding {{count}} ref",
+      "other": "Review adding {{count}} refs"
+    },
+    "confirmTitle": "Confirm the add",
+    "effectReceived": {
+      "one": "{{count}} unit will be created at “{{location}}” and Shopify stock will increase by {{count}}.",
+      "other": "{{count}} units will be created at “{{location}}” and Shopify stock will increase by {{count}}."
+    },
+    "effectCounted": {
+      "one": "{{count}} unit will be created at “{{location}}” with no write to Shopify stock (already counted).",
+      "other": "{{count}} units will be created at “{{location}}” with no write to Shopify stock (already counted)."
+    },
+    "confirmAdd": {
+      "one": "Add {{count}} ref",
+      "other": "Add {{count}} refs"
+    },
+    "outcomeTitle": {
+      "one": "{{count}} ref added",
+      "other": "{{count}} refs added"
+    },
+    "outcomeRejected": {
+      "one": "{{count}} ref rejected, left in the field for correction:",
+      "other": "{{count}} refs rejected, left in the field for correction:"
+    }
+  },
+  "productBlock": {
+    "heading": "Serialis refs",
+    "untitled": "Untitled variant",
+    "variantsUnavailable": "The variants could not be read from Shopify: only tracked variants are shown.",
+    "empty": "This product has no variants.",
+    "summary": {
+      "one": "{{count}} of {{total}} variants tracked.",
+      "other": "{{count}} of {{total}} variants tracked."
+    },
+    "colVariant": "Variant",
+    "colTracking": "Tracking",
+    "colAvailable": "Available units",
+    "colGap": "Shopify gap",
+    "colLink": "Details",
+    "tracked": "Tracked",
+    "trackedInit": "Tracked (initializing)",
+    "notTracked": "Not tracked",
+    "noneAvailable": "None",
+    "gapNone": "Aligned",
+    "gapValue": "{{sign}}{{count}}",
+    "openVariant": "Open variant"
+  },
+  "orderBlock": {
+    "heading": "Serialis refs",
+    "noTrackedLine": "No line of this order is tracked by Serialis.",
+    "untrackedLines": {
+      "one": "{{count}} other line is not tracked.",
+      "other": "{{count}} other lines are not tracked."
+    },
+    "pendingTitle": "Allocation in progress",
+    "pendingBody": "The refs of this order are being allocated. This screen updates by itself.",
+    "pendingStalled": "Allocation is taking longer than expected. Reload the page in a moment.",
+    "errorTitle": "Synchronization error",
+    "errorBody": "Synchronization of this order failed. Check the anomalies in the Serialis app.",
+    "syncedAt": "Synchronized on {{when}}",
+    "quantity": "× {{count}}",
+    "missing": {
+      "one": "{{count}} unit to allocate",
+      "other": "{{count}} units to allocate"
+    },
+    "noUnits": "No unit for this line.",
+    "colRef": "Ref",
+    "colState": "State",
+    "colOrigin": "Origin",
+    "toAllocate": "To allocate",
+    "toConfirm": "To confirm",
+    "status_active": "Allocated",
+    "status_fulfilled": "Shipped",
+    "status_released": "Released",
+    "status_returned": "Returned",
+    "status_missing": "Waiting for a unit",
+    "origin_auto": "Order (automatic)",
+    "origin_pick": "Manual",
+    "origin_pos": "Point of sale",
+    "origin_draft": "Draft order",
+    "origin_api": "API",
+    "origin_late": "Designated afterwards",
+    "origin_migration": "Migration",
+    "edit": "Edit units"
+  },
+  "orderAction": {
+    "heading": "Edit units",
+    "noTrackedLine": "No line of this order is tracked by Serialis.",
+    "pendingBody": "Automatic allocation is in progress: the units shown may still change.",
+    "allocate": "Allocate",
+    "replace": "Replace",
+    "remove": "Remove",
+    "locked": "Locked",
+    "current": "Current unit: {{ref}}",
+    "title_allocate": "Allocate a unit to “{{line}}”",
+    "title_replace": "Replace the unit of “{{line}}”",
+    "title_remove": "Remove the unit from “{{line}}”",
+    "chooseHow": "Designate the unit",
+    "modeList": "Choose from the list of available units",
+    "modeTyped": "Type the ref",
+    "unitList": "Available unit",
+    "unitListPlaceholder": "Choose a unit…",
+    "typedRef": "Unit ref (full, or its last 4 characters)",
+    "noAvailableUnit": "No available unit for this variant.",
+    "truncated": "The list is partial: type the full ref, the server will check it.",
+    "effectTitle": "Effect of this action",
+    "effect_allocate": "Unit {{ref}} will be allocated to “{{line}}” and will no longer be offered to other orders.",
+    "effect_replace": "Unit {{ref}} will replace {{oldRef}} on “{{line}}”; {{oldRef}} becomes available again.",
+    "effect_remove": "Unit {{ref}} becomes available again and “{{line}}” has no allocated unit: automatic allocation may give it another one.",
+    "noStockWrite": "Shopify stock: no write.",
+    "confirm_allocate": "Allocate this unit",
+    "confirm_replace": "Replace the unit",
+    "confirm_remove": "Remove the allocation",
+    "done_allocate": "Unit allocated.",
+    "done_replace": "Unit replaced.",
+    "done_remove": "Allocation removed."
+  },
+  "extensionMeta": {
+    "variant-block": {
+      "name": "Serialis refs (variant)",
+      "description": "Variant page block: refs per location and state, gap with Shopify stock, adding refs."
+    },
+    "product-block": {
+      "name": "Serialis refs (product)",
+      "description": "Product page block: tracking and available units per variant."
+    },
+    "order-block": {
+      "name": "Serialis refs (order)",
+      "description": "Order page block: one ref per unit under each tracked line."
+    },
+    "order-action": {
+      "name": "Edit units",
+      "description": "Allocate, replace or remove the units of an order."
+    }
+  }
+}

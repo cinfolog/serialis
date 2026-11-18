@@ -1,0 +1,21 @@
+{
+  "name": "@serialis/ext-order-block",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@serialis/contract": "workspace:*",
+    "@serialis/extensions-shared": "workspace:*",
+    "preact": "^10.27.0"
+  },
+  "devDependencies": {
+    "@shopify/ui-extensions": "2026.10.2",
+    "@testing-library/preact": "^3.2.4",
+    "@types/node": "^22.0.0",
+    "jsdom": "^27.0.0",
+    "vitest": "~4.1.0"
+  }
+}

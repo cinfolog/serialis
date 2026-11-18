@@ -4,3 +4,4 @@ packages:
   - workers
   - services/*
   - tests/*
+  - extensions/*

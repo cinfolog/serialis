@@ -11,7 +11,8 @@ if (!fs.existsSync(path.join(appDist, 'index.html'))) {
 }
 
 // Tests run inside workerd (Miniflare) with the real wrangler config (spec 18.1).
-// Test-only values: the encryption key is a fixed, public 32-byte test key (bytes 0..31).
+// Test-only values: the encryption key is a fixed, public 32-byte test key (bytes 0..31); the API key
+// sealing secret is public too (tests only).
 export default defineConfig({
   plugins: [
     cloudflareTest(async () => ({
@@ -20,6 +21,7 @@ export default defineConfig({
         bindings: {
           SHOPIFY_API_SECRET: 'test-secret',
           TOKEN_ENCRYPTION_KEY: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',
+          API_KEY_SEAL_SECRET_V1: 'test-only-api-key-sealing-secret-v1',
           TEST_MIGRATIONS: await readD1Migrations(path.join(import.meta.dirname, '../db/registry')),
         },
       },

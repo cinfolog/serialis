@@ -140,3 +140,21 @@ describe('T-E2E-40 / T-E2E-114 — activation on existing stock', () => {
     await assertConsistent(h);
   });
 });
+
+describe('T-SEC-02 — forged _serialis_units property', () => {
+  it('property ignored, invalid_serial_property opened, the line allocated per F1, no unit taken elsewhere', async () => {
+    const { h, loc, variant } = await setup('sec02');
+    await track(h, [variant]);
+    await addRefs(h, variant, loc, ['TOK-1', 'TOK-2']);
+    await h.drain();
+    const first = h.sim.merchant.createOrder({ lines: [{ variantId: variant, quantity: 1 }] });
+    await h.drain();
+    const firstUnit = (await lineAllocations(h, first.id))[0]!;
+    const forged = h.sim.merchant.createOrder({ lines: [{ variantId: variant, quantity: 1, properties: { _serialis_units: `forged.${firstUnit.unitId}` } }] });
+    await h.drain();
+    expect(await anomalies(h, 'invalid_serial_property')).toHaveLength(1);
+    expect((await lineAllocations(h, forged.id)).map((a) => a.ref)).toEqual(['TOK-2']);
+    expect((await lineAllocations(h, first.id))[0]).toMatchObject({ unitId: firstUnit.unitId, status: 'active' });
+    await assertConsistent(h);
+  });
+});

@@ -82,7 +82,7 @@ describe('embedded app entry', () => {
     expect(res.headers.get('Content-Security-Policy')).toContain('https://cdn.shopify.com');
     expect(res.headers.get('X-Frame-Options')).toBeNull();
     // Every navigation route of the SPA answers with the same document.
-    for (const path of ['/units', '/units/abc', '/tracked-items', '/anomalies', '/imports', '/settings', '/start']) {
+    for (const path of ['/units', '/units/abc', '/tracked-items', '/anomalies', '/imports', '/settings', '/settings/health', '/start']) {
       const r = await SELF.fetch(`https://staging.serialis.dev${path}`);
       expect(r.status).toBe(200);
       expect(r.headers.get('Cache-Control')).toBe('no-store');

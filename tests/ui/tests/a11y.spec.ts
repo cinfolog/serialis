@@ -18,6 +18,8 @@ const SCREENS: Array<{ name: string; path: string }> = [
   { name: 'anomalies-resolved', path: '/anomalies?status=resolved' },
   { name: 'imports', path: '/imports' },
   { name: 'settings', path: '/settings' },
+  { name: 'settings-health', path: '/settings/health' },
+  { name: 'settings-health-alerts', path: '/settings/health?mock_health=degraded' },
   { name: 'not-found', path: '/nope' },
 ];
 

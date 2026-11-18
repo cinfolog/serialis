@@ -19,6 +19,7 @@ const SCREENS = [
   { name: 'anomalies', path: '/anomalies' },
   { name: 'imports', path: '/imports' },
   { name: 'settings', path: '/settings' },
+  { name: 'settings-health', path: '/settings/health?mock_health=degraded' },
   { name: 'wizard', path: '/start' },
 ];
 

@@ -17,6 +17,7 @@ const SCREENS: Array<{ name: string; path: string; heading: string }> = [
   { name: 'anomalies', path: '/anomalies', heading: 'anomalies.heading' },
   { name: 'imports', path: '/imports', heading: 'imports.heading' },
   { name: 'settings', path: '/settings', heading: 'settings.heading' },
+  { name: 'settings-health', path: '/settings/health?mock_health=degraded', heading: 'health.heading' },
   { name: 'wizard', path: '/start', heading: 'wizard.heading' },
   { name: 'not-found', path: '/nope', heading: 'shell.not_found.heading' },
 ];

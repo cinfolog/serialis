@@ -6,7 +6,8 @@
  */
 import type { HealthAlert, HealthCounters, HealthResponse } from '@serialis/contract';
 import type { DomainContext } from '../domain/context.js';
-import { iso, json, type ApiResult } from './http.js';
+import { iso, json, noContent, problem, type ApiResult } from './http.js';
+import { logEvent } from '../log.js';
 import type { ApiContext } from './present.js';
 
 export const TASK_OVERDUE_MS = 2 * 60_000;
@@ -82,4 +83,59 @@ export function healthReport(ctx: ApiContext, info: HealthInfo): ApiResult {
       .map((r) => ({ id: r.id, kind: r.kind, lastError: r.last_error, updatedAt: new Date(r.updated_at).toISOString() })),
   };
   return json(body);
+}
+
+// ------------------------------------------------------------------------------------------- actions (12.7)
+
+/**
+ * Retrying is pointless while Shopify keeps the shop frozen (12.2) or no usable token exists (13.9):
+ * the task or the row would only wait again. 409 so that the screen says why.
+ */
+function retryBlocked(info: HealthInfo): ApiResult | null {
+  if (info.shopState === 'frozen') return problem(409, 'invalid_transition', 'shop_frozen');
+  if (info.tokenStatus === 'reconnect_required') return problem(409, 'invalid_transition', 'reconnect_required');
+  return null;
+}
+
+/** POST /health/tasks/{key}/revive (admin): `task_dead` « relancer depuis l'écran Santé » (12.7). */
+export function reviveTask(ctx: ApiContext, info: HealthInfo, key: string): ApiResult {
+  const { d, now } = ctx;
+  const row = d.sql.exec<{ kind: string; attempts: number; last_error: string | null }>("SELECT kind, attempts, last_error FROM tasks WHERE key = ? AND status = 'dead'", key).toArray()[0];
+  if (!row) return problem(404, 'not_found', 'task_not_dead');
+  const blocked = retryBlocked(info);
+  if (blocked) return blocked;
+  const revived = d.storage.transactionSync(() => {
+    if (!d.reviveTask(key, now)) return false;
+    d.repo.audit(ctx.call.principal.actor, 'task.revive', { key, kind: row.kind, status: 'dead', attempts: row.attempts, lastError: row.last_error }, { key, status: 'pending' }, now);
+    return true;
+  });
+  if (!revived) return problem(404, 'not_found', 'task_not_dead');
+  logEvent('info', 'tasks.revived', { task: key, task_kind: row.kind, by: 'operator' });
+  return noContent();
+}
+
+/** POST /health/writes/{id}/retry (admin): `outbox_dead` « Relancer » (12.4, 12.7). */
+export function retryWrite(ctx: ApiContext, info: HealthInfo, rawId: string): ApiResult {
+  const { d, now } = ctx;
+  const id = /^\d{1,15}$/.test(rawId) ? Number(rawId) : NaN;
+  const row = Number.isSafeInteger(id)
+    ? d.sql.exec<{ kind: string; revision: number; last_error: string | null }>("SELECT kind, revision, last_error FROM outbox WHERE id = ? AND status = 'dead'", id).toArray()[0]
+    : undefined;
+  if (!row) return problem(404, 'not_found', 'write_not_dead');
+  const blocked = retryBlocked(info);
+  if (blocked) return blocked;
+  const retried = d.storage.transactionSync(() => {
+    if (!d.retryOutbox(id, now)) return false;
+    d.repo.audit(
+      ctx.call.principal.actor,
+      'outbox.retry',
+      { id, kind: row.kind, status: 'dead', revision: row.revision, lastError: row.last_error },
+      { id, status: 'pending', revision: row.revision + 1 },
+      now,
+    );
+    return true;
+  });
+  if (!retried) return problem(404, 'not_found', 'write_not_dead');
+  logEvent('info', 'outbox.retried', { id, kind: row.kind, by: 'operator' });
+  return noContent();
 }

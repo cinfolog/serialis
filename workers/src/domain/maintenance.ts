@@ -166,6 +166,12 @@ export function auditShop(ctx: DomainContext, now: number): AuditReport {
       const dead = key ? sql.exec("SELECT 1 FROM tasks WHERE key = ? AND status = 'dead'", key).toArray().length > 0 : false;
       if (!dead) repo.closeAnomaly(a.id, 'auto_resolved', { by: 'R4' }, now);
     }
+    // Same for outbox_dead once its row is finished (retried and sent or failed, or purged); a retried row still waiting keeps it open.
+    for (const a of sql.exec<{ id: string; details: string }>("SELECT id, details FROM anomalies WHERE type = 'outbox_dead' AND status IN ('open', 'acknowledged')").toArray()) {
+      const outboxId = parseJson<{ outboxId?: number }>(a.details, {}).outboxId;
+      const open = typeof outboxId === 'number' ? sql.exec("SELECT 1 FROM outbox WHERE id = ? AND status IN ('dead', 'pending', 'in_flight')", outboxId).toArray().length > 0 : true;
+      if (!open) repo.closeAnomaly(a.id, 'auto_resolved', { by: 'R4' }, now);
+    }
   });
   const outboxStuck = Number(sql.exec("SELECT count(*) AS n FROM outbox WHERE status IN ('pending', 'in_flight') AND created_at < ?", now - OUTBOX_STUCK_MS).one().n);
 

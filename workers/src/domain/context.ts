@@ -14,4 +14,8 @@ export interface DomainContext {
   queueOutbox(input: OutboxEnqueueInput, now?: number): { id: number; created: boolean };
   /** Synchronous, inside the caller's transaction. */
   enqueueTask(input: EnqueueTaskInput, now?: number): EnqueueOutcome;
+  /** Synchronous: a `dead` task back to `pending`, attempts reset (R2, operator; 12.2). False when not dead. */
+  reviveTask(key: string, now?: number): boolean;
+  /** Synchronous: a `dead` outbox row back to `pending` at its next revision, outbox task scheduled (12.4). False when not dead. */
+  retryOutbox(id: number, now?: number): boolean;
 }

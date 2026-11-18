@@ -85,9 +85,34 @@ export interface HealthResponse {
   deadWrites: Array<{ id: number; kind: string; lastError: string | null; updatedAt: IsoDateTime }>;
 }
 
-/** Routes of this file (internal surface `/api/v1`). */
+// ---------------------------------------------------------------------------
+// Health actions (12.7 `task_dead` « relancer depuis l'écran Santé », `outbox_dead` « Relancer »)
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /health/tasks/{key}/revive (admin) → 204 No Content. Puts a `dead` task back to `pending`
+ * (same key, attempts reset, due now, 12.2); its `task_dead` anomaly closes when the task runs.
+ * `key` is the task key of `HealthResponse.deadTasks`, URL-encoded. Empty body.
+ * - 403 `forbidden` / `admin_required`: operator (15.8);
+ * - 404 `not_found` / `task_not_dead`: no task with this key, or the task is not `dead`;
+ * - 409 `invalid_transition` / `shop_frozen` or `reconnect_required`: retrying is pointless until
+ *   Shopify unfreezes the shop or the merchant reopens the app (12.2, 13.9).
+ */
+export type ReviveTaskRequest = Record<string, never>;
+
+/**
+ * POST /health/writes/{id}/retry (admin) → 204 No Content. Puts a `dead` outbox row back to
+ * `pending` at its next revision (new idempotency key, request prepared again, attempts reset, 12.4);
+ * its `outbox_dead` anomaly closes when the row is sent. `id` is `HealthResponse.deadWrites[].id`.
+ * Empty body. Same 403 / 404 (`write_not_dead`) / 409 answers as `reviveTask`.
+ */
+export type RetryWriteRequest = Record<string, never>;
+
+/** Routes of this file (internal surface `/api/v1`, never on the public API). */
 export const OPERATIONS_ROUTES = {
   listAppUsers: 'GET /app-users',
   patchAppUser: 'PATCH /app-users',
   health: 'GET /health',
+  reviveTask: 'POST /health/tasks/{key}/revive',
+  retryWrite: 'POST /health/writes/{id}/retry',
 } as const;

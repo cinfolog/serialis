@@ -155,6 +155,34 @@ export class Outbox {
     return { id, created: true };
   }
 
+  /**
+   * Operator retry of a `dead` row (12.4 « relancer la ligne après correction », 12.7 `outbox_dead`).
+   * A row only dies on a refusal (stale revisions exhausted, key/parameter mismatch, invalid query or
+   * access): nothing was applied, so it restarts at its next revision (new idempotency key, request
+   * prepared again from its intent), attempts and stale counter reset, due now. Synchronous; the
+   * caller schedules the outbox task. False when the row does not exist or is not `dead`.
+   */
+  retryDead(id: number, now = Date.now()): boolean {
+    const row = this.sql.exec<{ revision: number; payload: string }>("SELECT revision, payload FROM outbox WHERE id = ? AND status = 'dead'", id).toArray()[0];
+    if (!row) return false;
+    const revision = row.revision + 1;
+    const stored = JSON.parse(row.payload) as StoredPayload;
+    const payload = stored.intent ? JSON.stringify({ ...stored, query: '', variables: {}, prepared: false, windowExpired: false }) : row.payload;
+    return (
+      this.sql.exec(
+        `UPDATE outbox SET status = 'pending', lease_until = NULL, revision = ?, idempotency_key = ?, revision_started_at = NULL, payload = ?,
+           stale_since = NULL, attempts = 0, next_attempt_at = ?, last_error = NULL, result = NULL, completed_at = NULL, updated_at = ?
+         WHERE id = ? AND status = 'dead'`,
+        revision,
+        Outbox.idempotencyKey(this.keyPrefix(), id, revision),
+        payload,
+        now,
+        now,
+        id,
+      ).rowsWritten > 0
+    );
+  }
+
   /** In-flight rows whose lease expired go back to pending, same payload and key (spec 12.2, T-CH-05). */
   recoverExpiredLeases(now = Date.now()): number {
     return this.sql.exec("UPDATE outbox SET status = 'pending', lease_until = NULL, updated_at = ? WHERE status = 'in_flight' AND lease_until < ?", now, now)

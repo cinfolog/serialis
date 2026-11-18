@@ -1,0 +1,16 @@
+{
+  "name": "@serialis/ui-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "e2e": "playwright test",
+    "e2e:real-cdn": "UI_TESTS_REAL_CDN=1 playwright test",
+    "serve": "node scripts/serve.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^22.0.0"
+  }
+}

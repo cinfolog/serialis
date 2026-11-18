@@ -170,6 +170,9 @@ Base : `BASE=https://staging.serialis.dev/public/v1` (`workers/DECISIONS.md` 46)
 | 11.1 | Réglages : vérifier la présence de S-05, S-08, S-09, S-11, S-17, S-22, S-25, S-35 à S-38, S-40 ; S-01 et S-24 en lecture seule avec leur raison. | Conforme à la liste du MVP. | 19.4 réglages | ☐ |
 | 11.2 | Changer S-38 (réglage avec simulation) : simuler, enregistrer. | Simulation exigée, effet décrit ; la valeur et son origine s'affichent ; « Mes choix » la liste. | T-SET-01, T-SET-02 | ☐ |
 | 11.3 | Second compte (opérateur) : ouvrir Réglages, Articles suivis, Santé, Clés d'API. | Lecture seule, aucune action d'administration proposée. | 15.8 | ☐ |
+| 11.3a | Votre compte (propriétaire) : Réglages › Utilisateurs. | Les deux comptes sont listés : le vôtre avec « Vous », « Propriétaire » et « Administrateur », le second « Opérateur » ; date de première visite ; aucun e-mail. Aucun bouton sur votre ligne (le propriétaire ne peut pas être retiré). | 15.8, `app/DECISIONS.md` 31 | ☐ |
+| 11.3b | « Nommer administrateur » sur le second compte › lire la confirmation › confirmer. Rouvrir l'app avec le second compte. | La confirmation nomme ce que le compte pourra faire ; la ligne affiche « Administrateur » et « Désigné administrateur par » votre prénom (ou « Utilisateur Shopify n° … ») ; pour le second compte, Réglages et Santé deviennent modifiables, et la section Utilisateurs est en lecture seule (« Seul le propriétaire… »). | 15.8 | ☐ |
+| 11.3c | Avec votre compte : « Retirer l'administration » sur le second compte › confirmer. | Le second compte redevient opérateur (lecture seule à sa prochaine ouverture) ; `audit_log` : `app_user.update`. | 15.8 | ☐ |
 | 11.4 | Réglages › Sécurité et exploitation › « Activer l'arrêt d'urgence » › confirmer ; passer une commande suivie. | Bandeau permanent sur tous les écrans ; la commande n'est pas attribuée ; aucune mise en attente. | EF-33, P-02 | ☐ |
 | 11.5 | « Reprendre l'automatisation » › confirmer. | La commande en attente reçoit ses unités. | EF-33 | ☐ |
 
@@ -180,6 +183,7 @@ Base : `BASE=https://staging.serialis.dev/public/v1` (`workers/DECISIONS.md` 46)
 | 12.1 | Réglages › Santé, après les étapes précédentes. | Dernière notification récente, passes R1 à R4 exécutées (dates renseignées au bout de 24 h pour R4 et le nettoyage), aucune écriture en attente depuis plus d'1 h. | 17.1, 17.2 | ☐ |
 | 12.2 | Si une tâche arrêtée ou une écriture abandonnée apparaît pendant la recette : bouton « Relancer » sur sa ligne. | Bouton en chargement, bandeau « Tâche relancée » / « Écriture relancée » (et toast de l'admin) ; la ligne disparaît ; l'anomalie critique se ferme quand la tâche s'exécute ou que l'écriture part. | 12.7 `task_dead`, `outbox_dead`, `workers/DECISIONS.md` 69 | ☐ |
 | 12.3 | Même bouton avec le compte opérateur. | Écran Santé non accessible (explication seule). | 15.8 | ☐ |
+| 12.4 | Écriture abandonnée (provoquée si besoin : deux onglets ajoutent des refs au même article pendant une modification manuelle du stock, ou demande à l'équipe d'en créer une sur staging) : bouton « Abandonner » sur sa ligne › lire la confirmation › confirmer. | La confirmation annonce que Shopify ne recevra pas l'écriture et qu'une réconciliation réalignera le stock ; bandeau « Écriture abandonnée » ; la ligne disparaît, l'anomalie `outbox_dead` passe à « résolue » ; les écritures suivantes du même article partent ; après le délai de grâce S-22, un écart restant ouvre `stock_mismatch_*` qui nomme l'écart ; `audit_log` : `outbox.abandon`. | 12.4, 12.7 `outbox_dead`, `workers/DECISIONS.md` 70 | ☐ |
 
 ## 13. Désinstallation et réinstallation (PV-29)
 
@@ -221,6 +225,7 @@ Base : `BASE=https://staging.serialis.dev/public/v1` (`workers/DECISIONS.md` 46)
 | T-MVP-08 | 5.5, 5.6, 7.2, 7.4 | |
 | T-MVP-09 | 10.1, 10.2 | |
 | T-MVP-10 | 7.1 | |
+| Droits (15.8), abandon (12.4) | 11.3 à 11.3c, 12.2 à 12.4 | |
 | T-UX-02 (bloc variante, admin réel) | 3.3, 3.7, 3.8 | |
 | T-UX-03, T-UX-05 (vrai CDN) | 1.9, 14.1 à 14.5 | |
 | T-UX-07 (admin réel) | 6.3 | |
@@ -232,7 +237,5 @@ Base : `BASE=https://staging.serialis.dev/public/v1` (`workers/DECISIONS.md` 46)
 | PV-29 | 13.1 à 13.3 | levée / repli |
 | PV-2, PV-18 demandées | 15.1, 15.2 | |
 | Admin réel (App Bridge, Polaris, liens) | 1.1 à 1.8, 2.2, 3.9 | |
-
-La désignation d'un autre administrateur (`PATCH /app-users`) n'a pas d'écran dans le MVP : elle n'est pas recettée ici.
 
 T-MVP-05 (rafale de 50 commandes en une minute) n'est pas dans cette liste : la boutique de développement est plafonnée à 5 commandes par minute (PV-20) ; il est couvert par le simulateur (`workers/test`).

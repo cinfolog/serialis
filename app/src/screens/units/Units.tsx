@@ -45,11 +45,16 @@ export function Units() {
   const page = useAsync(
     () => client.listUnits({ ...(state ? { state } : {}), ...(location ? { location } : {}), ...(variant ? { variant } : {}), ...(q ? { q } : {}), limit: 50 }),
     [client, filterKey],
+    { live: true },
   );
 
   useEffect(() => setExtra({ items: [], cursor: undefined, key: filterKey }), [filterKey]);
 
-  const items = useMemo(() => [...(page.data?.items ?? []), ...(extra.key === filterKey ? extra.items : [])], [page.data, extra, filterKey]);
+  const items = useMemo(() => {
+    // A background refresh of the first page can overlap the pages loaded after it: one row per unit.
+    const seen = new Set<string>();
+    return [...(page.data?.items ?? []), ...(extra.key === filterKey ? extra.items : [])].filter((u) => !seen.has(u.id) && Boolean(seen.add(u.id)));
+  }, [page.data, extra, filterKey]);
   const nextCursor = extra.key === filterKey && extra.cursor !== undefined ? extra.cursor : (page.data?.nextCursor ?? null);
 
   const setFilter = useCallback(

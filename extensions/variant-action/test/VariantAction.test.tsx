@@ -105,7 +105,7 @@ describe('VariantAction — form', () => {
     setup();
     await ready();
     typeInto(area(), 'NEW-1\nnew-1, NEW-2; AB-001\nTOO' + 'X'.repeat(200));
-    await see('2 prête(s), 1 doublon(s) dans la liste, 1 déjà enregistrée(s), 1 au format invalide');
+    await see('2 prêtes, 1 doublon dans la liste, 1 déjà enregistrée, 1 au format invalide.');
     expect(text()).toContain('Doublon dans la liste');
     expect(text()).toContain('Déjà enregistrée — Entrepôt · Disponible');
     expect(text()).toContain('Format invalide');

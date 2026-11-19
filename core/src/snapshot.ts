@@ -84,7 +84,7 @@ export interface ReturnSnapshot {
     readonly quantity: number;
     /**
      * `ReturnLineItem.processedQuantity` (return processing, API 2025-07+): quantity received and decided by
-     * `returnProcess`. A processed quantity without a disposition was not restocked (workers/DECISIONS.md 74).
+     * `returnProcess`. A processed quantity without a disposition was not restocked (workers/DECISIONS.md 79).
      */
     readonly processedQuantity?: number;
   }[];

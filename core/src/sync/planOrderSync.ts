@@ -586,7 +586,7 @@ function refundReturns(snapshot: OrderSnapshot): ReturnSnapshot[] {
   return result;
 }
 
-/** A disposition of one return line, real or inferred from the return's progress (workers/DECISIONS.md 74). */
+/** A disposition of one return line, real or inferred from the return's progress (workers/DECISIONS.md 79). */
 type DispositionSlot = ReturnSnapshot['dispositions'][number] & { readonly inferred?: 'processed' | 'closed' };
 
 /**

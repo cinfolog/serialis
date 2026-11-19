@@ -143,6 +143,7 @@ export class MockClient implements ApiClient {
       product_block: options.extensionsShown ?? false,
       order_block: options.extensionsShown ?? false,
       order_action: options.extensionsShown ?? false,
+      variant_action: options.extensionsShown ?? false,
     };
     if (!options.empty) this.seed();
     this.appUsers = this.seedUsers();
@@ -220,10 +221,13 @@ export class MockClient implements ApiClient {
     };
     this.units.push(unit);
     this.events.set(id, [
-      { id: `${id}-e1`, at: unit.createdAt, actor: 'Camille', type: 'unit.received', fromState: null, toState: 'AVAILABLE', reason: 'Réception', stockEffect: '+1 en stock' },
-      ...(state !== 'AVAILABLE'
-        ? [{ id: `${id}-e2`, at: unit.updatedAt, actor: 'système', type: 'unit.status_changed', fromState: 'AVAILABLE' as UnitState, toState: state, reason: 'Changement d’état', stockEffect: 'aucune écriture' }]
-        : []),
+      // Same keys as the Worker (`UNIT_EVENT_TYPES`, `UNIT_EVENT_REASONS`), translated by the app.
+      { id: `${id}-e1`, at: unit.createdAt, actor: 'Camille', type: 'created', fromState: null, toState: 'AVAILABLE', reason: 'received', stockEffect: '+1 available', stockDelta: 1, stockQuantity: 'available' },
+      ...(state === 'TO_VERIFY'
+        ? [{ id: `${id}-e2`, at: unit.updatedAt, actor: 'system', type: 'to_verify', fromState: 'ALLOCATED' as UnitState, toState: state, reason: 'not_restocked', stockEffect: null, stockDelta: null, stockQuantity: null }]
+        : state !== 'AVAILABLE'
+          ? [{ id: `${id}-e2`, at: unit.updatedAt, actor: 'system', type: state === 'SHIPPED' ? 'shipped' : 'allocated', fromState: 'AVAILABLE' as UnitState, toState: state, reason: null, stockEffect: 'no write', stockDelta: null, stockQuantity: null }]
+          : []),
     ]);
     return unit;
   }
@@ -356,7 +360,7 @@ export class MockClient implements ApiClient {
       if (this.units.some((u) => normalize(u.ref) === ref)) return { index, ref: raw, status: 'already_known' };
       if (req.alreadyCounted && gapBefore !== null) {
         counted++;
-        if (counted > gapBefore) return { index, ref: raw, status: 'beyond_gap', detail: `Écart restant : ${gapBefore}` };
+        if (counted > gapBefore) return { index, ref: raw, status: 'beyond_gap', detail: 'no_usable_deficit' };
       }
       return { index, ref: raw, status: 'ready' };
     });
@@ -512,7 +516,7 @@ export class MockClient implements ApiClient {
         index: r.index,
         ref: r.ref,
         code: (r.status === 'invalid_format' ? 'validation_failed' : r.status === 'beyond_gap' ? 'validation_failed' : 'identifier_conflict') as ErrorCode,
-        ...(r.detail ? { detail: r.detail } : {}),
+        detail: r.detail ?? r.status, // same as the Worker
       }));
       if (req.mode === 'atomic' && bad.length > 0) {
         throw new ApiError({ status: 422, code: 'validation_failed', detail: 'Au moins une ref est refusée ; rien n’a été créé.', errors: rejected });
@@ -606,7 +610,16 @@ export class MockClient implements ApiClient {
       this.simulations.set(simulationId, req);
       const effects = Object.keys(req.values)
         .filter((k) => SIMULATED_KEYS.has(k))
-        .map((key) => ({ key, count: key === 'S-17' ? 1 : 4, summary: key === 'S-17' ? '1 retour en attente d’identification sera traité sans saisie de ref.' : '4 objets seront traités autrement à la prochaine synchronisation.' }));
+        // Same stable keys as the Worker (`SETTINGS_SIMULATION_SUMMARIES`), translated by the app.
+        .map((key): SettingsSimulation['effects'][number] =>
+          key === 'S-11'
+            ? { key, count: 4, summary: 'applies_to_next_synchronizations' }
+            : key === 'S-38'
+              ? { key, count: 1, summary: req.values[key] === false ? 'metafields_removed_at_next_sync' : 'metafields_written_at_next_sync' }
+              : key === 'S-35'
+                ? { key, count: 0, summary: 'identifiers_rescoped' }
+                : { key, count: 0, summary: 'applies_to_next_events' },
+        );
       const warnings: string[] = [];
       if (req.values['S-17'] === false) warnings.push('S-17 = non : une unité mal désignée au retour n’est plus détectable par l’app.');
       if (req.values['S-09'] === 'auto_resolve') warnings.push('S-09 = résolution automatique : peut consommer un ajout manuel sans rapport fait dans Shopify.');
@@ -663,10 +676,10 @@ export class MockClient implements ApiClient {
         const item = this.trackedItems.find((t) => (row['sku'] && t.sku === row['sku']) || (row['variant_id'] && t.variantGid.endsWith(`/${row['variant_id']}`)));
         const loc = this.locations.find((l) => l.name === row['location'] || l.id === row['location']);
         const counted = ['1', 'true', 'oui', 'yes'].includes((row['already_counted'] ?? '').toLowerCase());
-        if (!ref) return void errors.push({ row: rowNo, code: 'validation_failed', detail: 'ref manquante' });
-        if (!item) return void errors.push({ row: rowNo, code: 'not_tracked', detail: `article non suivi : ${row['sku'] || row['variant_id'] || '(vide)'}` });
-        if (!loc) return void errors.push({ row: rowNo, code: 'validation_failed', detail: `emplacement inconnu : ${row['location'] ?? ''}` });
-        if (seen.has(ref) || this.units.some((u) => normalize(u.ref) === ref)) return void errors.push({ row: rowNo, code: 'identifier_conflict', detail: `ref déjà connue : ${ref}` });
+        if (!ref) return void errors.push({ row: rowNo, code: 'validation_failed', detail: 'empty_ref' });
+        if (!item) return void errors.push({ row: rowNo, code: 'not_tracked', detail: 'unknown_or_untracked_variant' });
+        if (!loc) return void errors.push({ row: rowNo, code: 'validation_failed', detail: 'unknown_location' });
+        if (seen.has(ref) || this.units.some((u) => normalize(u.ref) === ref)) return void errors.push({ row: rowNo, code: 'identifier_conflict', detail: seen.has(ref) ? 'duplicate_in_file' : 'already_known' });
         seen.add(ref);
         if (counted) {
           const key = `${item.variantGid}|${loc.id}`;
@@ -675,7 +688,7 @@ export class MockClient implements ApiClient {
           const gap = this.gapFor(item.variantGid, loc.id);
           if (gap !== null && used > gap) {
             beyondGap++;
-            return void errors.push({ row: rowNo, code: 'validation_failed', detail: 'au-delà de l’écart avec Shopify' });
+            return void errors.push({ row: rowNo, code: 'validation_failed', detail: 'no_usable_deficit' });
           }
         }
         ok.push({ ref, variantGid: item.variantGid, locationId: loc.id, alreadyCounted: counted });

@@ -4,6 +4,7 @@ import { isApiError, newIdempotencyKey } from '../../api/client';
 import { useAnnounce, useClient, useSession } from '../../context';
 import { useLocations } from '../../data';
 import { useI18n, type MessageKey } from '../../i18n';
+import { simulationEffectLabel } from '../../labels';
 import { Badge, Banner, Button, ConfirmDialog, Section, Select, Stack, TextField } from '../../ui/components';
 import { useAsync } from '../../ui/hooks';
 import { Page } from '../../ui/Page';
@@ -28,7 +29,8 @@ interface Review {
 
 /** Reduced settings (19.4): MVP settings S-05, S-08, S-09, S-11, S-17, S-22, S-25, S-35..S-38, S-40, with S-01/S-24 fixed. */
 export function Settings() {
-  const { t, tMaybe, dateTime } = useI18n();
+  const i18n = useI18n();
+  const { t, tMaybe, dateTime } = i18n;
   const client = useClient();
   const { canAdmin } = useSession();
   const announce = useAnnounce();
@@ -351,7 +353,7 @@ export function Settings() {
           {review?.simulation && review.simulation.effects.length > 0 ? (
             <ul style={{ margin: 0, paddingInlineStart: 20 }} data-testid="simulation-effects">
               {review.simulation.effects.map((e) => (
-                <li key={e.key}>{e.summary}</li>
+                <li key={e.key}>{simulationEffectLabel(i18n, e)}</li>
               ))}
             </ul>
           ) : null}

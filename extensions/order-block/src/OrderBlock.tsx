@@ -91,7 +91,7 @@ export function OrderBlock({ api, t, orderGid, onEdit, formatDateTime, pollMs = 
       {lines.length === 0 ? (
         <s-text>{t('orderBlock.noTrackedLine')}</s-text>
       ) : (
-        compact.shown.map((s) => <LineSection key={s.view.line.lineItemGid} t={t} view={s.view} rows={s.rows} />)
+        compact.shown.map((s) => <LineSection key={s.view.line.lineItemGid} t={t} view={s.view} rows={s.rows} paused={data.automationPaused === true} />)
       )}
       {canEdit(data) || more.length > 0 ? (
         <s-stack direction="inline" gap="small-200" alignItems="center">
@@ -146,7 +146,7 @@ function SyncBanner(p: {
 }
 
 /** A tracked line: title, quantity and units to allocate on one row, then one compact row per shown unit. */
-function LineSection({ t, view, rows }: { t: Translate; view: LineView; rows: UnitRow[] }) {
+function LineSection({ t, view, rows, paused }: { t: Translate; view: LineView; rows: UnitRow[]; paused: boolean }) {
   const { line } = view;
   return (
     <s-stack gap="small-300">
@@ -171,7 +171,8 @@ function LineSection({ t, view, rows }: { t: Translate; view: LineView; rows: Un
           ) : (
             <s-stack key={`missing-${row.position}`} direction="inline" gap="small-300" alignItems="center">
               <s-text>{t('orderBlock.toAllocate')}</s-text>
-              <s-badge tone="warning">{t('orderBlock.status_missing')}</s-badge>
+              {/* Emergency stop (P-02): the line waits for the resumption, not for a unit (workers/DECISIONS.md 77). */}
+              <s-badge tone="warning">{t(paused ? 'orderBlock.status_paused' : 'orderBlock.status_missing')}</s-badge>
             </s-stack>
           ),
         )

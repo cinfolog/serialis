@@ -40,7 +40,7 @@ function ApiKeysAdmin() {
   const client = useClient();
   const announce = useAnnounce();
   const errorMessage = useErrorMessage();
-  const keys = useAsync(() => client.listApiKeys(), [client]);
+  const keys = useAsync(() => client.listApiKeys(), [client], { live: true });
 
   const [name, setName] = useState('');
   const [scopes, setScopes] = useState<ApiScope[]>(['units:read', 'units:write']);

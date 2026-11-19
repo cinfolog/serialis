@@ -3,7 +3,7 @@
  * another order, order block data, source of manual designations, order metafield definition.
  * The simulator mirrors what Shopify sends: dispositions without a location for « Not restocked », return
  * processing (`returnProcess`) that may record no disposition at all, webhooks that name the reverse fulfillment
- * order or the return but not the order (workers/DECISIONS.md 74 to 78).
+ * order or the return but not the order (workers/DECISIONS.md 79 to 83).
  */
 import { SELF } from 'cloudflare:test';
 import { afterEach, describe, expect, it } from 'vitest';

@@ -5,7 +5,7 @@
  * `GET /public/v1/openapi.json` (staging, pilot); the Worker contract test checks that every
  * operation here is routed by the Worker and the reverse.
  */
-import { API_SCOPES, PUBLIC_ROUTES, type PublicRouteName } from './index.js';
+import { API_SCOPES, ERROR_CODES as CONTRACT_ERROR_CODES, PUBLIC_ROUTES, type PublicRouteName } from './index.js';
 
 type Schema = Record<string, unknown>;
 
@@ -17,11 +17,7 @@ const obj = (properties: Record<string, Schema>, required: string[] = Object.key
 const pageOf = (item: string): Schema => obj({ items: { type: 'array', items: ref(item) }, nextCursor: nullable(str()) });
 
 const UNIT_STATES = ['INCOMING', 'AVAILABLE', 'HELD', 'ALLOCATED', 'QUALITY_CONTROL', 'DAMAGED', 'IN_TRANSIT', 'SHIPPED', 'RETURN_PENDING', 'TO_VERIFY', 'LOST', 'SCRAPPED', 'UNTRACKED'];
-const ERROR_CODES = [
-  'unauthenticated', 'forbidden', 'not_found', 'validation_failed', 'idempotency_conflict', 'precondition_failed', 'rate_limited',
-  'unit_not_available', 'identifier_conflict', 'invalid_transition', 'variant_mismatch', 'location_mismatch', 'ambiguous_ref', 'unknown_ref',
-  'not_tracked', 'emergency_stop', 'simulation_expired', 'incompatible_settings',
-];
+const ERROR_CODES = [...CONTRACT_ERROR_CODES];
 
 const schemas: Record<string, Schema> = {
   Problem: {
@@ -71,8 +67,8 @@ const schemas: Record<string, Schema> = {
   UnitEvent: obj({
     id: str(), at: dateTime, actor: str(), type: str(),
     fromState: nullable(str({ enum: UNIT_STATES })), toState: nullable(str({ enum: UNIT_STATES })),
-    reason: nullable(str()), stockEffect: nullable(str()),
-  }),
+    reason: nullable(str()), stockEffect: nullable(str()), stockDelta: nullable({ type: 'integer' }), stockQuantity: nullable(str()),
+  }, ['id', 'at', 'actor', 'type', 'fromState', 'toState', 'reason', 'stockEffect']),
   UnitEventPage: pageOf('UnitEvent'),
   TrackedItem: obj({
     variantGid: str(), productGid: str(), title: str(), variantTitle: nullable(str()), sku: nullable(str()), mode: str({ enum: ['interchangeable'] }),
@@ -92,7 +88,8 @@ const schemas: Record<string, Schema> = {
     lines: { type: 'array', items: obj({ lineItemGid: str(), variantGid: str(), title: str(), tracked: { type: 'boolean' }, quantity: { type: 'integer' }, orderedQuantity: { type: 'integer' }, allocations: { type: 'array', items: ref('Allocation') }, missing: { type: 'integer' } }) },
     syncState: str({ enum: ['pending', 'synced', 'error'] }),
     syncedAt: nullable(dateTime),
-  }),
+    automationPaused: { type: 'boolean' },
+  }, ['orderGid', 'lines', 'syncState', 'syncedAt']),
   CreateAllocationRequest: obj({ orderGid: str(), lineItemGid: str(), unitId: str(), ref: str() }, ['orderGid', 'lineItemGid']),
   ReplaceAllocationRequest: obj({ unitId: str(), ref: str() }, []),
   ConfirmShippedRequest: obj({ ref: str() }),

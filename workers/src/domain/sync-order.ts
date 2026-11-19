@@ -4,7 +4,8 @@
  * next, events, anomalies, uncovered lines, explained quantities), and queues the Shopify writes
  * in the outbox. Replaying it without change in Shopify writes nothing (T-IDEM-01).
  */
-import { checkAllocationConsistency, planOrderSync, type ConsistencyViolation, type OrderSnapshot, type ReturnIdentification, type SyncPlan, type SyncState } from '@serialis/core';
+import type { UnitEventReason } from '@serialis/contract';
+import { checkAllocationConsistency, planOrderSync, type ConsistencyViolation, type DispositionType, type ReleaseKind, type OrderSnapshot, type ReturnIdentification, type SyncPlan, type SyncState } from '@serialis/core';
 import { TASK_PRIORITY } from '../task-kinds.js';
 import type { TaskContext, TaskResult } from '../tasks.js';
 import { logEvent } from '../log.js';
@@ -13,6 +14,12 @@ import type { Cause } from './repo.js';
 import { readOrder, type OrderRead } from './shopify-read.js';
 import { hasPendingMetafieldWrite, metafieldWriteInput, stockWriteInput, type StockIntent } from './writes.js';
 import { chunks, newId, numericOf, placeholders } from './util.js';
+
+// The release kinds and return dispositions core writes in event data are contract keys (15.9: the
+// unit history translates them); a new value in core fails here until `UNIT_EVENT_REASONS` lists it.
+type Covered<A extends string, B extends string> = [A] extends [B] ? true : false;
+const _eventReasonsCovered: Covered<ReleaseKind | DispositionType, UnitEventReason> = true;
+void _eventReasonsCovered;
 
 /**
  * Raised inside the transaction of a plan application when the allocation ↔ unit rule of 11.2 does not

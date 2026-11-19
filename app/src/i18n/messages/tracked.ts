@@ -11,7 +11,7 @@ export const tracked = defineMessages(
     'tracked.mode.interchangeable': 'Unités interchangeables',
     'tracked.phase.yes': 'En cours',
     'tracked.phase.no': 'Terminée',
-    'tracked.stock.line': '{location} : {shopify} dans Shopify, {registered} enregistrées',
+    'tracked.stock.line': '{location} : {shopify} dans Shopify, {registered, plural, one {# enregistrée} other {# enregistrées}}',
     'tracked.empty.heading': 'Aucun article suivi',
     'tracked.empty.body': 'Choisissez les produits dont vous voulez suivre les refs. Le reste de votre catalogue n’est jamais touché.',
     'tracked.confirm.heading': 'Activer le suivi de ces articles ?',

@@ -9,7 +9,7 @@ import { adminUrl, gidNumber } from '../../shopify';
 import { Badge, Banner, Button, ConfirmDialog, Section, Select, Stack } from '../../ui/components';
 import { SeverityBadge } from '../../ui/badges';
 import { DesignationInput } from '../../ui/DesignationInput';
-import { useAsync } from '../../ui/hooks';
+import { LIVE_POLL_MS, useAsync } from '../../ui/hooks';
 import { AdminLink } from '../../ui/Link';
 import { Page } from '../../ui/Page';
 import { EmptyState, ErrorState, Loading, useErrorMessage } from '../../ui/states';
@@ -95,7 +95,7 @@ function AnomalyCard({ anomaly, locationName, onChanged }: { anomaly: Anomaly; l
     }
   }
 
-  const typeLabel = tMaybe(`anomaly.type.${anomaly.type}`) ?? anomaly.type;
+  const typeLabel = tMaybe(`anomaly.type.${anomaly.type}`) ?? t('anomalies.type.other');
   const resolved = anomaly.status === 'resolved';
   const statusTone = { open: 'warning', acknowledged: 'info', resolved: 'success' } as const;
 
@@ -180,7 +180,7 @@ function AnomalyCard({ anomaly, locationName, onChanged }: { anomaly: Anomaly; l
 
 /** Anomalies queue (EF-30): sorted by severity then age, filters kept in the URL, resolutions per type (12.7). */
 export function Anomalies() {
-  const { t } = useI18n();
+  const { t, tMaybe } = useI18n();
   const client = useClient();
   const locations = useLocations();
   const [params, setParams] = useSearchParams();
@@ -188,7 +188,9 @@ export function Anomalies() {
   const severity = params.get('severity') ?? '';
   const type = params.get('type') ?? '';
 
-  const [overrides, setOverrides] = useState<Record<string, Anomaly>>({});
+  // The answer of a resolution is shown at once; it only applies to the page it was made on: the refetch
+  // that follows every write (decision 38) brings the server's state, other anomalies closed with it included.
+  const [overrides, setOverrides] = useState<{ base: unknown; byId: Record<string, Anomaly> }>({ base: undefined, byId: {} });
   const [more, setMore] = useState<{ key: string; items: Anomaly[]; cursor: string | null } | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const key = JSON.stringify([view, severity, type]);
@@ -196,14 +198,18 @@ export function Anomalies() {
   const page = useAsync(
     () => client.listAnomalies({ ...(view === 'resolved' ? { status: 'resolved' as const } : {}), ...(severity ? { severity: severity as Anomaly['severity'] } : {}), ...(type ? { type } : {}), limit: 100 }),
     [client, key],
+    { live: true, pollMs: LIVE_POLL_MS },
   );
   useEffect(() => {
     setMore(null);
-    setOverrides({});
   }, [key]);
 
   const all = useMemo(() => {
-    const items = [...(page.data?.items ?? []), ...(more?.key === key ? more.items : [])].map((a) => overrides[a.id] ?? a);
+    const byId = overrides.base === page.data ? overrides.byId : {};
+    const seen = new Set<string>();
+    const items = [...(page.data?.items ?? []), ...(more?.key === key ? more.items : [])]
+      .filter((a) => !seen.has(a.id) && Boolean(seen.add(a.id)))
+      .map((a) => byId[a.id] ?? a);
     const filtered = view === 'active' ? items.filter((a) => a.status !== 'resolved') : items;
     return filtered.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || a.openedAt.localeCompare(b.openedAt));
   }, [page.data, more, overrides, view, key]);
@@ -252,7 +258,7 @@ export function Anomalies() {
           <Select
             label={t('anomalies.filter.type')}
             value={type}
-            options={[{ value: '', label: t('common.all') }, ...(type && !types.includes(type) ? [type] : types).map((x) => ({ value: x, label: x }))]}
+            options={[{ value: '', label: t('common.all') }, ...(type && !types.includes(type) ? [type] : types).map((x) => ({ value: x, label: tMaybe(`anomaly.type.${x}`) ?? t('anomalies.type.other') }))]}
             onChange={(v) => set('type', v)}
             testId="anomalies-type"
           />
@@ -270,7 +276,7 @@ export function Anomalies() {
       ) : (
         <>
           {all.map((a) => (
-            <AnomalyCard key={a.id} anomaly={a} locationName={locations.name(a.locationId)} onChanged={(updated) => setOverrides((o) => ({ ...o, [updated.id]: updated }))} />
+            <AnomalyCard key={a.id} anomaly={a} locationName={locations.name(a.locationId)} onChanged={(updated) => setOverrides((o) => ({ base: page.data, byId: { ...(o.base === page.data ? o.byId : {}), [updated.id]: updated } }))} />
           ))}
           {nextCursor ? (
             <Section>

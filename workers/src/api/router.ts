@@ -4,7 +4,7 @@
  * refused (409) otherwise; problem+json errors. Runs inside the shop object; the caller has
  * authenticated the request and chosen the object.
  */
-import { ALL_ROUTES, OPERATIONS_ROUTES } from '@serialis/contract';
+import { ALL_ROUTES, EXTENSION_TARGETS, OPERATIONS_ROUTES, type ExtensionKey } from '@serialis/contract';
 import type { DomainContext } from '../domain/context.js';
 import { sha256Hex } from '../domain/util.js';
 import { errorMessage, logEvent } from '../log.js';
@@ -128,8 +128,14 @@ export function matchRoute(method: string, path: string): { route: CompiledRoute
   return allowed.length > 0 ? { allowed } : null;
 }
 
-/** First render of an admin extension (15.4 "Démarrage", T-UX-08), recognised by the calls each block makes. */
-function extensionHint(call: ApiCall, name: AnyRouteName): string | null {
+/**
+ * First render of an admin extension (15.4 "Démarrage", T-UX-08). Each extension names its Shopify target
+ * in `X-Serialis-Extension` on every call (decision 76); the calls of older extension versions are
+ * still recognised by their shape.
+ */
+function extensionHint(call: ApiCall, name: AnyRouteName): ExtensionKey | null {
+  const target = call.headers.extension?.trim();
+  if (target) return Object.hasOwn(EXTENSION_TARGETS, target) ? EXTENSION_TARGETS[target]! : null;
   if (name === 'listTrackedItems' && queryOne(call, 'variant')) return 'variant_block';
   if (name === 'listTrackedItems' && queryOne(call, 'product')) return 'product_block';
   if (name === 'orderAllocations') return 'order_block';

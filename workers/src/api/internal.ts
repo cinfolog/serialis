@@ -5,6 +5,7 @@
  * the call is handed to the shop's object. The public API (api.serialis.dev/v1, API keys) will
  * reuse `ShopStore.api` with its own authentication layer.
  */
+import { EXTENSION_HEADER } from '@serialis/contract';
 import { SessionTokenError, ShopifyOAuthError, sessionTokenFromRequest, verifySessionToken, type SessionToken } from '@serialis/shopify';
 import type { Env } from '../env.js';
 import { installFromSessionToken } from '../install.js';
@@ -23,7 +24,7 @@ export function corsHeaders(request: Request): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, Idempotency-Key, If-Match, Accept',
+    'Access-Control-Allow-Headers': `Authorization, Content-Type, Idempotency-Key, If-Match, Accept, ${EXTENSION_HEADER}`,
     'Access-Control-Expose-Headers': 'ETag, Idempotent-Replayed, Retry-After, X-Shopify-Retry-Invalid-Session-Request',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin',
@@ -74,6 +75,7 @@ export async function handleInternalApi(request: Request, env: Env, url: URL): P
         ifMatch: request.headers.get('If-Match'),
         contentType: request.headers.get('Content-Type'),
         acceptLanguage: request.headers.get('Accept-Language'),
+        extension: request.headers.get(EXTENSION_HEADER),
       },
       body: request.method === 'GET' || request.method === 'HEAD' ? null : await request.text(),
       principal: {

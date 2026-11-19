@@ -123,6 +123,17 @@ describe('OrderBlock', () => {
     expect(pageText()).not.toContain('Expédiée');
   });
 
+  it('emergency stop: a unit to allocate shows the paused automation instead of the wait for a unit', async () => {
+    setup([order({ automationPaused: true })]);
+    await see('Vélo test');
+    expect(pageText()).toContain("À attribuer Automatisation en pause (arrêt d'urgence)");
+    expect(pageText()).not.toContain("En attente d'une unité");
+    cleanup();
+    setup([order({ automationPaused: true })], tEn);
+    await see('Automation paused (emergency stop)');
+    expect(pageText()).not.toContain('Waiting for a unit');
+  });
+
   it('has no edit button and says so when no line is tracked', async () => {
     setup([order({ lines: [{ ...order().lines[0]!, tracked: false }] })]);
     await see("Aucune ligne de cette commande n'est suivie");

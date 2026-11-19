@@ -151,7 +151,7 @@ export async function readOrder(client: AdminGraphqlClient, orderGid: string, ed
         const target = lineItems.find((l) => l.lineItemGid === lineItemGid);
         if (!target) continue;
         // NOT_RESTOCKED and MISSING carry no location (nothing is restocked anywhere): kept with a null location,
-        // the unit keeps the location it left from (recette 2, workers/DECISIONS.md 74).
+        // the unit keeps the location it left from (recette 2, workers/DECISIONS.md 79).
         for (const d of rl.dispositions ?? []) {
           const locationId = d.location?.id ?? null;
           if (locationId === null && (d.type === 'RESTOCKED' || d.type === 'PROCESSING_REQUIRED')) continue;

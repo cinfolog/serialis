@@ -4,6 +4,7 @@ import { newIdempotencyKey } from '../../api/client';
 import { useAnnounce, useClient } from '../../context';
 import { variantLabel } from '../../data';
 import { useI18n } from '../../i18n';
+import { detailKey, problemMessage } from '../../labels';
 import { Badge, Banner, Button, ConfirmDialog, Section, Select, Stack, TextArea } from '../../ui/components';
 import { useOnline } from '../../ui/hooks';
 import { useErrorMessage } from '../../ui/states';
@@ -37,7 +38,8 @@ export interface AddRefsPanelProps {
  * network cut cannot be applied twice (15.5, T-UX-02).
  */
 export function AddRefsPanel(props: AddRefsPanelProps) {
-  const { t, number } = useI18n();
+  const i18n = useI18n();
+  const { t, number } = i18n;
   const client = useClient();
   const announce = useAnnounce();
   const errorMessage = useErrorMessage();
@@ -182,6 +184,7 @@ export function AddRefsPanel(props: AddRefsPanelProps) {
                     <s-table-cell>{r.ref}</s-table-cell>
                     <s-table-cell>
                       <Badge tone={STATUS_TONE[r.status]}>{t(`refs.status.${r.status}`)}</Badge>
+                      {detailKey(r.detail) ? <s-text> {t(`error.detail.${detailKey(r.detail)!}`)}</s-text> : null}
                     </s-table-cell>
                   </s-table-row>
                 ))}
@@ -203,7 +206,7 @@ export function AddRefsPanel(props: AddRefsPanelProps) {
               <Banner tone="warning" heading={t('refs.rejected_heading')} testId="refs-rejected">
                 <ul style={{ margin: 0, paddingInlineStart: 20 }}>
                   {result.rejected.map((r) => (
-                    <li key={r.index}>{t('refs.rejected.line', { ref: r.ref, reason: r.detail ?? t(`error.${r.code}`) })}</li>
+                    <li key={r.index}>{t('refs.rejected.line', { ref: r.ref, reason: problemMessage(i18n, r.code, r.detail) })}</li>
                   ))}
                 </ul>
               </Banner>

@@ -13,6 +13,7 @@ export const wizard = defineMessages(
     'wizard.ext.product_block': 'Bloc produit',
     'wizard.ext.order_block': 'Bloc commande',
     'wizard.ext.order_action': 'Action « Modifier les unités » (commande)',
+    'wizard.ext.variant_action': 'Action « Ajouter des refs » (variante)',
 
     'wizard.products.intro': 'Seuls les articles que vous activez sont suivis : le reste de votre catalogue n’est jamais touché. Aucune écriture de stock n’a lieu à cette étape.',
     'wizard.products.pick': 'Choisir les produits dans Shopify',
@@ -71,6 +72,7 @@ export const wizard = defineMessages(
     'wizard.ext.product_block': 'Product block',
     'wizard.ext.order_block': 'Order block',
     'wizard.ext.order_action': '“Edit units” action (order)',
+    'wizard.ext.variant_action': '“Add refs” action (variant)',
 
     'wizard.products.intro': 'Only the items you turn on are tracked: the rest of your catalogue is never touched. No stock is written at this step.',
     'wizard.products.pick': 'Choose products in Shopify',

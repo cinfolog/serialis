@@ -42,7 +42,7 @@ function UsersList() {
   const errorMessage = useErrorMessage();
   const { me } = useSession();
   const isOwner = me.owner === true;
-  const users = useAsync(() => client.listAppUsers(), [client]);
+  const users = useAsync(() => client.listAppUsers(), [client], { live: true });
   const [change, setChange] = useState<Change | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

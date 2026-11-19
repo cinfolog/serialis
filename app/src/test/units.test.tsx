@@ -24,6 +24,25 @@ describe('Unités : liste', () => {
     await waitFor(() => expect(screen.getByTestId('unit-events')).toBeInTheDocument());
   });
 
+  it('shows the history with readable causes and stock effects, never the Worker keys (15.9)', async () => {
+    const mock = new MockClient();
+    const unit = mock.units.find((u) => u.ref === 'SN-UR500-M-51203')!;
+    mock.events.set(unit.id, [
+      { id: 'e1', at: unit.createdAt, actor: 'system', type: 'lost', fromState: 'TO_VERIFY', toState: 'LOST', reason: 'unit_to_verify:lose', stockEffect: null },
+      { id: 'e2', at: unit.createdAt, actor: 'system', type: 'to_verify', fromState: 'ALLOCATED', toState: 'TO_VERIFY', reason: 'not_restocked', stockEffect: null },
+      { id: 'e3', at: unit.createdAt, actor: 'system', type: 'returned', fromState: 'RETURN_PENDING', toState: 'AVAILABLE', reason: 'RESTOCKED', stockEffect: 'no write' },
+      { id: 'e4', at: unit.createdAt, actor: 'Camille', type: 'created', fromState: null, toState: 'AVAILABLE', reason: 'received', stockEffect: '+1 available', stockDelta: 1, stockQuantity: 'available' },
+      { id: 'e5', at: unit.createdAt, actor: 'api', type: 'future_event', fromState: null, toState: null, reason: 'future_cause', stockEffect: 'future effect' },
+    ]);
+    renderApp(`/units/${unit.id}`, { mock });
+    await waitFor(() => expect(screen.getByTestId('unit-events')).toBeInTheDocument());
+    const history = text(screen.getByTestId('unit-events'));
+    for (const raw of ['unit_to_verify', 'not_restocked', 'RESTOCKED', 'no write', 'available', 'future_event', 'future_cause', 'system']) expect(history).not.toContain(raw);
+    for (const label of ['Vérifiée : introuvable', 'Commande modifiée ou annulée sans remise en stock', 'Retour remis en stock', 'Aucune écriture', '+1 en stock « disponible »', 'Déclarée perdue', 'Autre événement', 'Autre cause', 'Écriture dans Shopify', 'Serialis (automatique)', 'Camille']) {
+      expect(history).toContain(label);
+    }
+  });
+
   it('keeps a ref typed right after the search field appears (decision 29)', async () => {
     actOnFirstAppearance('units-q', (el) => typeIn(el, 'sn-ur500-m-51203'));
     renderApp('/units');
@@ -100,7 +119,29 @@ describe('Ajout de refs par collage (T-UX-02)', () => {
     await waitFor(() => expect(screen.getByTestId('refs-summary')).toBeInTheDocument());
     expect(text(screen.getByTestId('refs-summary'))).toContain('2 prêtes sur 3');
     expect(screen.getByTestId('refs-check-table').textContent).toContain('Au-delà de l’écart avec Shopify');
+    // Recette 2: the row says what to do instead of a generic error.
+    expect(screen.getByTestId('refs-check-table').textContent).toContain('Aucun écart dans Shopify à cet emplacement : choisissez « Reçues maintenant » (stock Shopify +1 par ref).');
+    expect(screen.getByTestId('refs-check-table').textContent).not.toContain('no_usable_deficit');
     expect(text(screen.getByTestId('refs-effect'))).toBe('Effet : aucune écriture dans Shopify, ces 2 unités sont déjà comptées à Entrepôt Bordeaux.');
+  });
+
+  it('a refusal for lack of gap between the check and the validation gives the specific message, not a generic one', async () => {
+    const { mock } = await openPanel();
+    choose(field('Article suivi'), mock.trackedItems[2]!.variantGid);
+    choose(field('Ces unités sont…'), 'counted');
+    typeIn(field('Refs à ajouter'), 'SN-GR300-54-80001');
+    press(button('Contrôler les refs'));
+    await waitFor(() => expect(screen.getByTestId('refs-summary')).toBeInTheDocument());
+    // Shopify's gap is used up meanwhile (another device): the Worker refuses the row with `no_usable_deficit`.
+    vi.spyOn(mock, 'createUnitsBatch').mockResolvedValueOnce({ created: [], rejected: [{ index: 0, ref: 'SN-GR300-54-80001', code: 'validation_failed', detail: 'no_usable_deficit' }] });
+    press(screen.getByTestId('refs-submit'));
+    await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
+    press(screen.getByTestId('dialog-confirm'));
+    await waitFor(() => expect(screen.getByTestId('refs-rejected')).toBeInTheDocument());
+    const rejected = text(screen.getByTestId('refs-rejected'));
+    expect(rejected).toContain('SN-GR300-54-80001 : Aucun écart dans Shopify à cet emplacement : choisissez « Reçues maintenant » (stock Shopify +1 par ref).');
+    expect(rejected).not.toContain('no_usable_deficit');
+    expect(rejected).not.toContain('Certaines données ne sont pas valides');
   });
 
   it('a validation sent again after a network cut reuses the idempotency key and is not applied twice', async () => {

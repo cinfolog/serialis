@@ -4,6 +4,20 @@ import { MockClient } from '../api/mock';
 import { pageHeading, press, renderApp, screen, text, waitFor, within } from './utils';
 
 describe('Réglages › Santé (17.1, 17.2)', () => {
+  it('opens from the short URL /health typed by hand (recette 2: blank page)', async () => {
+    renderApp('/health?host=abc&shop=s.myshopify.com');
+    await pageHeading('Santé de Serialis');
+    await waitFor(() => expect(screen.getByTestId('health-status')).toBeInTheDocument());
+  });
+
+  it('an unknown URL shows a not-found screen with links to the home and to the health screen', async () => {
+    renderApp('/nothing-here');
+    await pageHeading('Page introuvable');
+    const links = [...document.querySelectorAll('s-link')].map((l) => l.getAttribute('href'));
+    expect(links).toEqual(expect.arrayContaining(['/', '/settings/health']));
+    expect(screen.getByTestId('not-found').textContent).toContain('Cette page n’existe pas');
+  });
+
   it('is reached from the settings and shows a healthy shop with empty lists', async () => {
     renderApp('/settings');
     await pageHeading('Réglages');

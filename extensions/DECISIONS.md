@@ -19,7 +19,12 @@ Preact et composants web Polaris (`s-*`), un dossier par extension, code commun 
 - **Le jeton est un jeton d'identité OpenID Connect (ID token)** en API 2026-10, pas le jeton de session d'App Bridge
   de l'app intégrée. Le Worker doit accepter ce jeton sur `/api/v1/*` (même clé de signature, `aud` = client_id).
 - **CORS** : le Worker doit répondre aux requêtes (et au préalable `OPTIONS`) de l'origine `https://extensions.shopifycdn.com`,
-  avec les en-têtes `Authorization, Content-Type, Idempotency-Key, If-Match, Accept`.
+  avec les en-têtes `Authorization, Content-Type, Idempotency-Key, If-Match, Accept, X-Serialis-Extension`.
+- **Premier rendu signalé (15.4 « Démarrage », T-UX-08)** : le client commun envoie à chaque appel `X-Serialis-Extension` avec la cible
+  Shopify de l'extension (`shopify.extension.target`, ou l'option `extensionTarget`) ; le Worker en déduit l'extension affichée
+  (`EXTENSION_TARGETS` du contrat), quel que soit le premier appel. Avant, l'action commande n'était reconnue qu'à une écriture
+  (sa lecture `GET /orders/{id}/allocations` marquait le bloc commande) et l'action variante jamais. Aucun fichier d'extension
+  ne change : seul `extensions/shared/src/api-client.ts`.
 - L'identifiant de commande dans la route est **numérique** (`GET /orders/{id}/allocations`, comme `order_id` de l'API publique,
   spec 9.15 point 3), extrait du GID `gid://shopify/Order/{id}`.
 
@@ -202,7 +207,7 @@ Demande du marchand (admin réel) : voir, dans la fenêtre « Ajouter des refs �
 ### 5. Bloc commande : état réel des unités, quantité, décompte et rafraîchissement (recette 2)
 
 - **État réel** : une unité expédiée dont le retour est attendu affichait « Expédiée » ; le badge suit maintenant
-  `unitState` (contrat, décision 76 de `workers/DECISIONS.md`) dès que l'unité est partie : « Retour attendu » (ton
+  `unitState` (contrat, décision 81 de `workers/DECISIONS.md`) dès que l'unité est partie : « Retour attendu » (ton
   d'avertissement), puis, retour traité, l'état d'arrivée (« Disponible », « Mise au rebut »…). Avant expédition, le
   badge reste celui de l'attribution.
 - **Quantité** : la ligne affichait « × 0 » après un retour (quantité courante Shopify). Elle affiche la quantité commandée
@@ -229,3 +234,9 @@ Demande du marchand (admin réel) : voir, dans la fenêtre « Ajouter des refs �
 - Test : `shared/test/variant.test.ts` (« recette 2 — … »). **À vérifier dans l'admin réel** : sur une boutique dont
   l'emplacement principal a été changé après coup, la règle « plus ancien » peut proposer l'ancien ; le choix reste
   modifiable.
+
+### 7. Bloc commande pendant un arrêt d'urgence
+
+- `GET /orders/{id}/allocations` renvoie `automationPaused` (décision 77 de `workers/DECISIONS.md`). Quand il est vrai,
+  une unité à attribuer affiche « Automatisation en pause (arrêt d'urgence) » au lieu de « En attente d'une unité » :
+  la ligne attend la reprise, pas du stock. Test : `OrderBlock.test.tsx` (« emergency stop… »).

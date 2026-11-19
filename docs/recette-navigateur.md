@@ -52,6 +52,29 @@ Pour chaque étape : tu fais l'action, tu observes, tu compares au résultat att
 - **Comportement surprenant mais pas faux** (lenteur, libellé ambigu, texte coupé, élément qui déborde) : note-le en « Remarque » même si le verdict est OK. Ces remarques ont de la valeur.
 - Tu ne réessaies pas une action en boucle. Un second essai au plus, puis KO.
 
+## 4 bis. Run 3 : rejouer seulement ces étapes
+
+Les runs 1 et 2 (18–19/11) ont validé le reste. Les données du run 2 sont toujours là : refs `VR-*`, commandes #1002 à #1011. Pour ce run, rejoue uniquement :
+
+| Étapes | Ce qui a été corrigé |
+|---|---|
+| 1.6, 1.6b | Échap ferme les dialogues ; la barre Shopify ne reste plus grisée |
+| 3.3, 3.10 | Exemples du guide corrigés (ref trop longue, prérequis « suivre L ») |
+| 3.11 | Emplacement proposé par défaut : celui qui a le plus grand écart, sinon l'emplacement principal |
+| 4.8 | La révocation reste en `unauthenticated` avec le détail `api_key_revoked` (choix confirmé) |
+| 5.3 | Définition de metafield créée par l'app : une carte doit apparaître sur la commande |
+| 5.7 | Accueil : l'action « Edit units » et l'action variante passent en « affichées » après ouverture |
+| 6.1–6.3 | Historique de l'unité : source « Manual » (plus « API ») et libellés traduits (plus de clés brutes) |
+| 7.1, 8.1 | Bloc commande, anomalies et compteurs à jour sans F5 (quelques secondes) |
+| 9.1–9.5 | Retours : rebut sur « Not restocked », fermeture de « Return to identify », bloc commande avec l'état réel |
+| 9.3 | PV-3 par GraphiQL (Thomas installe l'app d'abord) |
+| 11.2 | Fenêtre « What will change » sans clés techniques |
+| 11.4, 11.5 | Libellé « Automation paused » pendant l'arrêt d'urgence |
+| 12.1 | L'adresse directe `/health` redirige vers Réglages › Santé, et une adresse inconnue affiche une page « introuvable » |
+| — | Erreur « Already counted » sans écart : message clair (« No gap in Shopify… choose Received now ») ; import d'1 ligne : « 1 row » |
+
+Pour chaque ligne du rapport, garde le même format qu'au run 2. Ajoute aussi tout nouveau défaut rencontré en chemin.
+
 ## 5. Hors de ta portée (ne pas faire, noter NON FAIT)
 
 Ces contrôles restent à Thomas :
@@ -108,13 +131,13 @@ Ces contrôles restent à Thomas :
 |---|---|---|
 | 3.1 | Fiche variante **M** › bloc « Serialis refs » › « Track refs » (suivre) › confirmer. | La confirmation annonce qu'aucun stock n'est écrit ; la variante devient suivie ; le bloc indique la phase d'initialisation. |
 | 3.2 | Bloc variante M › « Add refs ». Dans la fenêtre : emplacement **A**, « Received now », coller 50 refs `VR-M-A-001` à `VR-M-A-050` (une par ligne) › « Add 50 refs » › confirmer › « Close ». 📸 de la fenêtre avant envoi et du bloc après. | Le compteur affiche 50 refs prêtes. La confirmation annonce que le stock Shopify augmentera de 50, puis le résultat « 50 refs added ». Après fermeture, le bloc affiche les nouvelles refs **en quelques secondes** sans recharger. Sous 60 s, *Products › Inventory* : M en A = 50. |
-| 3.3 | Rouvrir « Add refs » de M, emplacement A, « Received now ». Coller `VR-M-A-001` à `VR-M-A-050`, puis `VR-M-A-051`, une ligne `mauvaise ref!`, et `VR-M-A-051` une seconde fois. | Avant l'envoi : les 50 premières signalées « already registered », `mauvaise ref!` signalée invalide, le doublon signalé. Le bouton n'annonce qu'**1** ref. Après l'ajout : seule `VR-M-A-051` est créée, et le stock de M en A passe à 51. |
+| 3.3 | Rouvrir « Add refs » de M, emplacement A, « Received now ». Coller `VR-M-A-001` à `VR-M-A-050`, puis `VR-M-A-051`, une ligne contenant la ref trop longue `VR-INVALIDE-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` (132 caractères, au-delà de la limite de 128), et `VR-M-A-051` une seconde fois. Attention : l'espace, la virgule et le point-virgule séparent les refs, donc une ligne avec un espace donne plusieurs refs. | Avant l'envoi : les 50 premières signalées « already registered », la ref trop longue signalée invalide, le doublon signalé. Le bouton n'annonce qu'**1** ref. Après l'ajout : seule `VR-M-A-051` est créée, et le stock de M en A passe à 51. |
 | 3.4 | *Products › Inventory* : passer M en **B** à **5** à la main. Puis « Add refs » de M, emplacement **B**, « Already counted » (proposé par défaut en initialisation), refs `VR-M-B-001` à `VR-M-B-007`. | Un avertissement indique 7 refs pour un écart de 5. Après l'envoi : 5 refs créées, 2 refusées et laissées dans le champ avec leur motif. Le stock de B reste à **5**, sans aucune écriture de stock. |
 | 3.5 | « Add refs » de M, emplacement B, « Already counted », 1 ref `VR-M-B-008`. | Refus dans la fenêtre et bouton désactivé : il n'y a plus d'écart dans Shopify, il faut choisir « Received now ». Ne pas envoyer. |
 | 3.6 | Regarder le bloc variante M. 📸 | A : Shopify 51, refs 51, aligné. B : 5 / 5, aligné. Le bloc reste compact, sans « Show more ». |
 | 3.7 | Refaire un ajout d'1 ref (`VR-M-A-052`, A, « Received now ») **au clavier seulement** (Tab, Entrée, Espace, Échap). | Le parcours se fait au clavier et le focus est toujours visible. Échap ferme la fenêtre sans rien écrire : tester Échap une fois avant de valider. |
 | 3.9 | Fiche produit « Vélo recette » › bloc produit. | Une variante suivie sur deux, avec les unités disponibles et l'écart par variante. Le lien vers la variante ouvre la bonne variante. |
-| 3.10 | App › Imports : coller le CSV suivant, en remplaçant `<SKU_L>` par le SKU de la variante L (à renseigner sur la variante L si vide, par exemple `VELO-REC-L`) :<br>`ref,sku,location,already_counted`<br>`VR-L-A-001,<SKU_L>,Shop location,non`<br>`VR-L-A-002,<SKU_L>,Shop location,non`<br>`VR-L-A-003,<SKU_L>,Shop location,non`<br>`VR-L-X-001,<SKU_L>,Emplacement inconnu,non`<br>› Simuler › Confirmer. | La simulation annonce 3 lignes valides et 1 en erreur (emplacement inconnu). La confirmation nomme l'effet sur le stock. Les 3 unités sont créées et le stock de L en A augmente de 3. |
+| 3.10 | **Prérequis** : suivre d'abord la variante **L** (bloc variante de L › « Track refs »), sinon toutes les lignes sont refusées (`not_tracked`). Puis App › Imports : coller le CSV suivant, en remplaçant `<SKU_L>` par le SKU de la variante L (à renseigner sur la variante L si vide, par exemple `VELO-REC-L`) :<br>`ref,sku,location,already_counted`<br>`VR-L-A-001,<SKU_L>,Shop location,non`<br>`VR-L-A-002,<SKU_L>,Shop location,non`<br>`VR-L-A-003,<SKU_L>,Shop location,non`<br>`VR-L-X-001,<SKU_L>,Emplacement inconnu,non`<br>› Simuler › Confirmer. | La simulation annonce 3 lignes valides et 1 en erreur (emplacement inconnu). La confirmation nomme l'effet sur le stock. Les 3 unités sont créées et le stock de L en A augmente de 3. |
 | 3.11 | « Add refs » de M, emplacement A. Section « Already registered » : tester « Show more », le filtre `VR-M-A-04`, « Show all locations », « Hide ». Puis taper `VR-M-A-001`, `VR-L-A-001` et `VR-M-A-053`, et ajouter en « Received now ». 📸 | Titre « … at Shop location (52) » environ. 20 refs avec état et date, puis les suivantes. Une ligne « + 5 at other locations ». Le filtre ne garde que `VR-M-A-040` à `049`. En moins d'une seconde, `VR-M-A-001` est signalée déjà enregistrée et `VR-L-A-001` signalée « other variant ». Le bouton annonce « Add 1 ref ». Après l'ajout, `VR-M-A-053` apparaît en tête de liste avec la mention « new ». |
 
 ### 6.4 API publique (facultatif, dans le navigateur)
@@ -136,7 +159,7 @@ Ces contrôles restent à Thomas :
 |---|---|---|
 | 5.1 | Boutique en ligne : commander **3 × Vélo recette M** + **1 × Antivol recette**. Client fictif `recette@example.com`, adresse en France, paiement par la passerelle de test (carte `1`). Si la vitrine est inutilisable : admin › *Orders › Create order*, même contenu, *Mark as paid*. Noter le numéro de commande. | La commande passe normalement. |
 | 5.2 | Ouvrir la commande dans l'admin. Épingler le bloc « Serialis refs » si besoin (étape 2.2). 📸 | Sous 60 s : 3 refs distinctes, une ligne par unité, et la mention qu'1 autre ligne n'est pas suivie (l'antivol). Pas de « Show more » pour 3 unités. |
-| 5.3 | Commande › *Metafields* (ou « Show all » des metafields). | Le metafield `serialis.units` liste les 3 refs pour la ligne Vélo. Aucune propriété ajoutée aux lignes, ligne Antivol intacte. |
+| 5.3 | Commande › section *Metafields* (ou « Show all »). | Une entrée « Serialis — unités » (définition créée par l'app) affiche le contenu JSON du metafield `serialis.units`, avec les 3 refs de la ligne Vélo. Aucune propriété ajoutée aux lignes, ligne Antivol intacte. |
 | 5.4 | Créer une commande dans l'admin (*Create order*, 1 × M, *Mark as paid*). | Une unité est attribuée sous 60 s, comme en 5.2. |
 | 5.5 | Commander dans l'admin **plus de M en B qu'il n'y a d'unités libres en B** (par exemple 7 × M, emplacement d'expédition B si l'admin permet de le choisir, sinon note comment Shopify a choisi l'emplacement). | Les unités disponibles sont attribuées. Une anomalie « unités insuffisantes » (ou « en attente d'unité ») s'ouvre, et l'ordre d'expédition n'est **pas** mis en attente (*on hold*). |
 | 5.6 | Ajouter des refs « Received now » à l'emplacement concerné depuis la fenêtre « Add refs » de M, autant qu'il en manque. | Les unités manquantes sont attribuées à la commande en attente et l'anomalie se ferme. |
@@ -168,16 +191,16 @@ Ces contrôles restent à Thomas :
 | 8.2 | (PV-14, partie visible) Même opération sur une autre commande en **décochant** *Restock item*. | Noter l'état de l'unité libérée : perdue ou sortie (Shopify a transmis l'indication), ou « à vérifier » (repli). Noter lequel. |
 | 8.3 | Annuler une commande non expédiée (*Cancel order*) avec remise en stock. | Les unités sont libérées et disponibles. Le stock est remis par Shopify : vérifier qu'il n'est pas compté deux fois. |
 | 8.4 | (PV-24) Créer une commande admin de 1 × M, relever le stock de M, puis l'annuler et la **supprimer** (*Delete order*). Relever le stock après. | Les unités sont libérées. Noter si le stock est revenu à sa valeur d'avant la commande. |
-| 8.5 | (PV-24 suite) Sur une variante suivie avec `available` à 0 à un emplacement, déclarer une unité perdue depuis l'app (fiche de l'unité › état « perdue » ou action équivalente). | Soit Shopify accepte l'ajustement (aucune anomalie d'écriture dans Santé), soit un refus apparaît : noter le message exact. |
+| 8.5 | (PV-24 suite) **NON FAIT : non atteignable dans le MVP.** La déclaration de perte d'une unité disponible (transition manuelle, EF-24) n'existe pas encore dans l'app ; « Declare lost » depuis l'anomalie « Unit to verify » n'écrit volontairement rien dans Shopify (l'unité est déjà hors du stock). | Noter NON FAIT avec cette raison. |
 
 ### 6.9 Retours
 
 | # | Action | Résultat attendu |
 |---|---|---|
 | 9.1 | Commande expédiée d'1 unité : *Return* › créer › recevoir › disposition *Restock*. | L'unité attend l'identification. Anomalies › « retour non identifié » › saisir la ref (entière ou 4 derniers caractères) : l'unité redevient disponible. |
-| 9.2 | Même parcours sur une ligne de 2 unités, en saisissant la ref d'une **autre** unité (qui n'était pas sur la commande). | Une anomalie « unité ne correspondant pas » s'ouvre, sans aucune écriture. |
-| 9.3 | (PV-3) Retour avec disposition « processing required » (contrôle requis). Relever *available* et *quality control* dans *Inventory* (détail des quantités) avant et après. 📸 | L'unité passe en « contrôle qualité ». Noter précisément si *available* a bougé et si *quality control* a pris +1. |
-| 9.4 | Retour avec disposition *Not restocked*. | L'unité est mise au rebut, sans écriture de stock. |
+| 9.2 | Même parcours sur une ligne de 2 unités, en saisissant la ref d'une **autre** unité (qui n'était pas sur la commande). | L'anomalie « Return to identify » se **ferme** et une anomalie « Returned unit differs from the unit sold » s'ouvre, sans aucune écriture. La liste se met à jour sans F5. |
+| 9.3 | (PV-3) L'admin ne propose pas la disposition « processing required » : elle ne s'obtient que par l'API Admin. **Prérequis (Thomas)** : installer l'app *Shopify GraphiQL App* sur serialis-test. Ensuite : créer et recevoir un retour d'1 unité de M **sans** choisir de disposition. Relever *available* et *quality control* de M à cet emplacement (*Inventory* › détail des quantités). Dans GraphiQL, lire le retour :<br>`{ order(id:"gid://shopify/Order/<id>") { returns(first:5) { nodes { id status reverseFulfillmentOrders(first:5) { nodes { id lineItems(first:10) { nodes { id totalQuantity dispositions { type quantity } } } } } } } } }`<br>puis appliquer la disposition :<br>`mutation { reverseFulfillmentOrderDispose(dispositionInputs: [{ reverseFulfillmentOrderLineItemId: "<id de la ligne>", quantity: 1, dispositionType: PROCESSING_REQUIRED, locationId: "gid://shopify/Location/<id>" }]) { reverseFulfillmentOrderLineItems { id dispositions { type quantity } } userErrors { field message } } }`<br>Si la mutation est signalée dépréciée, utiliser celle que GraphiQL propose (`returnProcess`) avec la même disposition. Relever de nouveau les quantités après 1 min. 📸 | L'unité passe en « Quality control » dans l'app. Noter précisément : *available* avant/après, *quality control* avant/après, et les `userErrors` éventuels. |
+| 9.4 | Retour avec disposition *Not restocked* (ou retour traité sans disposition, puis clôturé). | Sous quelques minutes : l'unité passe en « Scrapped » (rebut) sans écriture de stock. Si l'app demande d'identifier l'unité (anomalie « Return to identify »), saisir la ref : le rebut suit. L'unité ne doit jamais rester en « Return pending » sans action possible. Le bloc commande affiche l'état réel de l'unité (pas « × 0 / Shipped »). |
 | 9.5 | (PV-19, partie visible) Échange depuis l'admin : retour d'une ligne + article d'échange suivi. | La ligne d'échange reçoit une unité comme une commande, et le retour est identifié comme en 9.1. |
 
 ### 6.10 Écarts de stock
@@ -196,7 +219,7 @@ Ces contrôles restent à Thomas :
 | 11.2 | Changer un réglage qui propose une simulation : simuler, puis enregistrer. Remettre ensuite la valeur d'origine. | La simulation est exigée et décrit l'effet. La valeur et son origine s'affichent, et « Mes choix » la liste. |
 | 11.3 | S-22 (« Grace period… ») : 10 → 15 → 10 en enregistrant à chaque fois, puis F5. Ensuite 15, enregistrer, « Back to default » dans « Mes choix », enregistrer, F5. | Après 15 → 10 : « Mes choix » affiche « No setting changed ». « Back to default » fait apparaître la barre d'enregistrement ; après l'enregistrement et F5, la ligne n'est plus listée et la valeur vaut 10. |
 | 11.3a | Réglages › Utilisateurs. | Le compte de Thomas apparaît avec « You », « Owner », « Administrator », sa date de première visite, et aucune adresse e-mail. Aucun bouton sur sa ligne. |
-| 11.4 | Réglages › Sécurité et exploitation › « Activer l'arrêt d'urgence » › confirmer. Passer une commande admin de 1 × M. 📸 | Un bandeau permanent s'affiche sur tous les écrans de l'app. La commande n'est **pas** attribuée et n'est pas mise en attente. |
+| 11.4 | Réglages › Sécurité et exploitation › « Activer l'arrêt d'urgence » › confirmer. Passer une commande admin de 1 × M. 📸 | Un bandeau permanent s'affiche sur tous les écrans de l'app. La commande n'est **pas** attribuée, et son ordre d'expédition n'est pas mis en attente (*on hold*) côté Shopify. Le bloc commande et l'accueil indiquent « Automation paused (emergency stop) », pas « Waiting for a unit ». |
 | 11.5 | « Reprendre l'automatisation » › confirmer. **Ne pas oublier cette étape.** | Le bandeau disparaît et la commande de 11.4 reçoit son unité (≤ 60 s). |
 
 ### 6.12 Santé

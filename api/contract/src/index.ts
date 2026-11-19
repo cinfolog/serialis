@@ -184,6 +184,11 @@ export interface OrderAllocationsResponse {
   }>;
   syncState: 'pending' | 'synced' | 'error';
   syncedAt: IsoDateTime | null;
+  /**
+   * Emergency stop on (P-02): automatic allocation is suspended, so a line with `missing > 0` is waiting
+   * for the stop to be lifted, not for a unit (additive; absent from older Workers = false).
+   */
+  automationPaused?: boolean;
 }
 
 /**

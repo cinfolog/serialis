@@ -159,6 +159,8 @@ export function Home() {
               <Stack key={c.key} direction="inline" gap="base" alignItems="center">
                 <s-text data-testid={`todo-${c.key}`}>{t(c.message, { count: c.count })}</s-text>
                 <Link to={c.to}>{t('home.todo.open')}</Link>
+                {/* Emergency stop: the lines wait for the restart, not for a unit (P-02). */}
+                {c.key === 'lines' && me.emergencyStop ? <Badge tone="warning">{t('home.todo.lines_paused')}</Badge> : null}
               </Stack>
             ))}
           </Stack>

@@ -80,6 +80,7 @@ export function orderAllocations(ctx: ApiContext, orderParam: string): ApiResult
     })),
     syncState: !sync ? 'pending' : sync.status === 'error' ? 'error' : sync.status === 'pending' ? 'pending' : 'synced',
     syncedAt: iso(sync?.last_synced_at ?? null),
+    automationPaused: ctx.d.repo.automationPaused(),
   };
   return json(response);
 }

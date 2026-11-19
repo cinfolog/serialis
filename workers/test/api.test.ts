@@ -214,7 +214,8 @@ describe('resources', () => {
     await h.drain();
     const numeric = order.id.split('/').pop()!;
     const allocs = await json(await h.api('GET', `/orders/${numeric}/allocations`), 200);
-    expect(allocs).toMatchObject({ orderGid: order.id, syncState: 'synced', lines: [{ missing: 1, allocations: [] }] });
+    // The missing unit is explained by the emergency stop, not by a shortage (recette 2).
+    expect(allocs).toMatchObject({ orderGid: order.id, syncState: 'synced', automationPaused: true, lines: [{ missing: 1, allocations: [] }] });
     const line = allocs.lines[0].lineItemGid;
     const post = (ref: string) => h.api('POST', '/allocations', { orderGid: numeric, lineItemGid: line, ref });
     expect(await json(await post('FAR-9999'), 409)).toMatchObject({ code: 'location_mismatch' });
@@ -230,6 +231,7 @@ describe('resources', () => {
     expect(await json(await h.api('POST', `/allocations/${replaced.id}/confirm-shipped`, { ref: 'CD-1234' }), 409)).toMatchObject({ code: 'invalid_transition' });
     await json(await h.api('POST', '/automation/resume'), 200);
     expect((await json(await h.api('GET', '/me'), 200)).emergencyStop).toBe(false);
+    expect((await json(await h.api('GET', `/orders/${numeric}/allocations`), 200)).automationPaused).toBe(false);
   });
 
   it('anomalies: list with filters, acknowledge, resolve with a wrong action', async () => {

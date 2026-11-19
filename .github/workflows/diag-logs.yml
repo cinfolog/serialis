@@ -12,10 +12,10 @@ jobs:
           CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           FROM=$(date -d '2026-11-19T09:50:00Z' +%s%3N); TO=$(date -d '2026-11-19T10:45:00Z' +%s%3N)
-          for F in '{"key":"$metadata.message","operation":"includes","type":"string","value":"reverse_fulfillment"}' '{"key":"$metadata.message","operation":"includes","type":"string","value":"dispose"}' '{"key":"$metadata.message","operation":"includes","type":"string","value":"returns/"}' '{"key":"$metadata.level","operation":"eq","type":"string","value":"error"}'; do
+          for F in '{"key":"$metadata.message","operation":"includes","type":"string","value":"webhook"}' '{"key":"$metadata.message","operation":"includes","type":"string","value":"hooks"}' '{"key":"$metadata.level","operation":"eq","type":"string","value":"error"}'; do
             BODY="{\"queryId\":\"diag-pv3\",\"timeframe\":{\"from\":$FROM,\"to\":$TO},\"view\":\"events\",\"limit\":60,\"parameters\":{\"filters\":[{\"key\":\"\$workers.scriptName\",\"operation\":\"eq\",\"type\":\"string\",\"value\":\"serialis-web-staging\"},$F]}}"
             curl -sS -X POST "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/observability/telemetry/query" \
               -H "Authorization: Bearer $CF_TOKEN" -H 'Content-Type: application/json' -d "$BODY" > out.json
             echo "::notice title=filter::$F -> $(jq -r '.result.events.events | length' out.json) $(jq -r '.errors|tostring' out.json)"
-            jq -r '.result.events.events[]? | {t: (.timestamp/1000|todate), src: (.source|tostring|.[0:900])} | @json' out.json | head -20 | while read -r L; do echo "::notice title=log::$L"; done
+            jq -r '.result.events.events[]? | {t: (.timestamp/1000|todate), src: (.source|tostring|.[0:900])} | @json' out.json | grep -v "OPTIONS" | head -40 | while read -r L; do echo "::notice title=log::$L"; done
           done

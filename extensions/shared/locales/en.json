@@ -208,6 +208,14 @@
     "errorBody": "Synchronization of this order failed. Check the anomalies in the Serialis app.",
     "syncedAt": "Synchronized on {{when}}",
     "quantity": "× {{count}}",
+    "returnPending": {
+      "one": "{{count}} awaiting return",
+      "other": "{{count}} awaiting return"
+    },
+    "returnedCount": {
+      "one": "{{count}} returned",
+      "other": "{{count}} returned"
+    },
     "missing": {
       "one": "{{count}} unit to allocate",
       "other": "{{count}} units to allocate"

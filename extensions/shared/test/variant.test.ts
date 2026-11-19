@@ -76,10 +76,24 @@ describe('location of the added refs', () => {
     expect(addLocationOptions(withOld, [LOCATIONS[0]!]).map((l) => l.id)).toEqual(['loc-a', 'loc-x']);
   });
 
-  it('proposes the first location with units to register, else the first option', () => {
+  it('proposes the location with units to register, else the main location', () => {
     expect(initialAddLocation(item, LOCATIONS)).toBe('loc-b');
     expect(initialAddLocation(makeTrackedItem(), LOCATIONS)).toBe('loc-a');
     expect(initialAddLocation(makeTrackedItem({ stock: [] }), [])).toBe('');
+  });
+
+  it('recette 2 — the largest positive gap wins over list order; without a gap, the main (oldest active) location', () => {
+    const shopLocations = [
+      { id: 'gid://shopify/Location/90', name: 'My Custom Location', active: true },
+      { id: 'gid://shopify/Location/12', name: 'Entrepôt', active: true },
+      { id: 'gid://shopify/Location/5', name: 'Fermé', active: false },
+    ];
+    const stock = (id: string, onHand: number, registered: number) => ({ locationId: id, shopifyOnHand: onHand, registeredUnits: registered, availableUnits: registered });
+    const gaps = makeTrackedItem({ stock: [stock('gid://shopify/Location/90', 2, 1), stock('gid://shopify/Location/12', 6, 1)] });
+    expect(initialAddLocation(gaps, shopLocations)).toBe('gid://shopify/Location/12');
+    const aligned = makeTrackedItem({ stock: [stock('gid://shopify/Location/90', 1, 1), stock('gid://shopify/Location/12', 1, 1)] });
+    expect(initialAddLocation(aligned, shopLocations)).toBe('gid://shopify/Location/12');
+    expect(initialAddLocation(makeTrackedItem({ stock: [] }), shopLocations)).toBe('gid://shopify/Location/12');
   });
 
   it('gapAt gives the gap of one location, null without stock data', () => {

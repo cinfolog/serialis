@@ -12,23 +12,45 @@ export interface LineView {
   rows: UnitRow[];
   /** Units still to allocate for this line (never negative). */
   missing: number;
+  /** Units currently on the line (allocated or shipped, a shipped unit awaiting its return included). */
+  current: number;
+  /** Shipped units whose return is awaited (unit RETURN_PENDING). */
+  returnPending: number;
+  /** Units already returned (allocation `returned`). */
+  returned: number;
 }
 
+const isCurrent = (a: Allocation) => a.status === 'active' || a.status === 'fulfilled';
+
 /**
- * Lines that carry tracking, each with one row per allocation then one row per missing unit.
- * Released and returned allocations are history: they are listed after the active ones.
+ * Lines that carry tracking: one row per unit currently on the line, then the returned units, then one row per
+ * missing unit. Released allocations are history (« Modifier les unités » lists them): not shown, not counted
+ * (recette 2: « +10 more units » on a line of 7 units).
  */
 export function buildLineViews(res: OrderAllocationsResponse): LineView[] {
   return res.lines
     .filter((l) => l.tracked)
     .map((line) => {
-      const rank = (a: Allocation) => (a.status === 'active' || a.status === 'fulfilled' ? 0 : 1);
-      const allocations = [...line.allocations].sort((a, b) => rank(a) - rank(b) || a.allocatedAt.localeCompare(b.allocatedAt));
+      const shown = line.allocations.filter((a) => a.status !== 'released');
+      const rank = (a: Allocation) => (isCurrent(a) ? 0 : 1);
+      const allocations = [...shown].sort((a, b) => rank(a) - rank(b) || a.allocatedAt.localeCompare(b.allocatedAt));
       const missing = Math.max(0, line.missing);
       const rows: UnitRow[] = allocations.map((allocation) => ({ kind: 'allocation', allocation }));
       for (let i = 0; i < missing; i++) rows.push({ kind: 'missing', position: i + 1 });
-      return { line, rows, missing };
+      return {
+        line,
+        rows,
+        missing,
+        current: allocations.filter(isCurrent).length,
+        returnPending: allocations.filter((a) => a.status === 'fulfilled' && a.unitState === 'RETURN_PENDING').length,
+        returned: allocations.filter((a) => a.status === 'returned').length,
+      };
     });
+}
+
+/** Quantity shown next to the line title: the quantity ordered, never the 0 left after a return or refund. */
+export function displayedQuantity(line: Line): number {
+  return line.orderedQuantity ?? line.quantity;
 }
 
 /** Tracked lines shown in the block, and unit rows shown in all (essential content within 300 px, DECISIONS.md). */
@@ -39,9 +61,11 @@ export interface CompactView {
   shown: Array<{ view: LineView; rows: UnitRow[] }>;
   /** Tracked lines left out (their units are in `hiddenUnits`). */
   hiddenLines: number;
-  /** Unit rows left out, over the shown and the hidden lines. */
+  /** Units on a line (allocated, shipped or missing) left out, over the shown and the hidden lines; returned units are not counted. */
   hiddenUnits: number;
 }
+
+const counts = (r: UnitRow) => r.kind === 'missing' || isCurrent(r.allocation);
 
 /**
  * Caps an order to what fits a collapsed block: lines with units to allocate first, 2 lines at most, 4 unit rows
@@ -53,8 +77,8 @@ export function compactLines(views: LineView[], maxLines = MAX_LINES_SHOWN, maxR
   const perLine = Math.max(1, Math.floor(maxRows / Math.max(1, kept.length)));
   const shown = kept.map((view) => ({ view, rows: view.rows.slice(0, perLine) }));
   const hiddenUnits =
-    kept.reduce((n, v) => n + Math.max(0, v.rows.length - perLine), 0) +
-    ordered.slice(maxLines).reduce((n, v) => n + v.rows.length, 0);
+    kept.reduce((n, v) => n + v.rows.slice(perLine).filter(counts).length, 0) +
+    ordered.slice(maxLines).reduce((n, v) => n + v.rows.filter(counts).length, 0);
   return { shown, hiddenLines: ordered.length - kept.length, hiddenUnits };
 }
 
@@ -76,6 +100,17 @@ export function statusView(status: Allocation['status']): { key: string; tone: B
     case 'released': return { key: 'orderBlock.status_released', tone: 'neutral' };
     case 'returned': return { key: 'orderBlock.status_returned', tone: 'warning' };
   }
+}
+
+/**
+ * Badge of a unit row: the unit's real state once it left (recette 2: « Shipped » while the unit was « Return
+ * pending »): a shipped unit awaiting its return, a returned unit back in stock, scrapped or lost.
+ */
+export function rowStatusView(a: Allocation): { key: string; tone: BadgeTone } {
+  const state = a.unitState;
+  if (a.status === 'fulfilled' && state && state !== 'SHIPPED') return { key: `states.${state}`, tone: 'warning' };
+  if (a.status === 'returned' && state) return { key: `states.${state}`, tone: state === 'AVAILABLE' ? 'success' : 'neutral' };
+  return statusView(a.status);
 }
 
 /** Polling policy while the order is being synchronized ("attribution en cours"). */

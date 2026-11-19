@@ -5,6 +5,7 @@ import {
   Loading,
   OfflineBanner,
   useOnline,
+  useRefreshAfterAction,
   useResource,
   type ApiClient,
   type Translate,
@@ -14,9 +15,10 @@ import {
   buildLineViews,
   canEdit,
   compactLines,
+  displayedQuantity,
   originKey,
+  rowStatusView,
   shouldPoll,
-  statusView,
   untrackedLineCount,
   type LineView,
   type UnitRow,
@@ -33,14 +35,23 @@ export interface OrderBlockProps {
   pollMs?: number;
   /** Receives the collapsed summary of the block (`collapsedSummary` of `<s-admin-block>`). */
   onSummary?: (summary: string) => void;
+  /** Reload rhythm after the action was opened (tests shorten it). */
+  refreshMs?: number;
 }
 
 /**
  * Order block (spec 15.6): one row per unit under each tracked line, missing units, synchronization state.
  * Capped to 2 lines and 4 unit rows; the rest is counted next to « Modifier les unités » (DECISIONS.md).
  */
-export function OrderBlock({ api, t, orderGid, onEdit, formatDateTime, pollMs = POLL_INTERVAL_MS, onSummary }: OrderBlockProps) {
+export function OrderBlock({ api, t, orderGid, onEdit, formatDateTime, pollMs = POLL_INTERVAL_MS, onSummary, refreshMs }: OrderBlockProps) {
   const res = useResource((signal) => api.orderAllocations(orderGid, { signal }), [orderGid]);
+  // The action modal tells the block nothing when it closes: reload for a while after opening it (recette 2,
+  // extensions/DECISIONS.md 5), as the variant block does.
+  const refreshAfterAction = useRefreshAfterAction(res.reload, refreshMs);
+  const edit = () => {
+    onEdit();
+    refreshAfterAction();
+  };
   const online = useOnline();
   const polls = useRef(0);
 
@@ -85,7 +96,7 @@ export function OrderBlock({ api, t, orderGid, onEdit, formatDateTime, pollMs = 
       {canEdit(data) || more.length > 0 ? (
         <s-stack direction="inline" gap="small-200" alignItems="center">
           {canEdit(data) ? (
-            <s-button variant="secondary" onClick={onEdit}>
+            <s-button variant="secondary" onClick={edit}>
               {t('orderBlock.edit')}
             </s-button>
           ) : null}
@@ -141,7 +152,9 @@ function LineSection({ t, view, rows }: { t: Translate; view: LineView; rows: Un
     <s-stack gap="small-300">
       <s-stack direction="inline" gap="small-200" alignItems="center">
         <s-heading>{line.title}</s-heading>
-        <s-text color="subdued">{t('orderBlock.quantity', { count: line.quantity })}</s-text>
+        <s-text color="subdued">{t('orderBlock.quantity', { count: displayedQuantity(line) })}</s-text>
+        {view.returnPending > 0 ? <s-text color="subdued">{t('orderBlock.returnPending', { count: view.returnPending })}</s-text> : null}
+        {view.returned > 0 ? <s-text color="subdued">{t('orderBlock.returnedCount', { count: view.returned })}</s-text> : null}
         {view.missing > 0 ? <s-badge tone="warning">{t('orderBlock.missing', { count: view.missing })}</s-badge> : null}
       </s-stack>
       {rows.length === 0 ? (
@@ -151,7 +164,7 @@ function LineSection({ t, view, rows }: { t: Translate; view: LineView; rows: Un
           row.kind === 'allocation' ? (
             <s-stack key={row.allocation.id} direction="inline" gap="small-300" alignItems="center">
               <s-text type="strong">{row.allocation.ref}</s-text>
-              <s-badge tone={statusView(row.allocation.status).tone}>{t(statusView(row.allocation.status).key)}</s-badge>
+              <s-badge tone={rowStatusView(row.allocation).tone}>{t(rowStatusView(row.allocation).key)}</s-badge>
               {row.allocation.toConfirm ? <s-badge tone="warning">{t('orderBlock.toConfirm')}</s-badge> : null}
               <s-text color="subdued">{t(originKey(row.allocation.source))}</s-text>
             </s-stack>

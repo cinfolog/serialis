@@ -100,13 +100,36 @@
     "kindReceived": "Reçues maintenant (stock Shopify +1 par unité)",
     "addRefs": "Refs à ajouter",
     "addRefsHelp": "Une ref par ligne ; espaces, virgules et points-virgules sont aussi acceptés.",
-    "previewSummary": "{{ready}} prête(s), {{duplicate}} doublon(s) dans la liste, {{known}} déjà enregistrée(s), {{invalid}} au format invalide.",
+    "previewReady": {
+      "one": "{{count}} prête",
+      "many": "{{count}} prêtes",
+      "other": "{{count}} prêtes"
+    },
+    "previewDuplicate": {
+      "one": "{{count}} doublon dans la liste",
+      "many": "{{count}} doublons dans la liste",
+      "other": "{{count}} doublons dans la liste"
+    },
+    "previewKnown": {
+      "one": "{{count}} déjà enregistrée",
+      "many": "{{count}} déjà enregistrées",
+      "other": "{{count}} déjà enregistrées"
+    },
+    "previewInvalid": {
+      "one": "{{count}} au format invalide",
+      "many": "{{count}} au format invalide",
+      "other": "{{count}} au format invalide"
+    },
     "line_duplicate": "Doublon dans la liste",
     "line_known": "Déjà enregistrée",
     "line_invalid": "Format invalide",
     "addNoGap": "Aucun écart dans Shopify : utilisez « Reçues » pour ajouter du stock.",
     "addTooMany": "1 000 refs au maximum par ajout : découpez la liste.",
-    "addExceedsGap": "Vous ajoutez {{count}} refs « déjà comptées » pour un écart de {{gap}} : le serveur refusera celles qui dépassent l'écart.",
+    "addExceedsGap": {
+      "one": "Vous ajoutez {{count}} ref « déjà comptée » pour un écart de {{gap}} : le serveur refusera celles qui dépassent l'écart.",
+      "many": "Vous ajoutez {{count}} refs « déjà comptées » pour un écart de {{gap}} : le serveur refusera celles qui dépassent l'écart.",
+      "other": "Vous ajoutez {{count}} refs « déjà comptées » pour un écart de {{gap}} : le serveur refusera celles qui dépassent l'écart."
+    },
     "confirmTitle": "Confirmer l'ajout",
     "effectReceived": {
       "one": "{{count}} unité sera créée à « {{location}} » et le stock Shopify augmentera de {{count}}.",

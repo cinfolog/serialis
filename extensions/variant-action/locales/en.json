@@ -100,13 +100,31 @@
     "kindReceived": "Received now (Shopify stock +1 per unit)",
     "addRefs": "Refs to add",
     "addRefsHelp": "One ref per line; spaces, commas and semicolons are also accepted.",
-    "previewSummary": "{{ready}} ready, {{duplicate}} duplicate(s) in the list, {{known}} already registered, {{invalid}} with an invalid format.",
+    "previewReady": {
+      "one": "{{count}} ready",
+      "other": "{{count}} ready"
+    },
+    "previewDuplicate": {
+      "one": "{{count}} duplicate in the list",
+      "other": "{{count}} duplicates in the list"
+    },
+    "previewKnown": {
+      "one": "{{count}} already registered",
+      "other": "{{count}} already registered"
+    },
+    "previewInvalid": {
+      "one": "{{count}} with an invalid format",
+      "other": "{{count}} with an invalid format"
+    },
     "line_duplicate": "Duplicate in the list",
     "line_known": "Already registered",
     "line_invalid": "Invalid format",
     "addNoGap": "No gap in Shopify: use “Received” to add stock.",
     "addTooMany": "1,000 refs at most per add: split the list.",
-    "addExceedsGap": "You are adding {{count}} “already counted” refs for a gap of {{gap}}: the server will refuse those beyond the gap.",
+    "addExceedsGap": {
+      "one": "You are adding {{count}} “already counted” ref for a gap of {{gap}}: the server will refuse those beyond the gap.",
+      "other": "You are adding {{count}} “already counted” refs for a gap of {{gap}}: the server will refuse those beyond the gap."
+    },
     "confirmTitle": "Confirm the add",
     "effectReceived": {
       "one": "{{count}} unit will be created at “{{location}}” and Shopify stock will increase by {{count}}.",

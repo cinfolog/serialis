@@ -4,7 +4,7 @@ import { ERROR_CODES, PROBLEM_DETAIL_KEYS, SETTINGS_SIMULATION_SUMMARIES, STOCK_
 import { describe, expect, it } from 'vitest';
 import { createI18n, dictionaries } from '../i18n';
 import { problemMessage, simulationEffectLabel, unitEventActorLabel, unitEventReasonLabel, unitEventStockLabel, unitEventTypeLabel } from '../labels';
-import { translate } from '../i18n/core';
+import { placeholderNames, translate } from '../i18n/core';
 import { FIXED_SETTINGS, SETTINGS, THEMES } from '../settings/catalogue';
 
 const SRC = join(__dirname, '..');
@@ -21,8 +21,7 @@ describe('Textes fr / en (15.9)', () => {
     const fr = dictionaries.fr;
     const en = dictionaries.en;
     expect(Object.keys(en).sort()).toEqual(Object.keys(fr).sort());
-    const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
-    for (const key of Object.keys(fr)) expect(placeholders(en[key] as string), key).toEqual(placeholders(fr[key] as string));
+    for (const key of Object.keys(fr)) expect(placeholderNames(en[key] as string), key).toEqual(placeholderNames(fr[key] as string));
   });
 
   it('French is the default language and plurals follow the language', () => {
@@ -33,6 +32,36 @@ describe('Textes fr / en (15.9)', () => {
     expect(en.t('home.todo.critical', { count: 1 })).toBe('1 critical anomaly');
     expect(en.t('home.todo.critical', { count: 3 })).toBe('3 critical anomalies');
     expect(translate({}, 'fr', 'unknown.key')).toBe('unknown.key');
+  });
+
+  it('plural arguments: several counts in one message, each with the plural form of the language (recette 2: « 1 rows »)', () => {
+    const fr = createI18n('fr');
+    const en = createI18n('en');
+    expect(en.t('imports.confirm', { count: 1 })).toBe('Confirm the import of 1 row');
+    expect(en.t('imports.confirm', { count: 2 })).toBe('Confirm the import of 2 rows');
+    expect(fr.t('imports.confirm', { count: 1 })).toBe('Confirmer l’import de 1 ligne');
+    expect(fr.t('imports.confirm', { count: 0 })).toBe('Confirmer l’import de 0 ligne');
+    expect(en.t('imports.confirm.body', { count: 1, writes: 1, errors: 1 })).toBe('1 unit will be created. Shopify will receive 1 unit in stock; the others are already counted and cause no write. The row in error is skipped.');
+    expect(fr.t('imports.confirm.body', { count: 3, writes: 0, errors: 2 })).toBe('3 unités seront créées. Shopify recevra aucune unité en stock ; les autres sont déjà comptées et ne provoquent aucune écriture. Les 2 lignes en erreur sont ignorées.');
+    expect(en.t('imports.report.effect', { writes: 1, counted: 1 })).toBe('Expected stock effect: 1 write in Shopify; the other valid row is already counted (no write).');
+    expect(fr.t('imports.done', { count: 1 })).toBe('Import confirmé : 1 unité créée.');
+    expect(fr.t('refs.summary', { ready: 1, total: 3 })).toBe('1 prête sur 3. Seules les lignes prêtes seront validées.');
+    expect(en.t('refs.effect.counted', { count: 1, location: 'A' })).toBe('Effect: no write in Shopify, this unit is already counted at A.');
+    expect(fr.t('tracked.stock.line', { location: 'A', shopify: 1, registered: 1 })).toBe('A : 1 dans Shopify, 1 enregistrée');
+    expect(fr.t('imports.confirm', { count: 1200 })).toBe(`Confirmer l’import de ${new Intl.NumberFormat('fr').format(1200)} lignes`);
+    expect(placeholderNames('{a} {n, plural, one {# x {b}} other {# y}}')).toEqual(['a', 'b', 'n']);
+  });
+
+  it('every count shown is either a plural key or a plural argument (no « {count} rows »)', () => {
+    for (const [key, text] of Object.entries(dictionaries.en)) {
+      if (/_(one|other)$/.test(key)) continue;
+      // A bare number placeholder directly followed by a plural noun is the defect of the recette.
+      expect(text, key).not.toMatch(/\{(count|writes|errors|counted|ready|registered)\} (rows|units|writes|lines|refs|orders)\b/);
+    }
+    for (const [key, text] of Object.entries(dictionaries.fr)) {
+      if (/_(one|other)$/.test(key)) continue;
+      expect(text, key).not.toMatch(/\{(count|writes|errors|counted|ready|registered)\} (lignes|unités|écritures|refs|commandes|prêtes|enregistrées)\b/);
+    }
   });
 
   it('has a text for every error code of the contract, every setting, theme and fixed setting', () => {

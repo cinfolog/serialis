@@ -322,12 +322,13 @@ function LinePreview({ t, plan, detail, checking }: { t: Translate; plan: AddPla
   return (
     <s-stack gap="small-300">
       <s-text {...({ 'aria-live': 'polite' } as Record<string, unknown>)}>
-        {t('variantAction.previewSummary', {
-          ready: counts.ready,
-          duplicate: counts.duplicate,
-          known: counts.known,
-          invalid: counts.invalid,
-        })}
+        {/* One plural form per count (Shopify's translate pluralizes on `count` only). */}
+        {`${[
+          t('variantAction.previewReady', { count: counts.ready }),
+          ...(counts.duplicate > 0 ? [t('variantAction.previewDuplicate', { count: counts.duplicate })] : []),
+          ...(counts.known > 0 ? [t('variantAction.previewKnown', { count: counts.known })] : []),
+          ...(counts.invalid > 0 ? [t('variantAction.previewInvalid', { count: counts.invalid })] : []),
+        ].join(', ')}.`}
       </s-text>
       {checking ? <s-text color="subdued">{t('variantAction.checking')}</s-text> : null}
       {flagged.length > 0 ? (

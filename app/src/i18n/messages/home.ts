@@ -13,7 +13,7 @@ export const home = defineMessages(
     'home.empty.body': 'Serialis suit les refs (numéros de série) des articles que vous choisissez. Le reste de votre catalogue n’est jamais touché. Choisissez un premier produit pour commencer.',
     'home.empty.action': 'Suivre les refs d’un premier produit',
     'home.init.heading': 'Phase d’initialisation en cours',
-    'home.init.line': '{title} : {shopify} dans Shopify, {registered} enregistrées à {location}.',
+    'home.init.line': '{title} : {shopify} dans Shopify, {registered, plural, one {# enregistrée} other {# enregistrées}} à {location}.',
     'home.init.action': 'Ajouter les refs manquantes',
     'home.sync.heading': 'Santé de la synchronisation',
     'home.sync.green': 'Tout va bien',

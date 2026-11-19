@@ -4,7 +4,8 @@
  * Used when the CDN is unreachable (sandboxes, restricted CI): the tests intercept the script request and
  * serve this file instead. It registers the `s-*` custom elements the admin app uses as SIMPLE elements:
  * open shadow roots with native controls (label + input, button, link, dialog) and the same property /
- * event contract the app relies on (`value`, `checked`, `input`, `change`, `showOverlay()`, `afterhide`).
+ * event contract the app relies on (`value`, `checked`, `input`, `change`, `showOverlay()`, `afterhide`), and a
+ * model of the admin layer of `s-modal` (`window.__adminScrim`, decision 42).
  *
  * What it does and does not prove:
  *  - it exercises the app's own markup, roles, labels, focus handling and CSS, and gives axe a flattened
@@ -306,22 +307,68 @@
     }
   }
 
+  /*
+   * Admin layer of an `s-modal` (app/DECISIONS.md decision 42). In the real admin, a shown `s-modal` makes the
+   * admin grey its own top bar and menu, outside the app frame; the app can neither see nor repair that layer.
+   * Model, from what Shopify documents and confirmed (same rules as app/src/test/adminOverlay.ts):
+   *  - the layer is addressed by the modal id (`shopify.modal.show(id)` / `hide(id)`): a modal shown without an
+   *    id is a layer nothing can release;
+   *  - the hide completes one animation frame later (then `hide`, `afterhide`); a modal removed from the
+   *    document while shown or while hiding leaves the layer up.
+   * `window.__adminScrim` tells the tests whether the admin chrome would be greyed.
+   */
+  const scrim = { layers: new Set(), orphaned: 0, showRequests: 0 };
+  Object.defineProperty(window, '__adminScrim', {
+    configurable: true,
+    get: () => ({ greyed: scrim.layers.size > 0 || scrim.orphaned > 0, orphaned: scrim.orphaned, showRequests: scrim.showRequests, layers: [...scrim.layers] }),
+  });
+
   class SModal extends ShimElement {
     static styles = css`dialog { border: 1px solid #5c5f62; border-radius: 12px; padding: 16px; max-width: 480px; width: calc(100% - 32px); } dialog::backdrop { background: rgba(0,0,0,.5); } h2 { font-size: 16px; margin: 0 0 12px; } footer { margin-top: 16px; display: flex; justify-content: flex-end; flex-direction: row-reverse; gap: 8px; }`;
     build() {
       this.html('<dialog aria-labelledby="t"><h2 id="t"></h2><slot></slot><footer><slot name="primary-action"></slot><slot name="secondary-actions"></slot></footer></dialog>');
-      this.$('dialog').addEventListener('close', () => this.dispatchEvent(new Event('afterhide')));
+      // The real component does not close itself on Escape in the admin (recette, decision 34).
+      this.$('dialog').addEventListener('cancel', (e) => e.preventDefault());
     }
     sync() {
       this.$('#t').textContent = this.getAttribute('heading') ?? '';
     }
     showOverlay() {
       const d = this.$('dialog');
-      if (d && !d.open) d.showModal();
+      if (!d || d.open || !this.isConnected) return;
+      d.showModal();
+      scrim.showRequests += 1;
+      this._layer = this.id || null;
+      if (this._layer) scrim.layers.add(this._layer);
+      else scrim.orphaned += 1;
+      this.dispatchEvent(new Event('show'));
+      requestAnimationFrame(() => this.dispatchEvent(new Event('aftershow')));
     }
     hideOverlay() {
       const d = this.$('dialog');
-      if (d?.open) d.close();
+      if (!d?.open || this._hiding) return;
+      this._hiding = requestAnimationFrame(() => {
+        this._hiding = 0;
+        d.close();
+        if (this._layer) scrim.layers.delete(this._layer);
+        this._layer = undefined;
+        this.dispatchEvent(new Event('hide'));
+        this.dispatchEvent(new Event('afterhide'));
+      });
+    }
+    toggleOverlay() {
+      if (this.$('dialog')?.open) this.hideOverlay();
+      else this.showOverlay();
+    }
+    disconnectedCallback() {
+      if (this._hiding) cancelAnimationFrame(this._hiding);
+      this._hiding = 0;
+      if (this._layer) {
+        // Removed while shown or hiding: the admin layer stays.
+        scrim.layers.delete(this._layer);
+        scrim.orphaned += 1;
+      }
+      this._layer = undefined;
     }
   }
 

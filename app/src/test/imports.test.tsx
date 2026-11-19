@@ -43,7 +43,7 @@ describe('Import CSV : simulation puis confirmation', () => {
 
     press(screen.getByTestId('import-confirm'));
     await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
-    expect(document.querySelector('s-modal')?.textContent).toContain('4 unités seront créées. Shopify recevra 2 unités en stock');
+    expect(document.querySelector('[data-testid="dialog-root"]')?.textContent).toContain('4 unités seront créées. Shopify recevra 2 unités en stock');
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(screen.getByTestId('import-done')).toBeInTheDocument());
     expect(text(screen.getByTestId('import-done'))).toBe('Import confirmé : 4 unités créées.');

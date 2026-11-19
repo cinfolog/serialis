@@ -24,7 +24,7 @@ describe('classifyRefs', () => {
     const lines = classifyRefs(['A1', 'a1', 'B2', 'C3', 'X'.repeat(200), 'D\u00004'], ['c3']);
     expect(lines.map((l) => l.status)).toEqual(['ready', 'duplicate', 'ready', 'known', 'invalid', 'invalid']);
     expect(lines.map((l) => l.index)).toEqual([0, 1, 2, 3, 4, 5]);
-    expect(countByStatus(lines)).toEqual({ ready: 2, duplicate: 1, known: 1, invalid: 2 });
+    expect(countByStatus(lines)).toEqual({ ready: 2, duplicate: 1, known: 1, invalid: 2, rejected: 0 });
   });
 
   it('does not count a known ref twice as duplicate of the known one', () => {

@@ -377,6 +377,8 @@ function finishConfirmation(ctx: ApiContext, scope: { orderGid: string; lineItem
   const left = repo.orderAllocations(scope.orderGid).filter((a) => a.lineItemGid === scope.lineItemGid && a.locationId === scope.locationId && a.status === 'fulfilled' && a.toConfirm).length;
   const anomaly = repo.liveAnomaly('shipped_unit_to_confirm', { orderGid: scope.orderGid, lineItemGid: scope.lineItemGid, locationId: scope.locationId });
   if (anomaly && left === 0) repo.closeAnomaly(anomaly.id, 'resolved', { by: ctx.call.principal.actor }, now);
+  // One unit confirmed, others left: the anomaly says how many remain until the next synchronization confirms it.
+  else if (anomaly && left > 0) repo.updateAnomalyDetails(anomaly.id, { ...anomaly.details, quantity: left }, now);
   requestOrderSync(ctx.d, scope.orderGid, 0, now);
 }
 

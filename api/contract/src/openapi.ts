@@ -98,7 +98,7 @@ const schemas: Record<string, Schema> = {
     id: str(), type: str(), severity: str({ enum: ['critical', 'warning', 'info'] }), status: str({ enum: ['open', 'acknowledged', 'resolved'] }),
     orderGid: nullable(str()), variantGid: nullable(str()), unitId: nullable(str()), locationId: nullable(str()), summary: str(),
     actions: { type: 'array', items: obj({ action: str(), label: str(), writesStock: { type: 'boolean' }, needsRef: { type: 'boolean' } }) },
-    openedAt: dateTime, resolvedAt: nullable(dateTime),
+    openedAt: dateTime, resolvedAt: nullable(dateTime), remaining: { type: 'integer', minimum: 0 },
   }),
   AnomalyPage: pageOf('Anomaly'),
   ResolveAnomalyRequest: obj({ action: str(), params: { type: 'object', additionalProperties: true } }, ['action']),

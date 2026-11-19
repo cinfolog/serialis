@@ -147,6 +147,7 @@
     "kindReceived": "Reçues maintenant (stock Shopify +1 par unité)",
     "addRefs": "Refs à ajouter",
     "addRefsHelp": "Une ref par ligne ; espaces, virgules et points-virgules sont aussi acceptés.",
+    "previewIntro": "Liste saisie :",
     "previewReady": {
       "one": "{{count}} prête",
       "many": "{{count}} prêtes",
@@ -167,9 +168,15 @@
       "many": "{{count}} au format invalide",
       "other": "{{count}} au format invalide"
     },
+    "previewRejected": {
+      "one": "{{count}} refusée par Serialis",
+      "many": "{{count}} refusées par Serialis",
+      "other": "{{count}} refusées par Serialis"
+    },
     "line_duplicate": "Doublon dans la liste",
     "line_known": "Déjà enregistrée",
     "line_invalid": "Format invalide",
+    "line_rejected": "Refusée",
     "addNoGap": "Aucun écart dans Shopify : utilisez « Reçues » pour ajouter du stock.",
     "addTooMany": "1 000 refs au maximum par ajout : découpez la liste.",
     "addExceedsGap": {
@@ -199,9 +206,9 @@
       "other": "{{count}} refs ajoutées"
     },
     "outcomeRejected": {
-      "one": "{{count}} ref refusée, laissée dans le champ pour correction :",
-      "many": "{{count}} refs refusées, laissées dans le champ pour correction :",
-      "other": "{{count}} refs refusées, laissées dans le champ pour correction :"
+      "one": "{{count}} ref refusée, laissée dans le champ avec son motif.",
+      "many": "{{count}} refs refusées, laissées dans le champ avec leur motif.",
+      "other": "{{count}} refs refusées, laissées dans le champ avec leur motif."
     },
     "addAt": "Emplacement : {{location}}",
     "colRef": "Ref",

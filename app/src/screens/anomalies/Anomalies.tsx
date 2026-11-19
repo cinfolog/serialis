@@ -57,7 +57,13 @@ function AnomalyCard({ anomaly, locationName, onChanged }: { anomaly: Anomaly; l
     try {
       const updated = await client.resolveAnomaly(anomaly.id, { action: action.action, ...(ref ? { params: { ref } } : {}) }, { idempotencyKey: keyFor(signature) });
       keys.current.delete(signature);
-      announce(t('anomalies.resolved_done'), { toast: true });
+      // A unit of a multi-unit anomaly: say what is left until the anomaly really closes (recette 3).
+      announce(
+        updated.status === 'resolved' || !updated.remaining
+          ? t('anomalies.resolved_done')
+          : t(action.action === 'confirm_shipped' || action.action === 'designate_shipped' ? 'anomalies.partial_confirmed' : 'anomalies.partial_done', { count: updated.remaining }),
+        { toast: true },
+      );
       setPending(null);
       setActive(null);
       onChanged(updated);

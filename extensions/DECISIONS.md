@@ -258,3 +258,20 @@ Demande du marchand (admin réel) : voir, dans la fenêtre « Ajouter des refs �
   Paquet du bloc : 29 Ko.
 - **À vérifier dans l'admin réel** : délai d'apparition d'une expédition faite dans l'admin (≤ 10 s plus le délai des
   webhooks) ; `visibilitychange` exposé par le bac à sable (sinon le bloc continue de se recharger au rythme lent).
+
+### 9. Action « Ajouter des refs » : résumé fidèle au serveur et motifs lisibles (recette 3)
+
+- **Constat** : (1) « 1 prête » restait affiché après le refus de la ref par le serveur ; (2) le nombre « déjà enregistrées »
+  semblait passer de 50 à 51 pendant la saisie ; (3) les lignes refusées ou invalides étaient peu lisibles (badge et
+  motif serrés dans une cellule de tableau, liste des refus répétée dans le bandeau).
+- **Résumé** : les refs refusées par `POST /units/batch` sont gardées (ref normalisée → code et détail) et passées à
+  `buildAddPlan` (`rejectedRefs`) : leur ligne prend le statut `rejected` (« Refusée »), sort de « prêtes » et du bouton
+  « Ajouter N refs » tant qu'elle n'est pas modifiée ; une ligne changée redevient une nouvelle ref.
+- **Compte des refs enregistrées** : il ne vient que des unités chargées (`loadVariantData`), jamais de la saisie. Le
+  décompte en direct portait les mêmes mots (« N déjà enregistrée(s) ») sans dire qu'il compte les lignes saisies : il
+  commence désormais par « Liste saisie : » / « Your list: ». Test : le titre « Déjà enregistrées à Entrepôt (3) » ne
+  bouge pas pendant la saisie.
+- **Une ligne par ref signalée** : ref en gras, badge du statut (critique pour refusée ou invalide), puis le motif
+  (emplacement et état d'une ref connue, message traduit du refus du serveur avec son détail). Le bandeau de résultat
+  ne garde que le nombre de refs ajoutées et refusées.
+- Tests : `variant-action/test/VariantAction.test.tsx`, `shared/test/refs.test.ts`. Paquet de l'action : 36 Ko.

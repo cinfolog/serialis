@@ -45,6 +45,21 @@ describe('Anomalies : file de traitement', () => {
     expect(screen.getByTestId('live-region').textContent).toContain('Anomalie résolue.');
   });
 
+  it('recette 3 — one unit of a 2-unit anomaly: « 1 unit confirmed, 1 remaining », the anomaly stays until the last one', async () => {
+    const { mock } = await openAnomalies();
+    mock.anomalies.find((a) => a.id === 'ano-2')!.remaining = 2;
+    press(screen.getByTestId('action-ano-2-designate_shipped'));
+    const card = screen.getByTestId('anomaly-ano-2');
+    const input = await within(card).findByTestId('designation-input');
+    typeIn(input, 'sn-ur500-l-61204');
+    await waitFor(() => expect(card.textContent).toContain('Unité reconnue : SN-UR500-L-61204'));
+    pressKey(input, 'Enter');
+    await waitFor(() => expect(screen.getByTestId('live-region').textContent).toContain('1 unité confirmée, 1 restante.'));
+    expect(screen.getByTestId('live-region').textContent).not.toContain('Anomalie résolue.');
+    expect(screen.getByTestId('anomaly-ano-2')).toBeInTheDocument();
+    expect(mock.anomalies.find((a) => a.id === 'ano-2')?.status).toBe('open');
+  });
+
   it('resolves with the last 4 characters when they are unique', async () => {
     const { mock } = await openAnomalies();
     press(screen.getByTestId('action-ano-3-identify_return'));

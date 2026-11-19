@@ -134,10 +134,12 @@ export function buildAddPlan(args: {
   knownRefs: Iterable<string>;
   /** Refs refused by the server check (type rules S-37), flagged as invalid. */
   invalidRefs?: Iterable<string>;
+  /** Refs refused by the server when the batch was sent (recette 3): flagged, never counted as ready. */
+  rejectedRefs?: Iterable<string>;
   kind: AddKind;
   gap: number | null;
 }): AddPlan {
-  const lines = classifyRefs(parseRefList(args.text), args.knownRefs, {}, args.invalidRefs ?? []);
+  const lines = classifyRefs(parseRefList(args.text), args.knownRefs, {}, args.invalidRefs ?? [], args.rejectedRefs ?? []);
   const counts = countByStatus(lines);
   const readyRefs = lines.filter((l) => l.status === 'ready').map((l) => l.ref);
   const gap = args.gap ?? 0;

@@ -194,3 +194,34 @@ describe('recette 3, item 3 — order metafield definition pinned', () => {
     expect(defs[0]!.pinnedPosition).toBeNull();
   });
 });
+
+describe('recette 3, item 4a — partial confirmation of shipped units', () => {
+  it('one unit of two confirmed: the anomaly stays open with 1 remaining, then closes', async () => {
+    const { h, variant } = await setup('r3-partial');
+    const order = h.sim.merchant.createOrder({ lines: [{ variantId: variant, quantity: 3 }] });
+    await h.drain();
+    order.fulfill({ lines: [{ line: 0, quantity: 2 }] });
+    await h.drain();
+    const toConfirm = await anomalies(h, 'shipped_unit_to_confirm');
+    expect(toConfirm).toHaveLength(1);
+    const lines = (await json(await h.api('GET', `/orders/${numeric(order.id)}/allocations`), 200)).lines;
+    const provisional = (lines[0].allocations as Array<{ ref: string; toConfirm: boolean }>).filter((a) => a.toConfirm).map((a) => a.ref);
+    const first = await json(await h.api('POST', `/anomalies/${toConfirm[0]!.id}/resolve`, { action: 'confirm_shipped', params: { ref: provisional[0] } }), 200);
+    expect(first).toMatchObject({ status: 'open', remaining: 1 });
+    const second = await json(await h.api('POST', `/anomalies/${toConfirm[0]!.id}/resolve`, { action: 'confirm_shipped', params: { ref: provisional[1] } }), 200);
+    expect(second).toMatchObject({ status: 'resolved', remaining: 0 });
+  });
+});
+
+describe('recette 3, item 4c — import errors name the line of the file', () => {
+  it('header is line 1 and blank lines count, like a text editor', async () => {
+    const { h } = await setup('r3-import-lines');
+    const csv = ['ref;sku;location;already_counted', 'IMP-1;BIKE-M;Main;no', '', 'IMP-2;UNKNOWN;Main;no', 'IMP-1;BIKE-M;Main;no'].join('\n');
+    const report = await json(await h.api('POST', '/imports', { filename: 'units.csv', csv }), 201);
+    expect(report.rows).toBe(3);
+    expect(report.errors.map((e: { row: number; code: string; detail: string }) => [e.row, e.code, e.detail])).toEqual([
+      [4, 'not_tracked', expect.any(String)],
+      [5, 'identifier_conflict', expect.stringContaining('duplicate_in_file')],
+    ]);
+  });
+});

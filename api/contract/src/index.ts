@@ -247,6 +247,11 @@ export interface Anomaly {
   actions: Array<{ action: string; label: string; writesStock: boolean; needsRef: boolean }>;
   openedAt: IsoDateTime;
   resolvedAt: IsoDateTime | null;
+  /**
+   * Units still to settle for an anomaly that carries a quantity (to confirm, to designate, to identify…): an action
+   * settles one unit, the anomaly closes at the last one (workers/DECISIONS.md 41, 88). Absent without a quantity.
+   */
+  remaining?: number;
 }
 
 /** GET /anomalies?status=&severity=&type=&cursor= → Page<Anomaly> */
@@ -293,6 +298,7 @@ export interface ImportReport {
   status: 'simulated' | 'confirmed' | 'failed';
   rows: number;
   valid: number;
+  /** `row`: line of the file (the header is line 1; blank lines count), as a text editor numbers it. */
   errors: Array<{ row: number; code: ErrorCode; detail: string }>;
 }
 

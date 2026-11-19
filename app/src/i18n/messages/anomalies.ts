@@ -31,6 +31,8 @@ export const anomalies = defineMessages(
     'anomalies.confirm.no_write': 'Cette résolution n’écrit rien dans le stock Shopify.',
     'anomalies.confirm.with_ref': 'Ref désignée : {ref}.',
     'anomalies.resolved_done': 'Anomalie résolue.',
+    'anomalies.partial_confirmed': '1 unité confirmée, {count, plural, one {# restante} other {# restantes}}.',
+    'anomalies.partial_done': '1 unité traitée, {count, plural, one {# restante} other {# restantes}}.',
     'anomalies.cancel_action': 'Annuler',
 
     'anomaly.type.insufficient_units': 'Unités insuffisantes',
@@ -105,6 +107,8 @@ export const anomalies = defineMessages(
     'anomalies.confirm.no_write': 'This resolution writes nothing to Shopify stock.',
     'anomalies.confirm.with_ref': 'Designated ref: {ref}.',
     'anomalies.resolved_done': 'Anomaly resolved.',
+    'anomalies.partial_confirmed': '1 unit confirmed, {count} remaining.',
+    'anomalies.partial_done': '1 unit settled, {count} remaining.',
     'anomalies.cancel_action': 'Cancel',
 
     'anomaly.type.insufficient_units': 'Insufficient units',

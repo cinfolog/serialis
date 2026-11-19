@@ -573,8 +573,14 @@ export class MockClient implements ApiClient {
         }
         if (matches.length > 1) throw new ApiError({ status: 422, code: 'ambiguous_ref', detail: 'Plusieurs unités se terminent par ces caractères : saisissez la ref en entier.' });
       }
+      // One action settles one unit of the quantity; the anomaly closes at the last one (workers/DECISIONS.md 41, 88).
+      if (typeof a.remaining === 'number' && a.remaining > 1) {
+        a.remaining -= 1;
+        return structuredClone(a);
+      }
       a.status = 'resolved';
       a.resolvedAt = this.iso();
+      if (typeof a.remaining === 'number') a.remaining = 0;
       return structuredClone(a);
     });
   }

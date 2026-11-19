@@ -2,7 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ApiError, createTranslator, errorKey, errorMessage, fromShopifyI18n, type Dict } from '../src';
+import { PROBLEM_DETAIL_KEYS } from '@serialis/contract';
+import { ApiError, codeMessage, createTranslator, errorKey, errorMessage, fromShopifyI18n, type Dict } from '../src';
 
 const extRoot = join(import.meta.dirname, '..', '..');
 const readJson = (p: string) => JSON.parse(readFileSync(p, 'utf8')) as Dict;
@@ -55,6 +56,22 @@ describe('errorMessage', () => {
     // Non-API errors keep a short technical trace (diagnosis from a screenshot).
     expect(errorMessage(t, new TypeError('boom'))).toBe(`${t('errors.unknown')} (TypeError: boom)`);
     expect(errorMessage(t, 'not an error')).toBe(t('errors.unknown'));
+  });
+  it('gives a specific message for a known detail key instead of the generic text of the code', () => {
+    const en = createTranslator(source.en, 'en');
+    // Recette 2: "already counted" with no gap in Shopify gave « The submitted data is not valid. (no_usable_deficit) ».
+    expect(codeMessage(en, 'validation_failed', 'no_usable_deficit')).toBe('No gap in Shopify at this location: choose “Received now” (Shopify stock +1 per ref).');
+    expect(codeMessage(t, 'validation_failed', 'no_usable_deficit')).toBe('Aucun écart dans Shopify à cet emplacement : choisissez « Reçues maintenant » (stock Shopify +1 par ref).');
+    expect(codeMessage(t, 'identifier_conflict', 'duplicate_in_file (row 3)')).toBe(t('errors.detail.duplicate_in_file'));
+    const e = new ApiError(403, 'forbidden', 'x', { type: '', title: '', status: 403, code: 'forbidden', detail: 'admin_required' });
+    expect(errorMessage(t, e)).toBe(t('errors.detail.admin_required'));
+    // An unknown key-like detail is never shown raw.
+    expect(codeMessage(t, 'validation_failed', 'brand_new_detail')).toBe(t('errors.validation_failed'));
+  });
+  it('has a text for every detail key of the contract, in both languages', () => {
+    for (const lang of ['fr', 'en'] as const) {
+      for (const key of PROBLEM_DETAIL_KEYS) expect((source[lang]['errors'] as Dict)['detail'], `${lang}:${key}`).toHaveProperty(key);
+    }
   });
   it('covers every error code of the contract', () => {
     const codes = readFileSync(join(extRoot, '..', 'api', 'contract', 'src', 'index.ts'), 'utf8').match(/export type ErrorCode =([^;]+);/)![1]!;
@@ -112,6 +129,7 @@ describe('translation keys used in code exist in every extension (no hard-coded 
     'orderBlock.status_${allocation.status}': forms('orderBlock.status_', ['active', 'fulfilled', 'released', 'returned']),
     'orderAction.title_${action.type}': forms('orderAction.title_', ['allocate', 'replace', 'remove']),
     'orderAction.confirm_${action.type}': forms('orderAction.confirm_', ['allocate', 'replace', 'remove']),
+    'errors.detail.${key}': forms('errors.detail.', [...PROBLEM_DETAIL_KEYS]),
   };
   // Keys built outside a literal t('...') call (effect keys, origins, done messages, headings, designation messages).
   const fixed = [

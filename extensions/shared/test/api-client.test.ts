@@ -18,6 +18,22 @@ describe('createApiClient', () => {
     expect(m.calls[0]!.headers['accept']).toContain('application/json');
   });
 
+  it('names the extension target on every call, from the shopify global by default (T-UX-08, recette 2)', async () => {
+    const m = mockFetch({ 'GET /api/v1/locations': () => ({ items: [], nextCursor: null }) });
+    const g = globalThis as { shopify?: unknown };
+    const before = g.shopify;
+    g.shopify = { extension: { target: 'admin.order-details.action.render' } };
+    try {
+      await createApiClient({ fetch: m.fetch }).listLocations();
+      await createApiClient({ fetch: m.fetch, extensionTarget: 'admin.product-variant-details.action.render' }).listLocations();
+      g.shopify = undefined;
+      await createApiClient({ fetch: m.fetch }).listLocations();
+    } finally {
+      g.shopify = before;
+    }
+    expect(m.calls.map((c) => c.headers['x-serialis-extension'])).toEqual(['admin.order-details.action.render', 'admin.product-variant-details.action.render', undefined]);
+  });
+
   it('sends an Idempotency-Key on every POST, fresh by default and reusable on retry', async () => {
     let n = 0;
     const m = mockFetch({ 'POST /api/v1/units/batch': () => ({ created: [], rejected: [] }) });

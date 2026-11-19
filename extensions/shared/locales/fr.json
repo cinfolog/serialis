@@ -55,7 +55,40 @@
     "simulation_expired": "La simulation a expiré. Relancez-la.",
     "incompatible_settings": "Cette action est incompatible avec les réglages actuels.",
     "network_error": "Connexion impossible. Vérifiez votre réseau puis réessayez.",
-    "unknown": "Une erreur inattendue est survenue. Réessayez."
+    "unknown": "Une erreur inattendue est survenue. Réessayez.",
+    "detail": {
+      "no_usable_deficit": "Aucun écart dans Shopify à cet emplacement : choisissez « Reçues maintenant » (stock Shopify +1 par ref).",
+      "too_long_or_control_char": "Ref trop longue ou contenant un caractère invisible. Relisez l’étiquette et saisissez-la à nouveau.",
+      "empty": "Ref vide après normalisation. Saisissez la ref de l’étiquette.",
+      "luhn": "Ref invalide : la clé de contrôle (Luhn) ne correspond pas. Relisez l’étiquette.",
+      "regex": "Ref au mauvais format : elle ne respecte pas le modèle défini dans les réglages.",
+      "invalid_regex": "Le modèle de ref des réglages est invalide : corrigez-le dans Réglages › Identifiants.",
+      "empty_ref": "Ref manquante sur cette ligne.",
+      "unknown_or_untracked_variant": "Variante inconnue ou non suivie : activez son suivi dans Articles suivis, ou corrigez le SKU.",
+      "unknown_location": "Emplacement inconnu : utilisez le nom exact d’un emplacement Shopify actif.",
+      "invalid_already_counted": "Colonne « already_counted » illisible : indiquez oui ou non (yes/no, true/false, 1/0).",
+      "duplicate_in_file": "Ref en double dans le fichier : gardez une seule ligne par ref.",
+      "duplicate_in_list": "Ref en double dans la liste : elle n’est enregistrée qu’une fois.",
+      "already_known": "Cette ref est déjà enregistrée.",
+      "beyond_gap": "Au-delà de l’écart avec Shopify : choisissez « Reçues maintenant » pour les refs en trop.",
+      "invalid_format": "Ref au mauvais format.",
+      "admin_required": "Cette action est réservée aux administrateurs de Serialis. Demandez au propriétaire de la boutique de vous désigner.",
+      "owner_required": "Seul le propriétaire de la boutique peut nommer ou retirer un administrateur.",
+      "owner_is_admin": "Le propriétaire est toujours administrateur : son rôle ne peut pas être retiré.",
+      "last_admin": "Il doit rester au moins un administrateur.",
+      "shop_frozen": "La boutique est gelée (abonnement ou désinstallation en cours) : aucune écriture n’est possible pour l’instant.",
+      "reconnect_required": "L’accès à Shopify doit être renouvelé : rouvrez l’app depuis l’admin Shopify pour reconnecter la boutique.",
+      "shop_not_installed": "Serialis n’est pas installée sur cette boutique. Rouvrez l’app depuis l’admin Shopify.",
+      "shop_mismatch": "Cette demande vise une autre boutique que celle de votre session. Rechargez la page.",
+      "user_never_opened_the_app": "Cette personne n’a encore jamais ouvert Serialis : elle doit l’ouvrir une fois avant d’être désignée.",
+      "api_keys_interface_only": "Les clés d’API se gèrent uniquement depuis Réglages › API de l’app.",
+      "api_key_revoked": "Cette clé d’API a été révoquée : créez-en une nouvelle dans Réglages › API.",
+      "task_not_dead": "Cette tâche n’est plus arrêtée : la liste a été relue.",
+      "write_not_dead": "Cette écriture n’est plus abandonnée : la liste a été relue.",
+      "fixed_in_mvp": "Ce réglage est fixe dans cette version et ne peut pas être modifié.",
+      "scope_not_allowed": "Ce réglage ne peut être choisi qu’au niveau de la boutique.",
+      "invalid_value": "Valeur non permise pour ce réglage."
+    }
   },
   "variantBlock": {
     "heading": "Refs Serialis",
@@ -114,13 +147,36 @@
     "kindReceived": "Reçues maintenant (stock Shopify +1 par unité)",
     "addRefs": "Refs à ajouter",
     "addRefsHelp": "Une ref par ligne ; espaces, virgules et points-virgules sont aussi acceptés.",
-    "previewSummary": "{{ready}} prête(s), {{duplicate}} doublon(s) dans la liste, {{known}} déjà enregistrée(s), {{invalid}} au format invalide.",
+    "previewReady": {
+      "one": "{{count}} prête",
+      "many": "{{count}} prêtes",
+      "other": "{{count}} prêtes"
+    },
+    "previewDuplicate": {
+      "one": "{{count}} doublon dans la liste",
+      "many": "{{count}} doublons dans la liste",
+      "other": "{{count}} doublons dans la liste"
+    },
+    "previewKnown": {
+      "one": "{{count}} déjà enregistrée",
+      "many": "{{count}} déjà enregistrées",
+      "other": "{{count}} déjà enregistrées"
+    },
+    "previewInvalid": {
+      "one": "{{count}} au format invalide",
+      "many": "{{count}} au format invalide",
+      "other": "{{count}} au format invalide"
+    },
     "line_duplicate": "Doublon dans la liste",
     "line_known": "Déjà enregistrée",
     "line_invalid": "Format invalide",
     "addNoGap": "Aucun écart dans Shopify : utilisez « Reçues » pour ajouter du stock.",
     "addTooMany": "1 000 refs au maximum par ajout : découpez la liste.",
-    "addExceedsGap": "Vous ajoutez {{count}} refs « déjà comptées » pour un écart de {{gap}} : le serveur refusera celles qui dépassent l'écart.",
+    "addExceedsGap": {
+      "one": "Vous ajoutez {{count}} ref « déjà comptée » pour un écart de {{gap}} : le serveur refusera celles qui dépassent l'écart.",
+      "many": "Vous ajoutez {{count}} refs « déjà comptées » pour un écart de {{gap}} : le serveur refusera celles qui dépassent l'écart.",
+      "other": "Vous ajoutez {{count}} refs « déjà comptées » pour un écart de {{gap}} : le serveur refusera celles qui dépassent l'écart."
+    },
     "confirmTitle": "Confirmer l'ajout",
     "effectReceived": {
       "one": "{{count}} unité sera créée à « {{location}} » et le stock Shopify augmentera de {{count}}.",

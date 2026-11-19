@@ -120,7 +120,7 @@ describe('Réglages (MVP)', () => {
     expect(screen.getByTestId('warn-S-17').textContent).toContain('Une unité mal désignée au retour n’est plus détectable');
     press(screen.getByTestId('save-bar-save'));
     await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
-    expect(screen.getByTestId('simulation-effects').textContent).toContain('1 retour en attente d’identification sera traité sans saisie de ref.');
+    expect(screen.getByTestId('simulation-effects').textContent).toContain('S’applique aux prochains événements ; ce qui est déjà traité ne change pas.');
     expect(screen.getByTestId('simulation-warnings').textContent).toContain('S-17 = non');
     expect(mock.settings['S-17']).toBe(true); // not saved before confirmation
     press(screen.getByTestId('dialog-confirm'));

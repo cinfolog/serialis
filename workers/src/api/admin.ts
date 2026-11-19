@@ -14,11 +14,13 @@ import type {
   SettingScope,
   SettingsResponse,
   SettingsSimulation,
+  SettingsSimulationSummary,
   SettingValue,
   SimulateSettingsRequest,
   StatusBanner,
   UnitState,
 } from '@serialis/contract';
+import { EXTENSION_KEYS } from '@serialis/contract';
 import { readLocations } from '../domain/shopify-read.js';
 import { requestOrderSync } from '../domain/sync-order.js';
 import { newId, parseJson } from '../domain/util.js';
@@ -29,7 +31,7 @@ import { healthCounters, type HealthInfo } from './health.js';
 
 const LOCATIONS_TTL_MS = 10 * 60_000;
 const SIMULATION_TTL_MS = 10 * 60_000;
-const EXTENSIONS: readonly ExtensionKey[] = ['variant_block', 'product_block', 'order_block', 'order_action'];
+const EXTENSIONS: readonly ExtensionKey[] = EXTENSION_KEYS;
 
 // ------------------------------------------------------------------------------------- me, home
 
@@ -323,7 +325,7 @@ export function simulateSettings(ctx: ApiContext): ApiResult {
   const warnings: string[] = [];
   for (const c of changes) {
     let count = 0;
-    let summary = 'no_object_affected';
+    let summary: SettingsSimulationSummary = 'no_object_affected';
     if (c.key === 'S-35') {
       count = c.value === 'shop' ? scopeConflicts(ctx) : 0;
       summary = count > 0 ? 'duplicates_block_shop_scope' : 'identifiers_rescoped';

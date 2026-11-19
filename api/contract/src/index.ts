@@ -184,6 +184,11 @@ export interface OrderAllocationsResponse {
   }>;
   syncState: 'pending' | 'synced' | 'error';
   syncedAt: IsoDateTime | null;
+  /**
+   * Emergency stop on (P-02): automatic allocation is suspended, so a line with `missing > 0` is waiting
+   * for the stop to be lifted, not for a unit (additive; absent from older Workers = false).
+   */
+  automationPaused?: boolean;
 }
 
 /**
@@ -329,7 +334,23 @@ export type RouteName = keyof typeof ROUTES;
 export type StatusBanner = 'frozen' | 'reconnect_required' | 'restoring' | 'read_only';
 
 /** Admin UI extensions that report their first render to the server (15.4 "Démarrage", T-UX-08). */
-export type ExtensionKey = 'variant_block' | 'product_block' | 'order_block' | 'order_action';
+export type ExtensionKey = 'variant_block' | 'product_block' | 'order_block' | 'order_action' | 'variant_action';
+export const EXTENSION_KEYS: readonly ExtensionKey[] = ['variant_block', 'product_block', 'order_block', 'order_action', 'variant_action'];
+
+/**
+ * Header each admin extension sends on every call with its Shopify target (`shopify.extension.target`):
+ * the server records the first render of the extension from it (15.4 "l'extension le signale au serveur
+ * à son premier rendu"), whatever call the extension makes first.
+ */
+export const EXTENSION_HEADER = 'X-Serialis-Extension';
+/** Shopify targets of the extensions (`shopify.extension.toml`) and the key each one reports. */
+export const EXTENSION_TARGETS: Readonly<Record<string, ExtensionKey>> = {
+  'admin.product-variant-details.block.render': 'variant_block',
+  'admin.product-details.block.render': 'product_block',
+  'admin.order-details.block.render': 'order_block',
+  'admin.order-details.action.render': 'order_action',
+  'admin.product-variant-details.action.render': 'variant_action',
+};
 
 /**
  * Optional fields of `MeResponse` added for the admin app, returned by `GET /me` next to the
@@ -400,6 +421,10 @@ export interface UnitEvent {
   reason: string | null;
   /** Effect on the Shopify stock, e.g. "+1 at location X" or "no write". */
   stockEffect: string | null;
+  /** Structured form of `stockEffect` (additive): signed quantity written in Shopify, `null` when none. */
+  stockDelta?: number | null;
+  /** Shopify quantity name written by `stockDelta` (one of `STOCK_QUANTITY_NAMES`). */
+  stockQuantity?: string | null;
 }
 
 /** POST /anomalies/{id}/acknowledge ("je m'en occupe", 15.4) → Anomaly */
@@ -413,7 +438,8 @@ export interface SimulateSettingsRequest {
 export interface SettingsSimulation {
   simulationId: string;
   expiresAt: IsoDateTime;
-  effects: Array<{ key: string; count: number; summary: string }>;
+  /** `summary` is a stable key of `SETTINGS_SIMULATION_SUMMARIES` (the interfaces translate it, 15.9). */
+  effects: Array<{ key: string; count: number; summary: SettingsSimulationSummary }>;
   /** Values that weaken a guarantee, with their exact effect (6.6.1). */
   warnings: string[];
 }
@@ -574,3 +600,72 @@ export const PUBLIC_ROUTES = {
   resume: { route: 'POST /automation/resume', scope: 'admin' },
 } as const satisfies Record<string, { route: string; scope: ApiScope }>;
 export type PublicRouteName = keyof typeof PUBLIC_ROUTES;
+
+// ---------------------------------------------------------------------------
+// Stable keys shown translated by the interfaces (15.9: no technical key on screen)
+// ---------------------------------------------------------------------------
+
+/** Every `summary` the Worker returns in `SettingsSimulation.effects` (6.6.1 "Ce qui va changer"). */
+export const SETTINGS_SIMULATION_SUMMARIES = [
+  'no_object_affected',
+  'duplicates_block_shop_scope',
+  'identifiers_rescoped',
+  'applies_to_next_synchronizations',
+  'metafields_removed_at_next_sync',
+  'metafields_written_at_next_sync',
+  'applies_to_next_events',
+] as const;
+export type SettingsSimulationSummary = (typeof SETTINGS_SIMULATION_SUMMARIES)[number];
+
+/** Every `type` of `UnitEvent` the Worker writes (unit history). */
+export const UNIT_EVENT_TYPES = [
+  'created', 'allocated', 'released', 'to_verify', 'shipped', 'shipment_cancelled', 'return_pending', 'return_cancelled', 'returned',
+  'shipment_confirmed', 'shipment_designation_fixed', 'verified_restocked', 'lost', 'scrapped', 'untracked',
+] as const;
+export type UnitEventType = (typeof UNIT_EVENT_TYPES)[number];
+
+/**
+ * Every `reason` of `UnitEvent`: event causes, release kinds (`restocked`…) and return dispositions
+ * reported by Shopify (`RESTOCKED`…, in capitals as Shopify spells them).
+ */
+export const UNIT_EVENT_REASONS = [
+  'received', 'already_counted', 'late_designation', 'replaced', 'replacement', 'shipment_designation_fix',
+  'unit_to_verify:restock', 'unit_to_verify:lose', 'unit_to_verify:scrap',
+  'restocked', 'not_restocked', 'relocated', 'ignored_order', 'manual',
+  'RESTOCKED', 'PROCESSING_REQUIRED', 'NOT_RESTOCKED', 'MISSING',
+] as const;
+export type UnitEventReason = (typeof UNIT_EVENT_REASONS)[number];
+
+/** `UnitEvent.stockEffect` when the event wrote nothing in Shopify. */
+export const UNIT_EVENT_NO_WRITE = 'no write';
+
+/** Shopify inventory quantity names an event can write (`UnitEvent.stockQuantity`). */
+export const STOCK_QUANTITY_NAMES = ['available', 'reserved', 'committed', 'quality_control', 'damaged'] as const;
+export type StockQuantityName = (typeof STOCK_QUANTITY_NAMES)[number];
+
+/** Every stable error `code` of the problem+json answers (14.1), in the order of `ErrorCode`. */
+export const ERROR_CODES = [
+  'unauthenticated', 'forbidden', 'not_found', 'validation_failed', 'idempotency_conflict', 'precondition_failed', 'rate_limited',
+  'unit_not_available', 'identifier_conflict', 'invalid_transition', 'variant_mismatch', 'location_mismatch', 'ambiguous_ref', 'unknown_ref',
+  'not_tracked', 'emergency_stop', 'simulation_expired', 'incompatible_settings',
+] as const satisfies readonly ErrorCode[];
+const _everyErrorCodeListed: [Exclude<ErrorCode, (typeof ERROR_CODES)[number]>] extends [never] ? true : false = true;
+void _everyErrorCodeListed;
+
+/**
+ * Stable keys the Worker puts in a problem `detail`, a batch `rejected[].detail`, a check row `detail`
+ * or an import error `detail` when the code alone is too generic. The interfaces show a specific
+ * message for each one (15.7: what happened and what to do) instead of the generic text of the code;
+ * any other detail is never shown as a raw key.
+ */
+export const PROBLEM_DETAIL_KEYS = [
+  // Refs (check rows, batch rejections, import rows)
+  'no_usable_deficit', 'too_long_or_control_char', 'empty', 'luhn', 'regex', 'invalid_regex', 'empty_ref', 'unknown_or_untracked_variant',
+  'unknown_location', 'invalid_already_counted', 'duplicate_in_file', 'duplicate_in_list', 'already_known', 'beyond_gap', 'invalid_format',
+  // Rights and shop state
+  'admin_required', 'owner_required', 'owner_is_admin', 'last_admin', 'shop_frozen', 'reconnect_required', 'shop_not_installed', 'shop_mismatch',
+  'user_never_opened_the_app', 'api_keys_interface_only', 'api_key_revoked',
+  // Operations and settings
+  'task_not_dead', 'write_not_dead', 'fixed_in_mvp', 'scope_not_allowed', 'invalid_value',
+] as const;
+export type ProblemDetailKey = (typeof PROBLEM_DETAIL_KEYS)[number];

@@ -20,6 +20,14 @@ describe('Accueil', () => {
     expect(screen.queryByTestId('start-step')).toBeNull();
   });
 
+  it('says that lines without a unit wait for the end of the emergency stop, not for a unit', async () => {
+    const mock = new MockClient({ extensionsShown: true });
+    mock.emergencyStop = true;
+    renderApp('/', { mock });
+    await waitFor(() => expect(screen.getByTestId('todo-lines')).toBeInTheDocument());
+    expect(screen.getByTestId('todo-lines').parentElement?.textContent).toContain('Automatisation en pause (arrêt d’urgence)');
+  });
+
   it('shows the start card while an extension has never been displayed (T-UX-08)', async () => {
     const mock = new MockClient();
     renderApp('/', { mock });

@@ -1,16 +1,16 @@
-import type { HomeStatsResponse, ExtensionKey, TrackedItem, UnitState } from '@serialis/contract';
+import { EXTENSION_KEYS, type HomeStatsResponse, type ExtensionKey, type TrackedItem, type UnitState } from '@serialis/contract';
 import { useMemo } from 'react';
 import { useClient, useSession } from '../../context';
 import { UNIT_STATES, variantLabel } from '../../data';
 import { useI18n, type MessageKey } from '../../i18n';
 import { Badge, Button, Section, Stack } from '../../ui/components';
-import { useAsync } from '../../ui/hooks';
+import { LIVE_POLL_MS, useAsync } from '../../ui/hooks';
 import { Link } from '../../ui/Link';
 import { Page } from '../../ui/Page';
 import { EmptyState, ErrorState, Loading } from '../../ui/states';
 
 export const WIZARD_STEPS = ['products', 'refs', 'gap', 'blocks', 'done'] as const;
-export const EXTENSIONS: ExtensionKey[] = ['variant_block', 'product_block', 'order_block', 'order_action'];
+export const EXTENSIONS: readonly ExtensionKey[] = EXTENSION_KEYS;
 
 function Sparkline({ history, label }: { history: HomeStatsResponse['assignedUnder60s']['history30d']; label: string }) {
   const points = history.map((h, i) => ({ i, rate: h.rate }));
@@ -68,7 +68,7 @@ export function Home() {
   const state = useAsync(async () => {
     const [stats, items, locations] = await Promise.all([client.homeStats(), client.listTrackedItems({ limit: 250 }), client.listLocations()]);
     return { stats, items: items.items, locations: locations.items };
-  }, [client]);
+  }, [client], { live: true, pollMs: LIVE_POLL_MS });
 
   const unitsTable = useMemo(() => {
     if (!state.data) return null;
@@ -159,6 +159,8 @@ export function Home() {
               <Stack key={c.key} direction="inline" gap="base" alignItems="center">
                 <s-text data-testid={`todo-${c.key}`}>{t(c.message, { count: c.count })}</s-text>
                 <Link to={c.to}>{t('home.todo.open')}</Link>
+                {/* Emergency stop: the lines wait for the restart, not for a unit (P-02). */}
+                {c.key === 'lines' && me.emergencyStop ? <Badge tone="warning">{t('home.todo.lines_paused')}</Badge> : null}
               </Stack>
             ))}
           </Stack>

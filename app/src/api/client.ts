@@ -162,6 +162,32 @@ export const CLIENT_ROUTES = {
   patchAppUser: 'patchAppUser',
 } as const satisfies Record<keyof ApiClient, InternalRouteName>;
 
+/**
+ * Client methods that change data on the server: after one succeeds, the screens refetch what they show
+ * (decision 38). Read-only POSTs (checks and simulations, which write nothing) are left out.
+ */
+const READ_ONLY_POSTS: ReadonlySet<keyof ApiClient> = new Set<keyof ApiClient>(['checkUnitsBatch', 'simulateSettings', 'createImport']);
+export const WRITE_CLIENT_METHODS: ReadonlySet<keyof ApiClient> = new Set(
+  (Object.keys(CLIENT_ROUTES) as Array<keyof ApiClient>).filter((m) => !INTERNAL_ROUTES[CLIENT_ROUTES[m]].startsWith('GET ') && !READ_ONLY_POSTS.has(m)),
+);
+
+/** Wraps a client so that every successful write calls `onWrite` (the same object for the mock and HTTP clients). */
+export function notifyingWrites(client: ApiClient, onWrite: () => void): ApiClient {
+  return new Proxy(client, {
+    get(target, prop, receiver) {
+      const value: unknown = Reflect.get(target, prop, receiver);
+      if (typeof value !== 'function') return value;
+      const fn = value as (...args: unknown[]) => unknown;
+      if (!WRITE_CLIENT_METHODS.has(prop as keyof ApiClient)) return fn.bind(target);
+      return async (...args: unknown[]) => {
+        const result = await fn.apply(target, args);
+        onWrite();
+        return result;
+      };
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------

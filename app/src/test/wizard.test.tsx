@@ -1,3 +1,4 @@
+import { EXTENSION_KEYS } from '@serialis/contract';
 import { describe, expect, it } from 'vitest';
 import { MockClient } from '../api/mock';
 import { button, field, findButton, findField, pageHeading, press, renderApp, screen, setChecked, text, typeIn, waitFor, within } from './utils';
@@ -49,7 +50,7 @@ describe('Assistant de démarrage', () => {
     await screen.findByTestId('wizard-blocks');
     expect(screen.getByTestId('wizard-blocks-pending')).toBeInTheDocument();
     expect(screen.getByTestId('ext-variant_block').textContent).toContain('pas encore affiché');
-    for (const key of ['variant_block', 'product_block', 'order_block', 'order_action'] as const) mock.markExtensionShown(key);
+    for (const key of EXTENSION_KEYS) mock.markExtensionShown(key);
     press(screen.getByTestId('wizard-verify'));
     await waitFor(() => expect(screen.getByTestId('wizard-blocks-ok')).toBeInTheDocument());
     expect(screen.getByTestId('ext-variant_block').textContent).toContain('affiché');

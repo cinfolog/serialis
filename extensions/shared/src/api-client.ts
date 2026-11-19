@@ -1,5 +1,6 @@
 import { newUuid } from './uuid';
 import {
+  EXTENSION_HEADER,
   INTERNAL_BASE,
   type CreateAllocationRequest,
   type CreateUnitsBatchRequest,
@@ -55,6 +56,17 @@ export interface ApiClientOptions {
   baseUrl?: string;
   /** Source of Idempotency-Key values (defaults to `newUuid`, which falls back to `crypto.getRandomValues`). */
   newIdempotencyKey?: () => string;
+  /**
+   * Shopify target of the calling extension, sent in `X-Serialis-Extension` on every call so the server
+   * records its first render (15.4 "Démarrage", T-UX-08). Defaults to `shopify.extension.target`.
+   */
+  extensionTarget?: string;
+}
+
+/** Target of the running extension from the `shopify` global of admin UI extensions, if any. */
+function currentTarget(): string | undefined {
+  const target = (globalThis as { shopify?: { extension?: { target?: unknown } } }).shopify?.extension?.target;
+  return typeof target === 'string' && target ? target : undefined;
 }
 
 /** Optional per-call settings. `idempotencyKey` lets a retry reuse the key of the first attempt (15.5, "Envois sûrs"). */
@@ -95,6 +107,8 @@ export function createApiClient(options: ApiClientOptions = {}) {
     call: CallOptions = {},
   ): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json, application/problem+json' };
+    const target = options.extensionTarget ?? currentTarget();
+    if (target) headers[EXTENSION_HEADER] = target;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (method === 'POST') headers['Idempotency-Key'] = call.idempotencyKey ?? newKey();
     const init: RequestInit = { method, headers };

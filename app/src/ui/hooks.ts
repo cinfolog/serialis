@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DependencyList, type RefObject } from 'react';
+import { useDataChanges } from '../context';
 
 /**
  * Subscribes to a DOM event of a custom element. Polaris web components emit their own events
@@ -32,30 +33,90 @@ export interface AsyncState<T> {
   replace: (data: T) => void;
 }
 
-/** Runs `fn` on mount and when `deps` change; keeps the previous data while reloading. */
-export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList): AsyncState<T> {
+export interface AsyncOptions {
+  /**
+   * Live data (decision 38): refetched in the background after every successful write of the app, when the
+   * window gets the focus back or the page becomes visible again, and every `pollMs` while visible.
+   */
+  live?: boolean;
+  /** Light polling while the page is visible (anomalies and home screens: 30 s). */
+  pollMs?: number;
+}
+
+/** Polling period of the anomalies and home screens while visible (decision 38). */
+export const LIVE_POLL_MS = 30_000;
+
+/** Background refetches closer than this are merged (focus and visibility often fire together). */
+const REFRESH_DEBOUNCE_MS = 1000;
+
+/**
+ * Runs `fn` on mount and when `deps` change; keeps the previous data while reloading. A background refresh
+ * (live data) replaces the data only: it never shows a loading state, never replaces data with an error,
+ * and never touches what the user typed (decision 29: typed state lives in the screens, not here).
+ */
+export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList, options: AsyncOptions = {}): AsyncState<T> {
   const [state, setState] = useState<{ data: T | undefined; error: unknown; loading: boolean }>({ data: undefined, error: undefined, loading: true });
   const [tick, setTick] = useState(0);
   const fnRef = useRef(fn);
   fnRef.current = fn;
+  // Only the answer of the latest request is applied (a slow refresh never overwrites a newer load).
+  const seq = useRef(0);
+  const lastRefresh = useRef(0);
   useEffect(() => {
-    let cancelled = false;
+    const mine = ++seq.current;
     setState((s) => ({ ...s, loading: true, error: undefined }));
     fnRef.current().then(
       (data) => {
-        if (!cancelled) setState({ data, error: undefined, loading: false });
+        if (seq.current === mine) setState({ data, error: undefined, loading: false });
       },
       (error: unknown) => {
-        if (!cancelled) setState((s) => ({ data: s.data, error, loading: false }));
+        if (seq.current === mine) setState((s) => ({ data: s.data, error, loading: false }));
       },
     );
     return () => {
-      cancelled = true;
+      // Deps changed or unmounted: an answer still in flight is dropped.
+      if (seq.current === mine) seq.current++;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);
   const reload = useCallback(() => setTick((n) => n + 1), []);
-  const replace = useCallback((data: T) => setState({ data, error: undefined, loading: false }), []);
+  const replace = useCallback((data: T) => {
+    seq.current++;
+    setState({ data, error: undefined, loading: false });
+  }, []);
+
+  const refresh = useCallback((force: boolean) => {
+    const now = Date.now();
+    if (!force && now - lastRefresh.current < REFRESH_DEBOUNCE_MS) return;
+    lastRefresh.current = now;
+    const mine = ++seq.current;
+    fnRef.current().then(
+      (data) => {
+        if (seq.current === mine) setState({ data, error: undefined, loading: false });
+      },
+      () => undefined, // keep what is shown; the next refresh or a reload will tell
+    );
+  }, []);
+
+  const changes = useDataChanges();
+  const { live = false, pollMs } = options;
+  useEffect(() => {
+    if (!live) return;
+    const visible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
+    const onWrite = () => refresh(true);
+    const onFocus = () => visible() && refresh(false);
+    const unsubscribe = changes.subscribe(onWrite);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    const timer = pollMs ? setInterval(() => visible() && refresh(true), pollMs) : undefined;
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+      if (timer) clearInterval(timer);
+    };
+  }, [live, pollMs, changes, refresh]);
+
   return { ...state, reload, replace };
 }
 

@@ -82,10 +82,22 @@ describe('embedded app entry', () => {
     expect(res.headers.get('Content-Security-Policy')).toContain('https://cdn.shopify.com');
     expect(res.headers.get('X-Frame-Options')).toBeNull();
     // Every navigation route of the SPA answers with the same document.
-    for (const path of ['/units', '/units/abc', '/tracked-items', '/anomalies', '/imports', '/settings', '/settings/health', '/start']) {
+    for (const path of ['/units', '/units/abc', '/tracked-items', '/anomalies', '/imports', '/settings', '/settings/health', '/start', '/health']) {
       const r = await SELF.fetch(`https://staging.serialis.dev${path}`);
       expect(r.status).toBe(200);
       expect(r.headers.get('Cache-Control')).toBe('no-store');
     }
+    // Recette 2: an unknown screen typed by hand gets the same document (not-found screen of the app), status 404.
+    for (const path of ['/nope', '/settings/nope', '/units/a/b']) {
+      const r = await SELF.fetch(`https://staging.serialis.dev${path}?shop=x&host=y`);
+      expect(r.status).toBe(404);
+      expect(r.headers.get('Content-Type')).toContain('text/html');
+      expect(r.headers.get('Content-Security-Policy')).toContain('frame-ancestors');
+      expect(await r.text()).toContain('<div id="root">');
+    }
+    // A missing file stays a plain 404 (no HTML for a script or image).
+    const missing = await SELF.fetch('https://staging.serialis.dev/assets/missing.js');
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get('Content-Type') ?? '').not.toContain('text/html');
   });
 });

@@ -32,10 +32,12 @@ describe('Import CSV : simulation puis confirmation', () => {
     expect(report).toContain('Lignes au-delà de l’écart avec Shopify : 1');
     expect(text(screen.getByTestId('import-effect'))).toBe('Effet prévu sur le stock : 2 écritures dans Shopify ; les 2 autres lignes valides sont déjà comptées (aucune écriture).');
     const errors = screen.getByTestId('import-errors').textContent ?? '';
-    expect(errors).toContain('au-delà de l’écart avec Shopify');
-    expect(errors).toContain('ref déjà connue : SN-UR500-M-51203');
-    expect(errors).toContain('ref manquante');
-    expect(errors).toContain('article non suivi : INCONNU');
+    // Worker detail keys, shown as specific messages and never raw (recette 2).
+    expect(errors).toContain('Aucun écart dans Shopify à cet emplacement : choisissez « Reçues maintenant » (stock Shopify +1 par ref).');
+    expect(errors).toContain('Cette ref est déjà enregistrée.');
+    expect(errors).toContain('Ref manquante sur cette ligne.');
+    expect(errors).toContain('Variante inconnue ou non suivie');
+    for (const raw of ['no_usable_deficit', 'already_known', 'empty_ref', 'unknown_or_untracked_variant', 'validation_failed', 'not_tracked', 'identifier_conflict']) expect(errors).not.toContain(raw);
     expect(mock.units.length).toBe(before); // nothing written by the simulation
     expect(screen.getByTestId('import-steps').querySelector('[aria-current="step"]')?.textContent).toContain('Simulation');
 

@@ -621,3 +621,30 @@ export const UNIT_EVENT_NO_WRITE = 'no write';
 /** Shopify inventory quantity names an event can write (`UnitEvent.stockQuantity`). */
 export const STOCK_QUANTITY_NAMES = ['available', 'reserved', 'committed', 'quality_control', 'damaged'] as const;
 export type StockQuantityName = (typeof STOCK_QUANTITY_NAMES)[number];
+
+/** Every stable error `code` of the problem+json answers (14.1), in the order of `ErrorCode`. */
+export const ERROR_CODES = [
+  'unauthenticated', 'forbidden', 'not_found', 'validation_failed', 'idempotency_conflict', 'precondition_failed', 'rate_limited',
+  'unit_not_available', 'identifier_conflict', 'invalid_transition', 'variant_mismatch', 'location_mismatch', 'ambiguous_ref', 'unknown_ref',
+  'not_tracked', 'emergency_stop', 'simulation_expired', 'incompatible_settings',
+] as const satisfies readonly ErrorCode[];
+const _everyErrorCodeListed: [Exclude<ErrorCode, (typeof ERROR_CODES)[number]>] extends [never] ? true : false = true;
+void _everyErrorCodeListed;
+
+/**
+ * Stable keys the Worker puts in a problem `detail`, a batch `rejected[].detail`, a check row `detail`
+ * or an import error `detail` when the code alone is too generic. The interfaces show a specific
+ * message for each one (15.7: what happened and what to do) instead of the generic text of the code;
+ * any other detail is never shown as a raw key.
+ */
+export const PROBLEM_DETAIL_KEYS = [
+  // Refs (check rows, batch rejections, import rows)
+  'no_usable_deficit', 'too_long_or_control_char', 'empty', 'luhn', 'regex', 'invalid_regex', 'empty_ref', 'unknown_or_untracked_variant',
+  'unknown_location', 'invalid_already_counted', 'duplicate_in_file', 'duplicate_in_list', 'already_known', 'beyond_gap', 'invalid_format',
+  // Rights and shop state
+  'admin_required', 'owner_required', 'owner_is_admin', 'last_admin', 'shop_frozen', 'reconnect_required', 'shop_not_installed', 'shop_mismatch',
+  'user_never_opened_the_app', 'api_keys_interface_only', 'api_key_revoked',
+  // Operations and settings
+  'task_not_dead', 'write_not_dead', 'fixed_in_mvp', 'scope_not_allowed', 'invalid_value',
+] as const;
+export type ProblemDetailKey = (typeof PROBLEM_DETAIL_KEYS)[number];

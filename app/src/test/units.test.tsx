@@ -119,7 +119,29 @@ describe('Ajout de refs par collage (T-UX-02)', () => {
     await waitFor(() => expect(screen.getByTestId('refs-summary')).toBeInTheDocument());
     expect(text(screen.getByTestId('refs-summary'))).toContain('2 prêtes sur 3');
     expect(screen.getByTestId('refs-check-table').textContent).toContain('Au-delà de l’écart avec Shopify');
+    // Recette 2: the row says what to do instead of a generic error.
+    expect(screen.getByTestId('refs-check-table').textContent).toContain('Aucun écart dans Shopify à cet emplacement : choisissez « Reçues maintenant » (stock Shopify +1 par ref).');
+    expect(screen.getByTestId('refs-check-table').textContent).not.toContain('no_usable_deficit');
     expect(text(screen.getByTestId('refs-effect'))).toBe('Effet : aucune écriture dans Shopify, ces 2 unités sont déjà comptées à Entrepôt Bordeaux.');
+  });
+
+  it('a refusal for lack of gap between the check and the validation gives the specific message, not a generic one', async () => {
+    const { mock } = await openPanel();
+    choose(field('Article suivi'), mock.trackedItems[2]!.variantGid);
+    choose(field('Ces unités sont…'), 'counted');
+    typeIn(field('Refs à ajouter'), 'SN-GR300-54-80001');
+    press(button('Contrôler les refs'));
+    await waitFor(() => expect(screen.getByTestId('refs-summary')).toBeInTheDocument());
+    // Shopify's gap is used up meanwhile (another device): the Worker refuses the row with `no_usable_deficit`.
+    vi.spyOn(mock, 'createUnitsBatch').mockResolvedValueOnce({ created: [], rejected: [{ index: 0, ref: 'SN-GR300-54-80001', code: 'validation_failed', detail: 'no_usable_deficit' }] });
+    press(screen.getByTestId('refs-submit'));
+    await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
+    press(screen.getByTestId('dialog-confirm'));
+    await waitFor(() => expect(screen.getByTestId('refs-rejected')).toBeInTheDocument());
+    const rejected = text(screen.getByTestId('refs-rejected'));
+    expect(rejected).toContain('SN-GR300-54-80001 : Aucun écart dans Shopify à cet emplacement : choisissez « Reçues maintenant » (stock Shopify +1 par ref).');
+    expect(rejected).not.toContain('no_usable_deficit');
+    expect(rejected).not.toContain('Certaines données ne sont pas valides');
   });
 
   it('a validation sent again after a network cut reuses the idempotency key and is not applied twice', async () => {

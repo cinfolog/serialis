@@ -359,7 +359,7 @@ export class MockClient implements ApiClient {
       if (this.units.some((u) => normalize(u.ref) === ref)) return { index, ref: raw, status: 'already_known' };
       if (req.alreadyCounted && gapBefore !== null) {
         counted++;
-        if (counted > gapBefore) return { index, ref: raw, status: 'beyond_gap', detail: `Écart restant : ${gapBefore}` };
+        if (counted > gapBefore) return { index, ref: raw, status: 'beyond_gap', detail: 'no_usable_deficit' };
       }
       return { index, ref: raw, status: 'ready' };
     });
@@ -515,7 +515,7 @@ export class MockClient implements ApiClient {
         index: r.index,
         ref: r.ref,
         code: (r.status === 'invalid_format' ? 'validation_failed' : r.status === 'beyond_gap' ? 'validation_failed' : 'identifier_conflict') as ErrorCode,
-        ...(r.detail ? { detail: r.detail } : {}),
+        detail: r.detail ?? r.status, // same as the Worker
       }));
       if (req.mode === 'atomic' && bad.length > 0) {
         throw new ApiError({ status: 422, code: 'validation_failed', detail: 'Au moins une ref est refusée ; rien n’a été créé.', errors: rejected });
@@ -675,10 +675,10 @@ export class MockClient implements ApiClient {
         const item = this.trackedItems.find((t) => (row['sku'] && t.sku === row['sku']) || (row['variant_id'] && t.variantGid.endsWith(`/${row['variant_id']}`)));
         const loc = this.locations.find((l) => l.name === row['location'] || l.id === row['location']);
         const counted = ['1', 'true', 'oui', 'yes'].includes((row['already_counted'] ?? '').toLowerCase());
-        if (!ref) return void errors.push({ row: rowNo, code: 'validation_failed', detail: 'ref manquante' });
-        if (!item) return void errors.push({ row: rowNo, code: 'not_tracked', detail: `article non suivi : ${row['sku'] || row['variant_id'] || '(vide)'}` });
-        if (!loc) return void errors.push({ row: rowNo, code: 'validation_failed', detail: `emplacement inconnu : ${row['location'] ?? ''}` });
-        if (seen.has(ref) || this.units.some((u) => normalize(u.ref) === ref)) return void errors.push({ row: rowNo, code: 'identifier_conflict', detail: `ref déjà connue : ${ref}` });
+        if (!ref) return void errors.push({ row: rowNo, code: 'validation_failed', detail: 'empty_ref' });
+        if (!item) return void errors.push({ row: rowNo, code: 'not_tracked', detail: 'unknown_or_untracked_variant' });
+        if (!loc) return void errors.push({ row: rowNo, code: 'validation_failed', detail: 'unknown_location' });
+        if (seen.has(ref) || this.units.some((u) => normalize(u.ref) === ref)) return void errors.push({ row: rowNo, code: 'identifier_conflict', detail: seen.has(ref) ? 'duplicate_in_file' : 'already_known' });
         seen.add(ref);
         if (counted) {
           const key = `${item.variantGid}|${loc.id}`;
@@ -687,7 +687,7 @@ export class MockClient implements ApiClient {
           const gap = this.gapFor(item.variantGid, loc.id);
           if (gap !== null && used > gap) {
             beyondGap++;
-            return void errors.push({ row: rowNo, code: 'validation_failed', detail: 'au-delà de l’écart avec Shopify' });
+            return void errors.push({ row: rowNo, code: 'validation_failed', detail: 'no_usable_deficit' });
           }
         }
         ok.push({ ref, variantGid: item.variantGid, locationId: loc.id, alreadyCounted: counted });

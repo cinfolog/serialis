@@ -5,7 +5,7 @@
  * `GET /public/v1/openapi.json` (staging, pilot); the Worker contract test checks that every
  * operation here is routed by the Worker and the reverse.
  */
-import { API_SCOPES, PUBLIC_ROUTES, type PublicRouteName } from './index.js';
+import { API_SCOPES, ERROR_CODES as CONTRACT_ERROR_CODES, PUBLIC_ROUTES, type PublicRouteName } from './index.js';
 
 type Schema = Record<string, unknown>;
 
@@ -17,11 +17,7 @@ const obj = (properties: Record<string, Schema>, required: string[] = Object.key
 const pageOf = (item: string): Schema => obj({ items: { type: 'array', items: ref(item) }, nextCursor: nullable(str()) });
 
 const UNIT_STATES = ['INCOMING', 'AVAILABLE', 'HELD', 'ALLOCATED', 'QUALITY_CONTROL', 'DAMAGED', 'IN_TRANSIT', 'SHIPPED', 'RETURN_PENDING', 'TO_VERIFY', 'LOST', 'SCRAPPED', 'UNTRACKED'];
-const ERROR_CODES = [
-  'unauthenticated', 'forbidden', 'not_found', 'validation_failed', 'idempotency_conflict', 'precondition_failed', 'rate_limited',
-  'unit_not_available', 'identifier_conflict', 'invalid_transition', 'variant_mismatch', 'location_mismatch', 'ambiguous_ref', 'unknown_ref',
-  'not_tracked', 'emergency_stop', 'simulation_expired', 'incompatible_settings',
-];
+const ERROR_CODES = [...CONTRACT_ERROR_CODES];
 
 const schemas: Record<string, Schema> = {
   Problem: {

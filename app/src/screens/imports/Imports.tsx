@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { newIdempotencyKey, type ImportReportFull } from '../../api/client';
 import { useAnnounce, useClient } from '../../context';
 import { useI18n } from '../../i18n';
+import { problemMessage } from '../../labels';
 import { Badge, Banner, Button, ConfirmDialog, Section, Stack, TextArea } from '../../ui/components';
 import { useOnline } from '../../ui/hooks';
 import { Page } from '../../ui/Page';
@@ -21,7 +22,8 @@ function readFile(file: File): Promise<string> {
  * (15.4 "Imports et exports"; the serialLogic export and column mapping are lot 1).
  */
 export function Imports() {
-  const { t } = useI18n();
+  const i18n = useI18n();
+  const { t } = i18n;
   const client = useClient();
   const announce = useAnnounce();
   const errorMessage = useErrorMessage();
@@ -171,15 +173,15 @@ export function Imports() {
                   <s-table-header-row>
                     <s-table-header>{t('imports.report.errors.row')}</s-table-header>
                     <s-table-header>{t('imports.report.errors.problem')}</s-table-header>
-                    <s-table-header>{t('imports.report.errors.code')}</s-table-header>
+                    <s-table-header>{t('imports.report.errors.status')}</s-table-header>
                   </s-table-header-row>
                   <s-table-body>
                     {report.errors.map((e) => (
                       <s-table-row key={`${e.row}-${e.code}`}>
                         <s-table-cell>{e.row}</s-table-cell>
-                        <s-table-cell>{e.detail}</s-table-cell>
+                        <s-table-cell>{problemMessage(i18n, e.code, e.detail)}</s-table-cell>
                         <s-table-cell>
-                          <Badge tone="critical">{e.code}</Badge>
+                          <Badge tone="critical">{t('imports.report.errors.refused')}</Badge>
                         </s-table-cell>
                       </s-table-row>
                     ))}

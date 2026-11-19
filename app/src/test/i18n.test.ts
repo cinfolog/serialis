@@ -1,9 +1,9 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { SETTINGS_SIMULATION_SUMMARIES, STOCK_QUANTITY_NAMES, UNIT_EVENT_REASONS, UNIT_EVENT_TYPES, type ErrorCode } from '@serialis/contract';
+import { ERROR_CODES, PROBLEM_DETAIL_KEYS, SETTINGS_SIMULATION_SUMMARIES, STOCK_QUANTITY_NAMES, UNIT_EVENT_REASONS, UNIT_EVENT_TYPES, type ErrorCode } from '@serialis/contract';
 import { describe, expect, it } from 'vitest';
 import { createI18n, dictionaries } from '../i18n';
-import { simulationEffectLabel, unitEventActorLabel, unitEventReasonLabel, unitEventStockLabel, unitEventTypeLabel } from '../labels';
+import { problemMessage, simulationEffectLabel, unitEventActorLabel, unitEventReasonLabel, unitEventStockLabel, unitEventTypeLabel } from '../labels';
 import { translate } from '../i18n/core';
 import { FIXED_SETTINGS, SETTINGS, THEMES } from '../settings/catalogue';
 
@@ -36,12 +36,8 @@ describe('Textes fr / en (15.9)', () => {
   });
 
   it('has a text for every error code of the contract, every setting, theme and fixed setting', () => {
-    const codes: ErrorCode[] = [
-      'unauthenticated', 'forbidden', 'not_found', 'validation_failed', 'idempotency_conflict', 'precondition_failed', 'rate_limited', 'unit_not_available',
-      'identifier_conflict', 'invalid_transition', 'variant_mismatch', 'location_mismatch', 'ambiguous_ref', 'unknown_ref', 'not_tracked', 'emergency_stop',
-      'simulation_expired', 'incompatible_settings',
-    ];
-    const keys = [...codes.map((c) => `error.${c}`), 'error.network', 'error.unknown', ...THEMES.map((t) => `settings.theme.${t}`)];
+    const codes: readonly ErrorCode[] = ERROR_CODES;
+    const keys = [...codes.map((c) => `error.${c}`), ...PROBLEM_DETAIL_KEYS.map((d) => `error.detail.${d}`), 'error.network', 'error.unknown', ...THEMES.map((t) => `settings.theme.${t}`)];
     for (const def of SETTINGS) {
       if (def.kind === 'choice') {
         keys.push(`settings.${def.key}.question`);
@@ -100,6 +96,15 @@ describe('Textes fr / en (15.9)', () => {
     expect(unitEventStockLabel(fr, { stockEffect: '+1 available' })).toBe('+1 en stock « disponible »');
     expect(unitEventReasonLabel(fr, 'unit_to_verify:lose')).toBe('Vérifiée : introuvable');
     expect(unitEventReasonLabel(fr, 'RESTOCKED')).toBe('Retour remis en stock');
+  });
+
+  it('error details: a known key has its own message, an unknown key is never shown raw', () => {
+    const en = createI18n('en');
+    expect(problemMessage(en, 'validation_failed', 'no_usable_deficit')).toBe('No gap in Shopify at this location: choose “Received now” (Shopify stock +1 per ref).');
+    expect(problemMessage(en, 'identifier_conflict', 'duplicate_in_file (row 3)')).toBe(en.t('error.detail.duplicate_in_file'));
+    expect(problemMessage(en, 'validation_failed', 'brand_new_detail')).toBe(en.t('error.validation_failed'));
+    expect(problemMessage(en, 'invalid_transition', 'unit is SHIPPED')).toBe(`${en.t('error.invalid_transition')} unit is SHIPPED`);
+    expect(problemMessage(en, 'brand_new_code', undefined)).toBe(en.t('error.unknown'));
   });
 
   it('labels every anomaly type of the catalogue 12.7', () => {

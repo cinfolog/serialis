@@ -1,18 +1,16 @@
 import { type ReactNode } from 'react';
 import { ApiError } from '../api/client';
 import { useI18n } from '../i18n';
+import { problemMessage } from '../labels';
 import { Banner, Button, Stack } from './components';
 import { useSlow } from './hooks';
 
 /** Human message for an API error: what happened, why and what to do (15.1, 15.7). */
 export function useErrorMessage(): (error: unknown) => string {
-  const { t, tMaybe } = useI18n();
+  const i18n = useI18n();
   return (error) => {
-    if (error instanceof ApiError) {
-      const base = tMaybe(`error.${error.code}`) ?? t('error.unknown');
-      return error.detail && error.code !== 'network' ? `${base} ${error.detail}` : base;
-    }
-    return t('error.unknown');
+    if (error instanceof ApiError) return error.code === 'network' ? i18n.t('error.network') : problemMessage(i18n, error.code, error.detail);
+    return i18n.t('error.unknown');
   };
 }
 

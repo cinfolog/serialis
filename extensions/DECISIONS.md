@@ -203,3 +203,40 @@ Demande du marchand (admin réel) : voir, dans la fenêtre « Ajouter des refs �
   Test : `idempotency.test.ts` (« falls back to getRandomValues… »).
 - **Diagnostic** : une erreur qui n'est pas une réponse de l'API affiche désormais « … (TypeError: message) » après le texte
   générique, pour qu'une capture suffise à la diagnostiquer.
+
+### 5. Bloc commande : état réel des unités, quantité, décompte et rafraîchissement (recette 2)
+
+- **État réel** : une unité expédiée dont le retour est attendu affichait « Expédiée » ; le badge suit maintenant
+  `unitState` (contrat, décision 81 de `workers/DECISIONS.md`) dès que l'unité est partie : « Retour attendu » (ton
+  d'avertissement), puis, retour traité, l'état d'arrivée (« Disponible », « Mise au rebut »…). Avant expédition, le
+  badge reste celui de l'attribution.
+- **Quantité** : la ligne affichait « × 0 » après un retour (quantité courante Shopify). Elle affiche la quantité commandée
+  (`orderedQuantity`), suivie de « N en attente de retour » et « N retournée(s) » s'il y a lieu.
+- **Décompte** : « + N autres unités » comptait l'historique (attributions libérées) : « +10 » sur une ligne de 7 unités.
+  Les attributions libérées ne sont plus ni affichées ni comptées dans le bloc (l'action « Modifier les unités » les
+  garde) ; les unités retournées sont affichées après les unités présentes, sans entrer dans le décompte, qui ne porte
+  que sur les unités présentes (attribuées ou expédiées) et les unités à attribuer.
+- **Rafraîchissement** : le bloc restait périmé jusqu'au rechargement de la page après « Modifier les unités ». Il
+  utilise `useRefreshAfterAction` comme le bloc variante (décision 2) : rechargement toutes les 4 s pendant 2 min après
+  l'ouverture de l'action, et au retour de visibilité ou de focus.
+- Tests : `order-block/test/logic.test.ts`, `OrderBlock.test.tsx` (« recette 2 — … »). Paquet du bloc : 27 Ko.
+- **À vérifier dans l'admin réel** : délai de mise à jour après la fermeture de l'action ; rendu des deux textes de
+  retour à côté de « × N ».
+
+### 6. Action variante : emplacement proposé par défaut (recette 2)
+
+- Constat : la fenêtre proposait « My Custom Location » au lieu de l'emplacement en écart. La règle prenait le premier
+  emplacement en écart dans l'ordre de la liste de stock, sinon la première option.
+- Règle : l'emplacement au plus grand écart positif (Shopify − refs enregistrées) ; sans écart, l'emplacement principal.
+  `Location.isPrimary` est déprécié en API 2026-10 et n'est pas dans le contrat : l'emplacement principal est pris comme
+  l'emplacement actif le plus ancien (identifiant numérique le plus petit ; Shopify crée d'abord l'emplacement par
+  défaut), de préférence parmi ceux qui ont un niveau de stock pour la variante ; sinon la première option.
+- Test : `shared/test/variant.test.ts` (« recette 2 — … »). **À vérifier dans l'admin réel** : sur une boutique dont
+  l'emplacement principal a été changé après coup, la règle « plus ancien » peut proposer l'ancien ; le choix reste
+  modifiable.
+
+### 7. Bloc commande pendant un arrêt d'urgence
+
+- `GET /orders/{id}/allocations` renvoie `automationPaused` (décision 77 de `workers/DECISIONS.md`). Quand il est vrai,
+  une unité à attribuer affiche « Automatisation en pause (arrêt d'urgence) » au lieu de « En attente d'une unité » :
+  la ligne attend la reprise, pas du stock. Test : `OrderBlock.test.tsx` (« emergency stop… »).

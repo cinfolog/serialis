@@ -72,10 +72,11 @@ export function orderAllocations(ctx: ApiContext, orderParam: string): ApiResult
       title: l.title,
       tracked: l.tracked === 1,
       quantity: l.current_quantity,
+      orderedQuantity: l.quantity,
       allocations: allocations
         .filter((a) => a.lineItemGid === l.line_item_gid)
         .sort((a, b) => statusOrder[a.status] - statusOrder[b.status] || a.allocatedAt - b.allocatedAt || (a.id < b.id ? -1 : 1))
-        .map((a) => presentAllocation(ctx, a, units.get(a.unitId)?.primaryIdentifier ?? '')),
+        .map((a) => presentAllocation(ctx, a, units.get(a.unitId) ?? null)),
       missing: missing.get(l.line_item_gid) ?? 0,
     })),
     syncState: !sync ? 'pending' : sync.status === 'error' ? 'error' : sync.status === 'pending' ? 'pending' : 'synced',
@@ -202,10 +203,10 @@ export function allocateToLine(ctx: ApiContext, orderGid: string, lineItemGid: s
     let allocation: CoreAllocation;
     if (target.kind === 'open') {
       const slot = target.uncovered.find((u) => u.locationId === fresh.locationId)!;
-      allocation = baseAllocation(id, fresh, line, slot.locationId, now, { status: 'active', source: 'api', fulfillmentOrderGid: slot.fo, fulfillmentOrderLineItemGid: slot.foLine });
+      allocation = baseAllocation(id, fresh, line, slot.locationId, now, { status: 'active', source: manualSource(ctx), fulfillmentOrderGid: slot.fo, fulfillmentOrderLineItemGid: slot.foLine });
       repo.insertAllocation(allocation);
       if (!repo.transitionUnit(fresh.id, 'AVAILABLE', 'ALLOCATED', fresh.locationId, now)) throw new ApiError(409, 'unit_not_available', 'unit changed');
-      repo.insertEvent({ unitId: fresh.id, type: 'allocated', from: 'AVAILABLE', to: 'ALLOCATED', actor: ctx.call.principal.actor, cause: ctx.cause, orderGid, locationId: fresh.locationId, data: { source: 'api', allocationId: id, stockWrite: false }, now });
+      repo.insertEvent({ unitId: fresh.id, type: 'allocated', from: 'AVAILABLE', to: 'ALLOCATED', actor: ctx.call.principal.actor, cause: ctx.cause, orderGid, locationId: fresh.locationId, data: { source: manualSource(ctx), allocationId: id, stockWrite: false }, now });
       ctx.d.sql.exec('UPDATE uncovered_lines SET quantity = quantity - 1 WHERE fo_line_item_gid = ?', slot.foLine);
       ctx.d.sql.exec('DELETE FROM uncovered_lines WHERE fo_line_item_gid = ? AND quantity <= 0', slot.foLine);
     } else {
@@ -220,6 +221,14 @@ export function allocateToLine(ctx: ApiContext, orderGid: string, lineItemGid: s
     requestOrderSync(ctx.d, orderGid, 0, now);
     return allocation;
   });
+}
+
+/**
+ * Source of an allocation made by a person (15.6, 11.2 `allocations.source`): `pick` (« Manuelle ») from the app
+ * or an admin extension, `api` only through the public API with a key (recette 2: everything showed « API »).
+ */
+function manualSource(ctx: ApiContext): 'pick' | 'api' {
+  return ctx.call.principal.surface === 'public' ? 'api' : 'pick';
 }
 
 function baseAllocation(id: string, unit: UnitRecord, line: LineContext, locationId: string, now: number, extra: Partial<CoreAllocation>): CoreAllocation {
@@ -298,10 +307,10 @@ export function replaceAllocation(ctx: ApiContext, id: string): ApiResult {
     repo.patchAllocation(a.id, { status: 'released', releasedAt: now, releaseKind: 'manual', toConfirm: false });
     if (!repo.transitionUnit(old.id, 'ALLOCATED', 'AVAILABLE', old.locationId, now)) throw new ApiError(409, 'invalid_transition', 'unit changed');
     repo.insertEvent({ unitId: old.id, type: 'released', from: 'ALLOCATED', to: 'AVAILABLE', actor: ctx.call.principal.actor, cause: ctx.cause, orderGid: a.orderGid, locationId: old.locationId, data: { releaseKind: 'manual', reason: 'replaced', allocationId: a.id, stockWrite: false }, now });
-    const next = baseAllocation(newId(now), fresh, line, a.locationId, now, { status: 'active', source: 'api', fulfillmentOrderGid: a.fulfillmentOrderGid, fulfillmentOrderLineItemGid: a.fulfillmentOrderLineItemGid });
+    const next = baseAllocation(newId(now), fresh, line, a.locationId, now, { status: 'active', source: manualSource(ctx), fulfillmentOrderGid: a.fulfillmentOrderGid, fulfillmentOrderLineItemGid: a.fulfillmentOrderLineItemGid });
     repo.insertAllocation(next);
     if (!repo.transitionUnit(fresh.id, 'AVAILABLE', 'ALLOCATED', fresh.locationId, now)) throw new ApiError(409, 'unit_not_available', 'unit changed');
-    repo.insertEvent({ unitId: fresh.id, type: 'allocated', from: 'AVAILABLE', to: 'ALLOCATED', actor: ctx.call.principal.actor, cause: ctx.cause, orderGid: a.orderGid, locationId: fresh.locationId, data: { source: 'api', reason: 'replacement', allocationId: next.id, stockWrite: false }, now });
+    repo.insertEvent({ unitId: fresh.id, type: 'allocated', from: 'AVAILABLE', to: 'ALLOCATED', actor: ctx.call.principal.actor, cause: ctx.cause, orderGid: a.orderGid, locationId: fresh.locationId, data: { source: manualSource(ctx), reason: 'replacement', allocationId: next.id, stockWrite: false }, now });
     requestOrderSync(ctx.d, a.orderGid, 0, now);
     return next;
   });
@@ -468,8 +477,9 @@ export async function resolveAnomaly(ctx: ApiContext, id: string): Promise<ApiRe
       break;
     case 'identify': {
       if (!s.returnLineItemGid || !ref) throw new ApiError(422, 'validation_failed', 'ref required');
-      const out = identifyReturnLine(ctx, s.returnLineItemGid, ref);
-      if (out.result === 'identified') settleOne(ctx, a.id);
+      identifyReturnLine(ctx, s.returnLineItemGid, ref);
+      // A ref of another unit (or an unknown ref) is an identification too: return_unit_mismatch takes over (F6 1 bis).
+      settleOne(ctx, a.id);
       break;
     }
     case 'restock':

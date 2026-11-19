@@ -103,7 +103,7 @@ Topics emitted: `orders/create|updated|edited|cancelled`, `fulfillments/create|u
 
 ## Limits
 
-- Webhook payloads are REST-style approximations carrying the fields the sync reads (ids, quantities, locations, restock types, properties), not full Shopify payloads; `returns/process`, draft orders, transfers/shipments, scheduled fulfillment orders and fulfillment services are not modelled.
+- Webhook payloads are REST-style approximations carrying the fields the sync reads (ids, quantities, locations, restock types, properties), not full Shopify payloads (`reverse_fulfillment_orders/dispose` names only the reverse fulfillment order; `processReturn` emits `returns/process` and `returns/close` with the return's identifiers only); draft orders, transfers/shipments, scheduled fulfillment orders and fulfillment services are not modelled.
 - The orders/edited payload has no restock flag unless `editPayloadRestock` is set (PV-14 unresolved); the stock effect of `PROCESSING_REQUIRED` is a switch (PV-3).
 - Query validation is shallow: an unknown field is reported only when its parent object resolves; argument types are not checked. Costs are an approximation of Shopify's model, not a measurement.
 - Some error codes (`FULFILLMENT_ORDER_NOT_HOLDABLE`, `INVALID_AVAILABLE_DOCUMENT`, ...) are plausible names, not recordings; those cited by the spec (`CHANGE_FROM_QUANTITY_STALE`, `INTERNAL_LEDGER_DOCUMENT`, `MAX_ONE_LEDGER_DOCUMENT`, `IDEMPOTENCY_*`, `THROTTLED`) are used as written.

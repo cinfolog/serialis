@@ -223,7 +223,7 @@ describe('resources', () => {
     expect(await json(await post('1234'), 409)).toMatchObject({ code: 'ambiguous_ref' });
     expect(await json(await post('ZZ-0000'), 404)).toMatchObject({ code: 'unknown_ref' });
     const created = await json(await post('ab-1234'), 201);
-    expect(created).toMatchObject({ ref: 'AB-1234', status: 'active', source: 'api', locationId: loc });
+    expect(created).toMatchObject({ ref: 'AB-1234', status: 'active', source: 'pick', locationId: loc }); // app or extension: manual (recette 2)
     expect(await json(await post('CD-1234'), 409)).toMatchObject({ code: 'invalid_transition' });
     const replaced = await json(await h.api('POST', `/allocations/${created.id}/replace`, { ref: 'CD-1234' }), 201);
     expect(replaced.ref).toBe('CD-1234');

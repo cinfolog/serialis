@@ -32,11 +32,13 @@ export function presentUnit(ctx: ApiContext, u: UnitRecord, current?: CoreAlloca
   };
 }
 
-export function presentAllocation(ctx: ApiContext, a: CoreAllocation, ref?: string): Allocation {
+export function presentAllocation(ctx: ApiContext, a: CoreAllocation, unit?: { primaryIdentifier: string | null; status: Allocation['unitState'] } | null): Allocation {
+  const u = unit ?? ctx.d.repo.unit(a.unitId);
   return {
     id: a.id,
     unitId: a.unitId,
-    ref: ref ?? ctx.d.repo.unit(a.unitId)?.primaryIdentifier ?? '',
+    ref: u?.primaryIdentifier ?? '',
+    ...(u?.status ? { unitState: u.status } : {}),
     orderGid: a.orderGid,
     lineItemGid: a.lineItemGid,
     variantGid: a.variantGid,

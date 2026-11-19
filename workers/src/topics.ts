@@ -58,8 +58,11 @@ export function topicAction(topic: string, body: unknown): TopicAction {
       return syncOrder(gid('Order', b.order_id), topic);
     case 'returns':
       return syncOrderOrResolve(orderOf(b), gid('Return', b.admin_graphql_api_id ?? b.id), topic);
-    case 'reverse_fulfillment_orders':
-      return syncOrderOrResolve(orderOf(b), gid('ReverseFulfillmentOrder', b.admin_graphql_api_id ?? b.id), topic);
+    case 'reverse_fulfillment_orders': {
+      // The dispose payload names the reverse fulfillment order (top level or nested), not always the order.
+      const rfo = firstObject(b, ['reverse_fulfillment_order']) ?? b;
+      return syncOrderOrResolve(orderOf(b) ?? orderOf(rfo), gid('ReverseFulfillmentOrder', rfo.admin_graphql_api_id ?? rfo.id), topic);
+    }
     case 'fulfillment_orders': {
       const fo = firstObject(b, ['fulfillment_order', 'original_fulfillment_order', 'moved_fulfillment_order', 'remaining_fulfillment_order']);
       return syncOrderOrResolve(orderOf(fo ?? {}), gid('FulfillmentOrder', fo?.id ?? fo?.admin_graphql_api_id), topic);

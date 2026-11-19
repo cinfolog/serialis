@@ -5,6 +5,7 @@ import type {
   InventoryItem,
   InventoryLevel,
   Location,
+  MetafieldDefinition,
   Order,
   Product,
   QuantityName,
@@ -72,6 +73,7 @@ export class Shop {
   readonly fulfillments = new Map<string, Fulfillment>();
   readonly refunds = new Map<string, Refund>();
   readonly returns = new Map<string, Return>();
+  readonly metafieldDefinitions = new Map<string, MetafieldDefinition>();
   readonly bulkOperations = new Map<string, BulkOperation>();
 
   /** Webhooks emitted so far, in emission order. Delivery is up to the test (see `WebhookDelivery`). */

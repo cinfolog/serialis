@@ -17,13 +17,13 @@ function handle(kind: string, handler: Parameters<typeof registerTaskHandler>[1]
 }
 
 async function tasks(stub: DurableObjectStub<ShopStore>): Promise<TaskRow[]> {
-  return runInDurableObject(stub, (_s: ShopStore, state: DurableObjectState) => state.storage.sql.exec<TaskRow>("SELECT * FROM tasks WHERE key NOT IN ('purge', 'recon:R4') ORDER BY key").toArray());
+  return runInDurableObject(stub, (_s: ShopStore, state: DurableObjectState) => state.storage.sql.exec<TaskRow>("SELECT * FROM tasks WHERE key NOT IN ('purge', 'recon:R4', 'definitions') ORDER BY key").toArray());
 }
 
 /** Makes every pending task due, then runs the alarm now (armed in the future so that it cannot fire by itself first). */
 async function fireDue(stub: DurableObjectStub<ShopStore>): Promise<void> {
   await runInDurableObject(stub, async (_s: ShopStore, state: DurableObjectState) => {
-    state.storage.sql.exec("UPDATE tasks SET run_at = 0 WHERE status = 'pending' AND key NOT IN ('purge', 'recon:R4')");
+    state.storage.sql.exec("UPDATE tasks SET run_at = 0 WHERE status = 'pending' AND key NOT IN ('purge', 'recon:R4', 'definitions')");
     await state.storage.setAlarm(Date.now() + 60_000);
   });
   expect(await runDurableObjectAlarm(stub)).toBe(true);
@@ -90,8 +90,8 @@ describe('tasks and alarms (spec 12.2)', () => {
     expect(seen).toEqual(['sync_order:gid://shopify/Order/8#1']);
     expect(await tasks(stub)).toEqual([]);
     await runInDurableObject(stub, async (_s: ShopStore, state: DurableObjectState) => {
-      // Only the daily maintenance (purge, R4) is left: the alarm is set on its next run.
-      const next = state.storage.sql.exec<{ at: number }>("SELECT MIN(run_at) AS at FROM tasks WHERE key IN ('purge', 'recon:R4')").one().at;
+      // Only the daily maintenance (purge, R4) and the metafield definition task are left: the alarm is set on its next run.
+      const next = state.storage.sql.exec<{ at: number }>("SELECT MIN(run_at) AS at FROM tasks WHERE key IN ('purge', 'recon:R4', 'definitions')").one().at;
       expect(await state.storage.getAlarm()).toBe(next);
     });
   });
@@ -146,7 +146,7 @@ describe('tasks and alarms (spec 12.2)', () => {
       if (runs === 1) {
         // A webhook for the same order lands while the task runs (same object, interleaved).
         await instance.ingest({ webhookId: 'during-run', topic: 'orders/updated', triggeredAt: null, payload: '{"id":10}' });
-        observed = storage.sql.exec<TaskRow>("SELECT * FROM tasks WHERE key NOT IN ('purge', 'recon:R4')").toArray()[0];
+        observed = storage.sql.exec<TaskRow>("SELECT * FROM tasks WHERE key NOT IN ('purge', 'recon:R4', 'definitions')").toArray()[0];
       }
     });
     await sendWebhook({ shop, topic: 'orders/create', body: { id: 10 } });

@@ -558,7 +558,7 @@ function syncReturns(ctx: Ctx, lines: TrackedLine[]): void {
       if (r.status === 'DECLINED' || r.status === 'CANCELED') {
         cancelExpectedReturn(ctx, rl.gid);
       } else if (r.status === 'OPEN' || r.status === 'CLOSED') {
-        syncReturnLine(ctx, tracked, rl, r.dispositions.filter((d) => d.returnLineItemGid === rl.gid));
+        syncReturnLine(ctx, tracked, rl, returnLineSlots(r, rl));
       }
     }
   }
@@ -586,6 +586,27 @@ function refundReturns(snapshot: OrderSnapshot): ReturnSnapshot[] {
   return result;
 }
 
+/** A disposition of one return line, real or inferred from the return's progress (workers/DECISIONS.md 79). */
+type DispositionSlot = ReturnSnapshot['dispositions'][number] & { readonly inferred?: 'processed' | 'closed' };
+
+/**
+ * Dispositions of a return line as the sync applies them. Shopify records no disposition (or one without a
+ * location) when an item is not restocked: the quantity processed by `returnProcess` beyond the recorded
+ * dispositions, then, once the return is closed, the quantity never disposed, are treated as `NOT_RESTOCKED`
+ * (Shopify did not move the stock; 7.2: scrapped, no write).
+ */
+export function returnLineSlots(r: ReturnSnapshot, rl: ReturnSnapshot['lineItems'][number]): DispositionSlot[] {
+  const real: DispositionSlot[] = r.dispositions.filter((d) => d.returnLineItemGid === rl.gid);
+  const disposed = real.reduce((n, d) => n + d.quantity, 0);
+  const processed = Math.min(rl.quantity, rl.processedQuantity ?? 0);
+  const slots = [...real];
+  const notRestocked = Math.max(0, processed - disposed);
+  if (notRestocked > 0) slots.push({ returnLineItemGid: rl.gid, type: 'NOT_RESTOCKED', quantity: notRestocked, locationId: null, inferred: 'processed' });
+  const closedRest = r.status === 'CLOSED' ? Math.max(0, rl.quantity - disposed - notRestocked) : 0;
+  if (closedRest > 0) slots.push({ returnLineItemGid: rl.gid, type: 'NOT_RESTOCKED', quantity: closedRest, locationId: null, inferred: 'closed' });
+  return slots;
+}
+
 function cancelExpectedReturn(ctx: Ctx, returnLineItemGid: Gid): void {
   const { ws, snapshot } = ctx;
   for (const a of ws.allAllocations()) {
@@ -600,7 +621,7 @@ function syncReturnLine(
   ctx: Ctx,
   { line, item }: TrackedLine,
   rl: ReturnSnapshot['lineItems'][number],
-  dispositions: ReturnSnapshot['dispositions'],
+  dispositions: readonly DispositionSlot[],
 ): void {
   const { ws, snapshot, state, settings } = ctx;
   const orderGid = snapshot.orderGid;
@@ -611,12 +632,16 @@ function syncReturnLine(
 
   // 1 bis. Identification by typed ref (15.5); a ref of another unit opens return_unit_mismatch.
   const identified: string[] = [];
+  // Refs typed for this line that designate no sold unit: the identification took place (F6 1 bis), the
+  // mismatch anomaly takes over from return_unidentified for that unit.
+  const mismatched = new Set<string>();
   for (const idn of state.returnIdentifications) {
     if (idn.returnLineItemGid !== rl.gid) continue;
     if (idn.unitId !== null && soldUnits.has(idn.unitId)) {
       if (!identified.includes(idn.unitId)) identified.push(idn.unitId);
       continue;
     }
+    mismatched.add(idn.unitId ?? `ref:${idn.typedRef.trim().toUpperCase()}`);
     const subject: AnomalySubject =
       idn.unitId === null ? { orderGid, returnLineItemGid: rl.gid } : { orderGid, returnLineItemGid: rl.gid, unitId: idn.unitId };
     addManual(ctx, 'return_unit_mismatch', subject, { typedRef: idn.typedRef, expectedUnitIds: [...soldUnits].sort() });
@@ -649,11 +674,15 @@ function syncReturnLine(
     if (applyDisposition(ctx, item, a, slot)) applied++;
   }
 
-  const unidentified = open.slice(applied);
-  if (unidentified.length === 0) return;
-  desire(ctx, 'return_unidentified', { orderGid, lineItemGid: line.gid, returnLineItemGid: rl.gid }, { quantity: unidentified.length });
+  // Dispositions still waiting for a unit: those of typed refs that designate no sold unit wait for the
+  // resolution of return_unit_mismatch; the others wait for an identification.
+  const waiting = open.slice(applied);
+  if (waiting.length === 0) return;
+  const toIdentify = Math.max(0, waiting.length - mismatched.size);
+  if (toIdentify > 0) desire(ctx, 'return_unidentified', { orderGid, lineItemGid: line.gid, returnLineItemGid: rl.gid }, { quantity: toIdentify });
+  // Shopify restocked these quantities without a unit: the deficit stays explained (no correction) either way.
   const restockedByLoc = new Map<LocationId, number>();
-  for (const s of unidentified) if (s.type === 'RESTOCKED') restockedByLoc.set(s.locationId, (restockedByLoc.get(s.locationId) ?? 0) + 1);
+  for (const s of waiting) if (s.type === 'RESTOCKED' && s.locationId !== null) restockedByLoc.set(s.locationId, (restockedByLoc.get(s.locationId) ?? 0) + 1);
   for (const [loc, qty] of [...restockedByLoc].sort(([a], [b]) => cmp(a, b))) {
     ctx.explained.push({
       sourceType: 'return_unidentified',
@@ -674,17 +703,19 @@ function markReturnPending(ctx: Ctx, a: Allocation, returnLineItemGid: Gid): voi
   }
 }
 
-function applyDisposition(ctx: Ctx, item: TrackedItem, a: Allocation, slot: ReturnSnapshot['dispositions'][number]): boolean {
+function applyDisposition(ctx: Ctx, item: TrackedItem, a: Allocation, slot: DispositionSlot): boolean {
   const to = DISPOSITION_TARGET[slot.type];
+  // No location (not restocked, missing): the unit keeps the location it left from (7.1).
   const ok = ctx.ws.transition(a.unitId, 'RETURN_PENDING', to, 'returned', {
     allocationId: a.id,
-    locationId: slot.locationId,
-    data: { disposition: slot.type },
+    ...(slot.locationId !== null ? { locationId: slot.locationId } : {}),
+    data: slot.inferred ? { disposition: slot.type, inferredFrom: slot.inferred } : { disposition: slot.type },
   });
   if (!ok) return false;
   ctx.ws.patchAllocation(a.id, { status: 'returned', returnedAt: ctx.now, returnExpected: false });
-  if (to === 'QUALITY_CONTROL') {
-    const base = { inventoryItemGid: item.inventoryItemGid, locationId: slot.locationId, delta: 1, unitId: a.unitId, reason: 'return_processing_required' };
+  const location = slot.locationId ?? ctx.ws.unit(a.unitId)?.locationId ?? null;
+  if (to === 'QUALITY_CONTROL' && location !== null) {
+    const base = { inventoryItemGid: item.inventoryItemGid, locationId: location, delta: 1, unitId: a.unitId, reason: 'return_processing_required' };
     ctx.stockWrites.push(
       ctx.options.processingRequiredAddsAvailable
         ? { ...base, kind: 'move', fromQuantityName: 'available', quantityName: 'quality_control' }

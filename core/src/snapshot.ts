@@ -78,13 +78,25 @@ export type DispositionType = 'RESTOCKED' | 'PROCESSING_REQUIRED' | 'NOT_RESTOCK
 export interface ReturnSnapshot {
   readonly gid: Gid;
   readonly status: ReturnStatus;
-  readonly lineItems: readonly { readonly gid: Gid; readonly lineItemGid: Gid; readonly quantity: number }[];
-  /** Reverse fulfillment order dispositions, in the order Shopify reports them. */
+  readonly lineItems: readonly {
+    readonly gid: Gid;
+    readonly lineItemGid: Gid;
+    readonly quantity: number;
+    /**
+     * `ReturnLineItem.processedQuantity` (return processing, API 2025-07+): quantity received and decided by
+     * `returnProcess`. A processed quantity without a disposition was not restocked (workers/DECISIONS.md 79).
+     */
+    readonly processedQuantity?: number;
+  }[];
+  /**
+   * Reverse fulfillment order dispositions, in the order Shopify reports them. `locationId` is null when Shopify
+   * gives no location: always for `NOT_RESTOCKED` and `MISSING` (nothing is restocked anywhere).
+   */
   readonly dispositions: readonly {
     readonly returnLineItemGid: Gid;
     readonly type: DispositionType;
     readonly quantity: number;
-    readonly locationId: LocationId;
+    readonly locationId: LocationId | null;
   }[];
 }
 

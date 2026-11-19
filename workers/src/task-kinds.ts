@@ -10,6 +10,7 @@ export const TASK_PRIORITY = {
   sync_location: 30,
   deliver_webhook: 35,
   reconcile: 40,
+  definitions: 45,
   export: 50,
   purge: 50,
 } as const;

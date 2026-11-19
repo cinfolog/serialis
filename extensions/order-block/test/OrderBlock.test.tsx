@@ -27,10 +27,15 @@ function order(over: Partial<OrderAllocationsResponse> = {}): OrderAllocationsRe
   };
 }
 
-function setup(responses: OrderAllocationsResponse[], translate = t, onEdit = vi.fn(), pollMs = 5, onSummary?: (s: string) => void) {
+function setup(responses: OrderAllocationsResponse[], translate = t, onEdit = vi.fn(), pollMs = 5, onSummary?: (s: string) => void, refreshMs?: number) {
   let i = 0;
   const m = mockFetch({ 'GET /api/v1/orders/9001/allocations': () => responses[Math.min(i++, responses.length - 1)] });
-  render(<OrderBlock api={createApiClient({ fetch: m.fetch })} t={translate} orderGid={ORDER} onEdit={onEdit} pollMs={pollMs} formatDateTime={(iso) => `le ${iso.slice(0, 10)}`} {...(onSummary ? { onSummary } : {})} />);
+  render(
+    <OrderBlock
+      api={createApiClient({ fetch: m.fetch })} t={translate} orderGid={ORDER} onEdit={onEdit} pollMs={pollMs}
+      formatDateTime={(iso) => `le ${iso.slice(0, 10)}`} {...(onSummary ? { onSummary } : {})} {...(refreshMs ? { refreshMs } : {})}
+    />,
+  );
   return { m, onEdit };
 }
 
@@ -92,6 +97,41 @@ describe('OrderBlock', () => {
     await see('Vélo test');
     fireEvent.click(screen.getByText('Modifier les unités', { selector: 's-button' }));
     expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it('recette 2 — reloads after « Modifier les unités » until the action has done its work, without F5', async () => {
+    const after = order();
+    after.lines[0]!.missing = 0;
+    after.lines[0]!.allocations = [...after.lines[0]!.allocations, makeAllocation('SN-NEW', { source: 'pick' })];
+    const { m } = setup([order(), order(), after], t, vi.fn(), 5, undefined, 20);
+    await see('Vélo test');
+    const before = m.calls.length;
+    fireEvent.click(screen.getByText('Modifier les unités', { selector: 's-button' }));
+    await waitFor(() => expect(pageText()).toContain('SN-NEW'));
+    expect(m.calls.length).toBeGreaterThan(before);
+  });
+
+  it('recette 2 — returned order: the unit shows its real state and the line keeps its ordered quantity', async () => {
+    const r = order();
+    r.lines[0] = { ...r.lines[0]!, quantity: 0, orderedQuantity: 1, missing: 0, allocations: [makeAllocation('VR-9', { status: 'fulfilled', unitState: 'RETURN_PENDING' })] };
+    setup([r]);
+    await see('VR-9');
+    expect(pageText()).toContain('× 1');
+    expect(pageText()).not.toContain('× 0');
+    expect(pageText()).toContain('VR-9 Retour attendu');
+    expect(pageText()).toContain('1 en attente de retour');
+    expect(pageText()).not.toContain('Expédiée');
+  });
+
+  it('emergency stop: a unit to allocate shows the paused automation instead of the wait for a unit', async () => {
+    setup([order({ automationPaused: true })]);
+    await see('Vélo test');
+    expect(pageText()).toContain("À attribuer Automatisation en pause (arrêt d'urgence)");
+    expect(pageText()).not.toContain("En attente d'une unité");
+    cleanup();
+    setup([order({ automationPaused: true })], tEn);
+    await see('Automation paused (emergency stop)');
+    expect(pageText()).not.toContain('Waiting for a unit');
   });
 
   it('has no edit button and says so when no line is tracked', async () => {

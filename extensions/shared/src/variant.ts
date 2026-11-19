@@ -75,10 +75,29 @@ export function addLocationOptions(item: TrackedItem, locations: Location[]): Lo
   return options;
 }
 
-/** Location proposed first: the first one where Shopify shows units to register, else the first option. */
+/** Numeric part of a location GID (creation order in Shopify); non-numeric ids last. */
+function creationRank(id: string): number {
+  const n = Number(/(\d+)$/.exec(id)?.[1]);
+  return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+}
+
+/**
+ * Location proposed first (recette 2): the one with the largest positive gap with Shopify (units to register);
+ * without a gap, the shop's main location. `Location.isPrimary` is deprecated in API 2026-10, so the main location
+ * is taken as the oldest active location (Shopify creates the default one first), preferring one that stocks the
+ * variant; else the first option.
+ */
 export function initialAddLocation(item: TrackedItem, options: Location[]): string {
-  const withGap = item.stock.find((s) => s.shopifyOnHand - s.registeredUnits > 0 && options.some((l) => l.id === s.locationId));
-  return withGap?.locationId ?? options[0]?.id ?? '';
+  const offered = new Set(options.map((l) => l.id));
+  let best: { id: string; gap: number } | null = null;
+  for (const s of item.stock) {
+    const gap = s.shopifyOnHand - s.registeredUnits;
+    if (gap > 0 && offered.has(s.locationId) && (!best || gap > best.gap)) best = { id: s.locationId, gap };
+  }
+  if (best) return best.id;
+  const active = options.filter((l) => l.active).sort((a, b) => creationRank(a.id) - creationRank(b.id));
+  const stocked = new Set(item.stock.map((s) => s.locationId));
+  return (active.find((l) => stocked.has(l.id)) ?? active[0] ?? options[0])?.id ?? '';
 }
 
 // ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ import { runInventoryLevelCheck } from './domain/levels.js';
 import { ensureReconciliation, runReconcile, type Pass } from './domain/reconcile.js';
 import { DomainRepo } from './domain/repo.js';
 import { ensureMaintenance, runPurge } from './domain/maintenance.js';
+import { ensureDefinitionsTask, forgetDefinitions, runEnsureDefinitions } from './domain/definitions.js';
 import { requestOrderSync, runSyncOrder } from './domain/sync-order.js';
 import { domainOutboxHooks } from './domain/writes.js';
 import { shopifyFetch } from './shopify-fetch.js';
@@ -184,7 +185,12 @@ export class ShopStore extends DurableObject<Env> {
       this.migrate();
       this.tasks.recoverExpiredLeases();
       this.outbox.recoverExpiredLeases();
-      if (this.shopState() !== 'uninstalled') ctx.storage.transactionSync(() => ensureMaintenance(this.domain));
+      if (this.shopState() !== 'uninstalled') {
+        ctx.storage.transactionSync(() => {
+          ensureMaintenance(this.domain);
+          ensureDefinitionsTask(this.domain);
+        });
+      }
       await this.armAlarm();
     });
   }
@@ -229,6 +235,7 @@ export class ShopStore extends DurableObject<Env> {
         // Idempotency keys must never repeat across databases of the same shop (reinstall after redaction).
         this.setMeta('outbox_key_prefix', crypto.randomUUID());
         ensureMaintenance(this.domain, now);
+        ensureDefinitionsTask(this.domain, now);
       });
       logEvent('info', 'shop.installed', { shop: input.shopDomain });
     } else {
@@ -242,6 +249,8 @@ export class ShopStore extends DurableObject<Env> {
           this.deleteMeta('uninstalled_at');
           // Full reconciliation before any automatic allocation (spec 9.14).
           this.setMeta('full_reconcile_required', '1');
+          forgetDefinitions(this.domain);
+          ensureDefinitionsTask(this.domain, now);
         });
         reactivated = true;
         logEvent('info', 'shop.reactivated', { shop: input.shopDomain });
@@ -479,19 +488,23 @@ export class ShopStore extends DurableObject<Env> {
         return (ctx) => this.resolveSubject(String(ctx.payload.gid));
       case 'purge':
         return () => runPurge(this.domain);
+      case 'definitions':
+        return () => runEnsureDefinitions(this.domain);
       default:
         return undefined;
     }
   }
 
-  /** `resolve:<gid>` (12.1): finds the order of a fulfillment order or return, then synchronizes it. */
+  /** `resolve:<gid>` (12.1): finds the order of a fulfillment order, return or reverse fulfillment order, then synchronizes it. */
   private async resolveSubject(gid: string): Promise<void> {
     const known =
       this.sql.exec<{ order_gid: string }>('SELECT order_gid FROM fulfillment_orders WHERE fo_gid = ?', gid).toArray()[0] ??
       this.sql.exec<{ order_gid: string }>('SELECT order_gid FROM return_map WHERE return_gid = ?', gid).toArray()[0];
     let orderGid = known?.order_gid ?? null;
-    if (!orderGid && (gid.includes('/FulfillmentOrder/') || gid.includes('/Return/'))) {
-      const field = gid.includes('/FulfillmentOrder/') ? 'fulfillmentOrder' : 'return';
+    // `reverse_fulfillment_orders/dispose` carries only the reverse fulfillment order (recette 2): it was dropped
+    // here, and a disposition made without a return update never reached the order.
+    const field = gid.includes('/ReverseFulfillmentOrder/') ? 'reverseFulfillmentOrder' : gid.includes('/FulfillmentOrder/') ? 'fulfillmentOrder' : gid.includes('/Return/') ? 'return' : null;
+    if (!orderGid && field) {
       const { data } = await this.shopifyClient().request<Record<string, { order: { id: string } | null } | null>>(
         `query SerialisResolve($id: ID!) { ${field}(id: $id) { order { id } } }`,
         { variables: { id: gid }, estimatedCost: 2 },

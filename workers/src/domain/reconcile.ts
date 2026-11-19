@@ -2,8 +2,8 @@
  * Reconciliation passes of the MVP (spec 12.5), self-scheduled in `tasks`:
  *  - R1 (2 min with recent activity, 10 min otherwise): orders updated since the cursor minus
  *    10 min of overlap, synchronized when they touch a tracked variant;
- *  - R2 (15 min): orders still `short`/`error` or with waiting lines, dead order tasks revived
- *    at most once an hour;
+ *  - R2 (15 min): orders still `short`/`error` or with waiting lines, orders with RETURN_PENDING units
+ *    (at most hourly), dead order tasks revived at most once an hour;
  *  - R3 (40 min + jitter): every known level of every tracked item re-checked. MVP: one level read
  *    per pair instead of the bulk export (workers/DECISIONS.md).
  */
@@ -20,6 +20,8 @@ export const R1_IDLE_MS = 10 * MIN;
 export const R1_OVERLAP_MS = 10 * MIN;
 export const R2_MS = 15 * MIN;
 export const R3_MS = 40 * MIN;
+/** Re-read of an order whose units wait for a return (R2), at most this often. */
+export const RETURN_PENDING_RECHECK_MS = 60 * MIN;
 
 export type Pass = 'R1' | 'R2' | 'R3' | 'R4';
 
@@ -87,6 +89,22 @@ function runR2(ctx: DomainContext): TaskResult {
     const orders = new Set<string>();
     for (const r of sql.exec<{ order_gid: string }>("SELECT order_gid FROM order_sync WHERE status IN ('pending', 'short', 'error')").toArray()) orders.add(r.order_gid);
     for (const r of sql.exec<{ order_gid: string }>('SELECT DISTINCT order_gid FROM uncovered_lines').toArray()) orders.add(r.order_gid);
+    // Units waiting for a return (recette 2): a disposition or a closing whose webhook was lost or carried nothing
+    // usable would leave them RETURN_PENDING forever. Re-read at most once an hour, unless a person must decide
+    // (return_unit_mismatch open on the order).
+    for (const r of sql
+      .exec<{ order_gid: string }>(
+        `SELECT DISTINCT a.order_gid FROM allocations a JOIN units u ON u.id = a.unit_id
+         LEFT JOIN order_sync s ON s.order_gid = a.order_gid
+         WHERE a.status = 'fulfilled' AND a.return_expected = 1 AND u.status = 'RETURN_PENDING'
+           AND (s.last_synced_at IS NULL OR s.last_synced_at <= ?)
+           AND NOT EXISTS (SELECT 1 FROM anomalies x WHERE x.type = 'return_unit_mismatch' AND x.status IN ('open', 'acknowledged')
+                           AND x.order_gid = a.order_gid)`,
+        now - RETURN_PENDING_RECHECK_MS,
+      )
+      .toArray()) {
+      orders.add(r.order_gid);
+    }
     const lastRevive = Number(repo.meta('r2_last_revive') ?? '0');
     const revive = now - lastRevive >= 60 * MIN;
     for (const orderGid of orders) {

@@ -52,28 +52,23 @@ Pour chaque étape : tu fais l'action, tu observes, tu compares au résultat att
 - **Comportement surprenant mais pas faux** (lenteur, libellé ambigu, texte coupé, élément qui déborde) : note-le en « Remarque » même si le verdict est OK. Ces remarques ont de la valeur.
 - Tu ne réessaies pas une action en boucle. Un second essai au plus, puis KO.
 
-## 4 bis. Run 3 : rejouer seulement ces étapes
+## 4 bis. Run 4 : rejouer seulement ces étapes
 
-Les runs 1 et 2 (18–19/11) ont validé le reste. Les données du run 2 sont toujours là : refs `VR-*`, commandes #1002 à #1011. Pour ce run, rejoue uniquement :
+Les runs 1 à 3 (18–19/11) ont validé le reste. Les données des runs précédents sont toujours là. Rejoue uniquement :
 
 | Étapes | Ce qui a été corrigé |
 |---|---|
-| 1.6, 1.6b | Échap ferme les dialogues ; la barre Shopify ne reste plus grisée |
-| 3.3, 3.10 | Exemples du guide corrigés (ref trop longue, prérequis « suivre L ») |
-| 3.11 | Emplacement proposé par défaut : celui qui a le plus grand écart, sinon l'emplacement principal |
-| 4.8 | La révocation reste en `unauthenticated` avec le détail `api_key_revoked` (choix confirmé) |
-| 5.3 | Définition de metafield créée par l'app : une carte doit apparaître sur la commande |
-| 5.7 | Accueil : l'action « Edit units » et l'action variante passent en « affichées » après ouverture |
-| 6.1–6.3 | Historique de l'unité : source « Manual » (plus « API ») et libellés traduits (plus de clés brutes) |
-| 7.1, 8.1 | Bloc commande, anomalies et compteurs à jour sans F5 (quelques secondes) |
-| 9.1–9.5 | Retours : rebut sur « Not restocked », fermeture de « Return to identify », bloc commande avec l'état réel |
-| 9.3 | PV-3 par GraphiQL (Thomas installe l'app d'abord) |
-| 11.2 | Fenêtre « What will change » sans clés techniques |
-| 11.4, 11.5 | Libellé « Automation paused » pendant l'arrêt d'urgence |
-| 12.1 | L'adresse directe `/health` redirige vers Réglages › Santé, et une adresse inconnue affiche une page « introuvable » |
-| — | Erreur « Already counted » sans écart : message clair (« No gap in Shopify… choose Received now ») ; import d'1 ligne : « 1 row » |
+| 1.6b | Les confirmations s'affichent maintenant **dans le cadre de l'app** (plus de fenêtre Shopify) : seul le cadre de l'app se grise. Fermer chaque dialogue par Annuler, ×, Échap et confirmation (arrêt d'urgence on/off, y compris depuis le bandeau ; import ; révocation de clé ; Santé › Abandonner ; Utilisateurs), puis cliquer **aussitôt** dans la barre et le menu de Shopify, sans F5. Ouvrir aussi un dialogue puis changer de page de l'app par le menu de l'admin. Si l'outil le permet, dans la console du cadre de l'app : `__serialisDialogs` doit montrer `open: []` et `warnings: 0`. |
+| 9.3 (PV-3) | Rejouer le dispose `PROCESSING_REQUIRED` par GraphiQL sur un **nouveau** retour (1 unité expédiée). Attendu : l'unité passe en « Quality control » et *quality control* +1 à l'emplacement d'expédition (Shopify n'ajoute rien de lui-même, constaté au run 3), ou une anomalie « Return to identify » s'ouvre. |
+| 7.1, 8.1 | Bloc commande : après une expédition ou une modification faite dans l'admin Shopify, le bloc se met à jour seul en **10 s environ**, sans F5 ; après une modification 3 → 2, l'en-tête affiche « × 2 (3 ordered) ». Le message après la désignation d'une unité sur deux est « 1 unit confirmed, 1 remaining ». |
+| 5.3 | La carte du metafield « Serialis » est **épinglée** sur la page commande. |
+| 9.4 | Même libellé partout : « Scrapped » (fiche unité et bloc). |
+| 3.10 | Les erreurs d'import indiquent la **ligne du fichier** (en-tête = ligne 1). |
+| 3.3 | Fenêtre « Add refs » : chaque ref refusée sur sa propre ligne (ref, statut, motif) ; le décompte « Liste saisie : … » se remet à jour après un refus du serveur. |
+| 4.1 | Après création d'une clé d'API, la date affichée est la même avant et après F5. |
+| 11.2 | **Thomas, à la main** : l'outil ne sait pas changer les listes déroulantes. |
 
-Pour chaque ligne du rapport, garde le même format qu'au run 2. Ajoute aussi tout nouveau défaut rencontré en chemin.
+Garde le même format de rapport.
 
 ## 5. Hors de ta portée (ne pas faire, noter NON FAIT)
 

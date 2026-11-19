@@ -35,8 +35,8 @@ describe('Réglages › Utilisateurs (15.8)', () => {
     expect(grant.getAttribute('accessibilityLabel')).toBe('Nommer administrateur : Inès');
     press(grant);
     await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
-    const dialog = document.querySelector('s-modal')!;
-    expect(dialog.getAttribute('heading')).toBe('Nommer Inès administrateur ?');
+    const dialog = document.querySelector('[data-testid="dialog-root"]')!;
+    expect(document.querySelector('[data-testid="dialog-heading"]')!.textContent).toBe('Nommer Inès administrateur ?');
     expect(within(dialog as HTMLElement).getByText(/écrivent dans le stock Shopify/)).toBeInTheDocument();
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(text(screen.getByTestId(`user-${MOCK_USER_IDS.operator2}`))).toContain('Désigné administrateur par Camille'));
@@ -45,7 +45,7 @@ describe('Réglages › Utilisateurs (15.8)', () => {
 
     press(screen.getByTestId(`user-revoke-${MOCK_USER_IDS.operator2}`));
     await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
-    expect(document.querySelector('s-modal')!.getAttribute('heading')).toBe('Retirer le droit d’administration de Inès ?');
+    expect(document.querySelector('[data-testid="dialog-heading"]')!.textContent).toBe('Retirer le droit d’administration de Inès ?');
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(screen.getByTestId(`user-grant-${MOCK_USER_IDS.operator2}`)).toBeInTheDocument());
     expect(mock.appUsers.find((u) => u.userId === MOCK_USER_IDS.operator2)).toMatchObject({ role: 'operator', designatedBy: null });
@@ -57,7 +57,7 @@ describe('Réglages › Utilisateurs (15.8)', () => {
     press(screen.getByTestId(`user-grant-${MOCK_USER_IDS.operator}`));
     await waitFor(() => expect(screen.getByTestId('dialog-cancel')).toBeInTheDocument());
     press(screen.getByTestId('dialog-cancel'));
-    await waitFor(() => expect(document.querySelector('s-modal')).toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-testid="dialog-root"]')).toBeNull());
     expect(mock.appUsers.find((u) => u.userId === MOCK_USER_IDS.operator)?.role).toBe('operator');
   });
 

@@ -98,7 +98,7 @@ describe('Ajout de refs par collage (T-UX-02)', () => {
     const before = mock.units.length;
     press(button('Valider 47 refs'));
     await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
-    expect(document.querySelector('s-modal')?.textContent).toContain('Shopify passera de 8 à 55 en stock à Entrepôt Bordeaux (47 unités reçues).');
+    expect(document.querySelector('[data-testid="dialog-root"]')?.textContent).toContain('Shopify passera de 8 à 55 en stock à Entrepôt Bordeaux (47 unités reçues).');
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(screen.getByTestId('refs-result')).toBeInTheDocument());
     expect(text(screen.getByTestId('refs-result'))).toBe('47 unités créées.');

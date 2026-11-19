@@ -20,7 +20,7 @@ export function TrackedItems() {
   const announce = useAnnounce();
   const errorMessage = useErrorMessage();
   const locations = useLocations();
-  const list = useAsync(() => client.listTrackedItems({ limit: 250 }), [client]);
+  const list = useAsync(() => client.listTrackedItems({ limit: 250 }), [client], { live: true });
   const [picked, setPicked] = useState<PickedVariant[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

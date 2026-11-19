@@ -4,7 +4,7 @@ import { useClient, useSession } from '../../context';
 import { UNIT_STATES, variantLabel } from '../../data';
 import { useI18n, type MessageKey } from '../../i18n';
 import { Badge, Button, Section, Stack } from '../../ui/components';
-import { useAsync } from '../../ui/hooks';
+import { LIVE_POLL_MS, useAsync } from '../../ui/hooks';
 import { Link } from '../../ui/Link';
 import { Page } from '../../ui/Page';
 import { EmptyState, ErrorState, Loading } from '../../ui/states';
@@ -68,7 +68,7 @@ export function Home() {
   const state = useAsync(async () => {
     const [stats, items, locations] = await Promise.all([client.homeStats(), client.listTrackedItems({ limit: 250 }), client.listLocations()]);
     return { stats, items: items.items, locations: locations.items };
-  }, [client]);
+  }, [client], { live: true, pollMs: LIVE_POLL_MS });
 
   const unitsTable = useMemo(() => {
     if (!state.data) return null;

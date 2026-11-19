@@ -20,6 +20,40 @@ export function useClient(): ApiClient {
 }
 
 // ---------------------------------------------------------------------------
+// Data changes: every successful write of the app notifies the live queries (decision 38)
+// ---------------------------------------------------------------------------
+
+type Listener = () => void;
+
+export interface DataChanges {
+  subscribe: (listener: Listener) => () => void;
+  notify: () => void;
+}
+
+export function createDataChanges(): DataChanges {
+  const listeners = new Set<Listener>();
+  return {
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    notify: () => {
+      for (const l of [...listeners]) l();
+    },
+  };
+}
+
+const DataChangesContext = createContext<DataChanges>(createDataChanges());
+
+export function DataChangesProvider({ value, children }: { value: DataChanges; children: ReactNode }) {
+  return <DataChangesContext.Provider value={value}>{children}</DataChangesContext.Provider>;
+}
+
+export function useDataChanges(): DataChanges {
+  return useContext(DataChangesContext);
+}
+
+// ---------------------------------------------------------------------------
 // Session (GET /me): locale, role, onboarding, emergency stop
 // ---------------------------------------------------------------------------
 

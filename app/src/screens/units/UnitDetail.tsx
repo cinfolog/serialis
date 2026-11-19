@@ -18,8 +18,8 @@ export function UnitDetail() {
   const { t, dateTime } = i18n;
   const client = useClient();
   const locations = useLocations();
-  const unit = useAsync(() => client.getUnit(id), [client, id]);
-  const events = useAsync(() => client.unitEvents(id, { limit: 100 }), [client, id]);
+  const unit = useAsync(() => client.getUnit(id), [client, id], { live: true });
+  const events = useAsync(() => client.unitEvents(id, { limit: 100 }), [client, id], { live: true });
   const tracked = useAsync(() => client.listTrackedItems({ limit: 250 }), [client]);
 
   if (!unit.data) {

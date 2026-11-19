@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router';
 import type { Services } from './api';
-import type { Me } from './api/client';
-import { LiveProvider, ServicesProvider, SessionContext, useClient, type SessionValue } from './context';
+import { notifyingWrites, type Me } from './api/client';
+import { createDataChanges, DataChangesProvider, LiveProvider, ServicesProvider, SessionContext, useClient, useDataChanges, type SessionValue } from './context';
 import { I18nProvider, useI18n } from './i18n';
 import { Shell } from './screens/Shell';
 import { ROUTE_TABLE } from './routes';
@@ -29,6 +29,26 @@ function SessionGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // `GET /me` carries the emergency stop, the onboarding step and the extensions already shown (home card):
+  // read again after a write and when the app comes back to the foreground (decision 38).
+  const changes = useDataChanges();
+  useEffect(() => {
+    let last = 0;
+    const again = () => {
+      if (Date.now() - last < 1000 || document.visibilityState === 'hidden') return;
+      last = Date.now();
+      client.me().then(setMe, () => undefined);
+    };
+    const unsubscribe = changes.subscribe(() => client.me().then(setMe, () => undefined));
+    window.addEventListener('focus', again);
+    document.addEventListener('visibilitychange', again);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', again);
+      document.removeEventListener('visibilitychange', again);
+    };
+  }, [changes, client]);
 
   const value = useMemo<SessionValue | null>(
     () =>
@@ -89,13 +109,18 @@ export function AppRoutes() {
 
 /** The whole app below the router: services, live region, session, routes. */
 export function App({ services }: { services: Services }) {
+  // Every successful write notifies the live queries and the session (decision 38).
+  const changes = useMemo(() => createDataChanges(), []);
+  const live = useMemo<Services>(() => ({ ...services, client: notifyingWrites(services.client, changes.notify) }), [services, changes]);
   return (
-    <ServicesProvider services={services}>
-      <LiveProvider>
-        <SessionGate>
-          <AppRoutes />
-        </SessionGate>
-      </LiveProvider>
-    </ServicesProvider>
+    <DataChangesProvider value={changes}>
+      <ServicesProvider services={live}>
+        <LiveProvider>
+          <SessionGate>
+            <AppRoutes />
+          </SessionGate>
+        </LiveProvider>
+      </ServicesProvider>
+    </DataChangesProvider>
   );
 }

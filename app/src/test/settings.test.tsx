@@ -185,8 +185,8 @@ describe('Arrêt d’urgence', () => {
     expect(screen.queryByTestId('banner-emergency')).toBeNull();
     press(screen.getByTestId('emergency-toggle'));
     await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
-    const dialog = document.querySelector('s-modal') as HTMLElement;
-    expect(dialog.getAttribute('heading')).toBe('Activer l’arrêt d’urgence ?');
+    const dialog = document.querySelector('[data-testid="dialog-root"]') as HTMLElement;
+    expect(document.querySelector('[data-testid="dialog-heading"]')!.textContent).toBe('Activer l’arrêt d’urgence ?');
     expect(dialog.textContent).toContain('L’attribution automatique des unités est suspendue pour toutes les nouvelles commandes suivies');
     expect(mock.emergencyStop).toBe(false);
     press(screen.getByTestId('dialog-confirm'));
@@ -200,7 +200,7 @@ describe('Arrêt d’urgence', () => {
     expect(screen.getByTestId('banner-emergency')).toBeInTheDocument();
     press(screen.getByTestId('resume-open'));
     await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
-    expect(document.querySelector('s-modal')?.textContent).toContain('L’attribution automatique reprend pour les nouvelles commandes suivies');
+    expect(document.querySelector('[data-testid="dialog-root"]')?.textContent).toContain('L’attribution automatique reprend pour les nouvelles commandes suivies');
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(mock.emergencyStop).toBe(false));
     await waitFor(() => expect(screen.queryByTestId('banner-emergency')).toBeNull());

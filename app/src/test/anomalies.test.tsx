@@ -102,8 +102,8 @@ describe('Anomalies : file de traitement', () => {
     const { mock } = await openAnomalies();
     press(screen.getByTestId('action-ano-4-correct_shopify'));
     await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
-    const dialog = document.querySelector('s-modal') as HTMLElement;
-    expect(dialog.getAttribute('heading')).toBe('Confirmer « Corriger le stock dans Shopify » ?');
+    const dialog = document.querySelector('[data-testid="dialog-root"]') as HTMLElement;
+    expect(document.querySelector('[data-testid="dialog-heading"]')!.textContent).toBe('Confirmer « Corriger le stock dans Shopify » ?');
     expect(dialog.textContent).toContain('Shopify : 6 · Serialis : 4');
     expect(dialog.textContent).toContain('écrit dans le stock Shopify');
     expect(mock.anomalies.find((a) => a.id === 'ano-4')?.status).toBe('open');

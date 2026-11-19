@@ -84,8 +84,8 @@ describe('Réglages › Clés d’API (15.4, 14.1)', () => {
     // The list reloaded on mount shows the key; revoke it.
     press(screen.getByTestId(`api-key-revoke-${prefix}`));
     await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
-    const dialog = document.querySelector('s-modal')!;
-    expect(dialog.getAttribute('heading')).toBe('Révoquer la clé « Make » ?');
+    const dialog = document.querySelector('[data-testid="dialog-root"]')!;
+    expect(document.querySelector('[data-testid="dialog-heading"]')!.textContent).toBe('Révoquer la clé « Make » ?');
     expect(within(dialog as HTMLElement).getByText(/refusé immédiatement/)).toBeInTheDocument();
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(mock.apiKeys[0]!.revokedAt).not.toBeNull());

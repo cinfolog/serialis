@@ -89,7 +89,7 @@ describe('Articles suivis', () => {
     expect(screen.getByTestId('tracked-table').textContent).toContain('Entrepôt Bordeaux : 6 dans Shopify, 4 enregistrées');
     press(button('Suivre des articles'));
     await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
-    expect(document.querySelector('s-modal')?.textContent).toContain('Aucune écriture de stock n’a lieu à l’activation');
+    expect(document.querySelector('[data-testid="dialog-root"]')?.textContent).toContain('Aucune écriture de stock n’a lieu à l’activation');
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(mock.trackedItems).toHaveLength(5));
   });

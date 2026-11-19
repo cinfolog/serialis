@@ -1,131 +1,177 @@
 /**
- * Confirmation dialogs and the admin chrome (browser recette, decisions 33 and 34).
+ * Confirmation dialogs and the admin chrome (browser recettes, decisions 33, 34 and 42).
  *
- * In the real admin, showing an `s-modal` greys the Shopify top bar and menu until the modal is
- * hidden. jsdom has no Polaris, so this file defines a stand-in `s-modal` that behaves like that
- * overlay: `showOverlay()` marks it shown, `hideOverlay()` hides it and fires `hide` then
- * `afterhide` asynchronously. The chrome is released only if every modal that was shown has been
- * hidden while still in the document; a modal removed while shown is exactly the greyed admin of
- * the recette.
+ * In the real admin, every close of an `s-modal` left the Shopify top bar and menu greyed until a reload.
+ * `adminOverlay.ts` models that admin layer from what Shopify documents (layer requested by the modal,
+ * addressed by id, released only by a hide that completes while the element is in the document); the
+ * first block checks the model itself against the documented pattern. Then every close path of the app
+ * must leave the admin chrome untouched: the dialogs are drawn inside the app frame (native `<dialog>`),
+ * so no admin layer is ever requested, and the in-frame dialog is closed and gone after each path.
  */
 import { useState } from 'react';
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/client';
 import { MockClient } from '../api/mock';
-import { ConfirmDialog } from '../ui/components';
-import { fireEvent, navLink, pageHeading, press, renderApp, screen, waitFor } from './utils';
-
-interface OverlayCall {
-  op: 'show' | 'hide';
-  connected: boolean;
-}
-
-const modals = new Set<FakeModal>();
-
-class FakeModal extends HTMLElement {
-  calls: OverlayCall[] = [];
-  shown = false;
-  constructor() {
-    super();
-    modals.add(this);
-  }
-  showOverlay() {
-    this.calls.push({ op: 'show', connected: this.isConnected });
-    this.shown = true;
-  }
-  hideOverlay() {
-    this.calls.push({ op: 'hide', connected: this.isConnected });
-    if (!this.shown || !this.isConnected) return; // a detached modal cannot reach the host any more
-    this.shown = false;
-    setTimeout(() => {
-      this.dispatchEvent(new Event('hide'));
-      this.dispatchEvent(new Event('afterhide'));
-    }, 0);
-  }
-  /** A close decided by Polaris itself (its close button, its own Escape handling). */
-  dismissFromHost() {
-    this.shown = false;
-    this.dispatchEvent(new Event('hide'));
-    setTimeout(() => this.dispatchEvent(new Event('afterhide')), 0);
-  }
-}
+import { ConfirmDialog, DIALOG_CHECK_MS } from '../ui/components';
+import { dialogDiagnostics } from '../ui/dialogState';
+import { ADMIN_HIDE_FRAME_MS, adminOverlay, installAdminOverlayModel } from './adminOverlay';
+import { button, field, fireEvent, navLink, pageHeading, press, renderApp, screen, typeIn, waitFor } from './utils';
 
 beforeAll(() => {
-  if (!customElements.get('s-modal')) customElements.define('s-modal', FakeModal);
+  installAdminOverlayModel();
 });
-afterEach(() => modals.clear());
+afterEach(() => {
+  adminOverlay.reset();
+  document.body.querySelectorAll('s-modal').forEach((m) => m.remove());
+});
 
-/** True when no modal is left shown: the admin top bar and menu are usable again. */
-function chromeReleased(): boolean {
-  return [...modals].every((m) => !m.shown);
-}
-function everyHideWhileConnected(): boolean {
-  return [...modals].every((m) => m.calls.filter((c) => c.op === 'hide').every((c) => c.connected));
-}
-const currentModal = () => document.querySelector('s-modal') as FakeModal;
+const sleep = (ms: number) => act(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+const dialogRoot = () => document.querySelector<HTMLDialogElement>('[data-testid="dialog-root"]');
+const openDialogs = () => document.querySelectorAll('dialog[open]').length;
 
-async function expectClosedAndReleased() {
+/** The admin top bar and menu are usable: no admin layer is shown or orphaned. */
+function expectAdminChromeFree() {
+  expect(adminOverlay.greyed, 'the admin top bar and menu stay greyed').toBe(false);
+}
+
+/**
+ * After a close: the admin chrome is free (checked first: this is the defect of the recettes), no dialog
+ * is left open in the frame, the diagnostics agree, and the safety net had nothing to repair.
+ */
+async function expectClosed() {
   await waitFor(() => expect(screen.queryByTestId('dialog-confirm')).toBeNull());
-  expect(chromeReleased()).toBe(true);
-  expect(everyHideWhileConnected()).toBe(true);
+  expectAdminChromeFree();
+  expect(adminOverlay.showRequests, 'an s-modal asked the admin for its layer').toBe(0);
   expect(document.querySelector('s-modal')).toBeNull();
+  expect(openDialogs()).toBe(0);
+  expect(dialogDiagnostics().open).toEqual([]);
+  await sleep(DIALOG_CHECK_MS + 20);
+  expect(dialogDiagnostics().warnings).toBe(0);
+  expectAdminChromeFree();
 }
+
+async function expectOpen() {
+  await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
+  expect(dialogRoot()?.open).toBe(true);
+  expect(dialogDiagnostics().open).toHaveLength(1);
+}
+
+const lastClose = () => dialogDiagnostics().log.filter((e) => e.type === 'close').at(-1);
 
 async function openEmergencyDialog(options: Parameters<typeof renderApp>[1] = {}) {
   const rendered = renderApp('/settings', { extensionsShown: true, ...options });
   await pageHeading('Réglages');
   await waitFor(() => expect(screen.getByTestId('emergency-toggle')).toBeInTheDocument());
   press(screen.getByTestId('emergency-toggle'));
-  await waitFor(() => expect(screen.getByTestId('dialog-confirm')).toBeInTheDocument());
-  expect(currentModal().shown).toBe(true);
+  await expectOpen();
   return rendered;
 }
 
-describe('Confirmation dialogs release the admin chrome on every close path', () => {
+describe('model of the admin overlay (self-check against the documented pattern)', () => {
+  it('documented pattern: one persistent s-modal with an id, shown and hidden by id, frees the admin', async () => {
+    const el = document.createElement('s-modal');
+    el.id = 'documented';
+    document.body.append(el);
+    await adminOverlay.modal.show('documented');
+    expect(adminOverlay.greyed).toBe(true);
+    await adminOverlay.modal.hide('documented');
+    await sleep(ADMIN_HIDE_FRAME_MS + 10);
+    expect(adminOverlay.greyed).toBe(false);
+  });
+
+  it('a modal removed while shown, or while its hide is pending, leaves the admin greyed', async () => {
+    const shown = document.createElement('s-modal') as HTMLElement & { showOverlay(): void; hideOverlay(): void };
+    shown.id = 'removed';
+    document.body.append(shown);
+    shown.showOverlay();
+    shown.remove();
+    expect(adminOverlay.greyed).toBe(true);
+    adminOverlay.reset();
+
+    const hiding = document.createElement('s-modal') as HTMLElement & { showOverlay(): void; hideOverlay(): void };
+    hiding.id = 'hiding';
+    document.body.append(hiding);
+    hiding.showOverlay();
+    hiding.hideOverlay(); // called while attached, as the previous fix did
+    hiding.remove(); // ... but removed before the hide completed
+    await sleep(ADMIN_HIDE_FRAME_MS + 10);
+    expect(adminOverlay.greyed).toBe(true);
+  });
+
+  it('a modal shown without an id cannot be released, even by a complete hide', async () => {
+    const el = document.createElement('s-modal') as HTMLElement & { showOverlay(): void; hideOverlay(): void };
+    document.body.append(el);
+    el.showOverlay();
+    el.hideOverlay();
+    await sleep(ADMIN_HIDE_FRAME_MS + 10);
+    expect(adminOverlay.greyed).toBe(true);
+  });
+});
+
+describe('Confirmation dialogs leave the admin chrome free on every close path', () => {
   it('Cancel', async () => {
     const { mock } = await openEmergencyDialog();
     press(screen.getByTestId('dialog-cancel'));
-    await expectClosedAndReleased();
+    await expectClosed();
+    expect(lastClose()?.reason).toBe('cancel');
     expect(mock.emergencyStop).toBe(false);
   });
 
-  it('Confirm, success (emergency stop)', async () => {
+  it('close button (×) of the dialog header, named for assistive technologies', async () => {
+    const { mock } = await openEmergencyDialog();
+    const close = screen.getByTestId('dialog-close');
+    expect(close).toHaveAccessibleName('Fermer');
+    expect(dialogRoot()).toHaveAccessibleName('Activer l’arrêt d’urgence ?');
+    fireEvent.click(close);
+    await expectClosed();
+    expect(lastClose()?.reason).toBe('close-button');
+    expect(mock.emergencyStop).toBe(false);
+  });
+
+  it('close request of the browser (native `cancel` event): the app decides, nothing is done', async () => {
+    const { mock } = await openEmergencyDialog();
+    const cancel = new Event('cancel', { cancelable: true });
+    dialogRoot()!.dispatchEvent(cancel);
+    expect(cancel.defaultPrevented).toBe(true);
+    await expectClosed();
+    expect(lastClose()?.reason).toBe('escape');
+    expect(mock.emergencyStop).toBe(false);
+  });
+
+  it('emergency stop on (confirm, success), then off from the settings (confirm)', async () => {
     const { mock } = await openEmergencyDialog();
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(mock.emergencyStop).toBe(true));
-    await expectClosedAndReleased();
+    await expectClosed();
+    expect(lastClose()?.reason).toBe('program');
+    press(screen.getByTestId('emergency-toggle'));
+    await expectOpen();
+    press(screen.getByTestId('dialog-confirm'));
+    await waitFor(() => expect(mock.emergencyStop).toBe(false));
+    await expectClosed();
   });
 
-  it('Confirm, error (refused by the server)', async () => {
+  it('confirm refused by the server', async () => {
     const { mock } = await openEmergencyDialog();
     mock.options.role = 'operator';
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(screen.getByTestId('emergency-error')).toBeInTheDocument());
-    await expectClosedAndReleased();
+    await expectClosed();
   });
 
-  it('close decided by Polaris itself (close button): the app state follows', async () => {
-    const { mock } = await openEmergencyDialog();
-    currentModal().dismissFromHost();
-    await expectClosedAndReleased();
-    // The dialog opens again normally afterwards.
-    press(screen.getByTestId('emergency-toggle'));
-    await waitFor(() => expect(currentModal().shown).toBe(true));
-    expect(mock.emergencyStop).toBe(false);
-  });
-
-  it('resume from the banner: the banner and its dialog leave the page on success', async () => {
+  it('emergency stop off from the banner: the banner and its dialog leave the page, the focus goes to the main region', async () => {
     const stopped = new MockClient({ extensionsShown: true });
     stopped.emergencyStop = true;
     const { mock } = renderApp('/', { mock: stopped });
     await waitFor(() => expect(screen.getByTestId('resume-open')).toBeInTheDocument());
     press(screen.getByTestId('resume-open'));
-    await waitFor(() => expect(currentModal()?.shown).toBe(true));
+    await expectOpen();
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(mock.emergencyStop).toBe(false));
     await waitFor(() => expect(screen.queryByTestId('banner-emergency')).toBeNull());
-    await expectClosedAndReleased();
+    await expectClosed();
+    expect(document.activeElement).toBe(document.getElementById('main'));
   });
 
   it('API key revocation: confirm (success), then cancel, then a refused revocation', async () => {
@@ -137,35 +183,100 @@ describe('Confirmation dialogs release the admin chrome on every close path', ()
     await waitFor(() => expect(screen.getByTestId(`api-key-revoke-${first}`)).toBeInTheDocument());
 
     press(screen.getByTestId(`api-key-revoke-${first}`));
-    await waitFor(() => expect(currentModal()?.shown).toBe(true));
+    await expectOpen();
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(mock.apiKeys.find((k) => k.prefix === first)!.revokedAt).not.toBeNull());
-    await expectClosedAndReleased();
+    await expectClosed();
 
     press(screen.getByTestId(`api-key-revoke-${second}`));
-    await waitFor(() => expect(currentModal()?.shown).toBe(true));
+    await expectOpen();
     press(screen.getByTestId('dialog-cancel'));
-    await expectClosedAndReleased();
+    await expectClosed();
 
     vi.spyOn(mock, 'revokeApiKey').mockRejectedValueOnce(new ApiError({ status: 500, code: 'unknown', detail: 'boom' }));
     press(screen.getByTestId(`api-key-revoke-${second}`));
-    await waitFor(() => expect(currentModal()?.shown).toBe(true));
+    await expectOpen();
     press(screen.getByTestId('dialog-confirm'));
     await waitFor(() => expect(screen.getByTestId('api-keys-error')).toBeInTheDocument());
-    await expectClosedAndReleased();
+    await expectClosed();
   });
 
-  it('leaving the screen while a dialog is open hides it before it leaves the document', async () => {
+  it('import: confirmation after the simulation, then cancel on a second simulation', async () => {
+    const { mock } = renderApp('/imports');
+    await pageHeading('Imports');
+    await waitFor(() => expect(screen.getByTestId('import-text')).toBeInTheDocument());
+    typeIn(field('Contenu du fichier'), 'ref,sku,location,already_counted\nSN-UR500-M-52001,UR500-M,Entrepôt Bordeaux,non');
+    press(button('Simuler l’import'));
+    await waitFor(() => expect(screen.getByTestId('import-confirm')).toBeInTheDocument());
+    const before = mock.units.length;
+    press(screen.getByTestId('import-confirm'));
+    await expectOpen();
+    press(screen.getByTestId('dialog-cancel'));
+    await expectClosed();
+    expect(mock.units.length).toBe(before);
+    press(screen.getByTestId('import-confirm'));
+    await expectOpen();
+    press(screen.getByTestId('dialog-confirm'));
+    await waitFor(() => expect(screen.getByTestId('import-done')).toBeInTheDocument());
+    await expectClosed();
+    expect(mock.units.length).toBe(before + 1);
+  });
+
+  it('health: abandon a given-up write (cancel, then confirm); a retry opens no dialog', async () => {
+    const mock = new MockClient({ health: 'stopped' });
+    renderApp('/settings/health', { mock });
+    await waitFor(() => expect(screen.getByTestId('health-dead-writes')).toBeInTheDocument());
+    press(screen.getByTestId('health-abandon-write-42'));
+    await expectOpen();
+    press(screen.getByTestId('dialog-cancel'));
+    await expectClosed();
+    press(screen.getByTestId('health-abandon-write-42'));
+    await expectOpen();
+    press(screen.getByTestId('dialog-confirm'));
+    await waitFor(() => expect(screen.getByTestId('health-dead-writes-empty')).toBeInTheDocument());
+    await expectClosed();
+    expect(mock.postLog.map((p) => p.name)).toEqual(['abandonWrite']);
+
+    await waitFor(() => expect(screen.getByTestId('health-dead-tasks')).toBeInTheDocument());
+    const revive = document.querySelector<HTMLElement>('[data-testid^="health-revive-task-"]');
+    expect(revive).not.toBeNull();
+    press(revive!);
+    await waitFor(() => expect(mock.postLog.length).toBe(2));
+    expect(dialogRoot()).toBeNull();
+    expect(dialogDiagnostics().log.filter((e) => e.type === 'open')).toHaveLength(2);
+    expectAdminChromeFree();
+  });
+
+  it('users: the owner designates an administrator, then withdraws the right (two confirmations)', async () => {
+    const { mock } = renderApp('/settings');
+    const grant = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-testid^="user-grant-"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    const userId = grant.dataset['testid']!.replace('user-grant-', '');
+    press(grant);
+    await expectOpen();
+    press(screen.getByTestId('dialog-confirm'));
+    await waitFor(() => expect(screen.getByTestId(`user-revoke-${userId}`)).toBeInTheDocument());
+    await expectClosed();
+    press(screen.getByTestId(`user-revoke-${userId}`));
+    await expectOpen();
+    press(screen.getByTestId('dialog-confirm'));
+    await waitFor(() => expect(screen.getByTestId(`user-grant-${userId}`)).toBeInTheDocument());
+    await expectClosed();
+    expect(mock.appUsers.find((u) => u.userId === userId)?.role).toBe('operator');
+  });
+
+  it('leaving the screen while a dialog is open (admin navigation): the dialog leaves with it', async () => {
     await openEmergencyDialog();
-    const modal = currentModal();
     press(navLink('Anomalies'));
     await pageHeading('Anomalies');
-    expect(modal.isConnected).toBe(false);
-    expect(modal.calls.at(-1)).toEqual({ op: 'hide', connected: true });
-    expect(chromeReleased()).toBe(true);
+    await expectClosed();
+    expect(lastClose()?.reason).toBe('unmount');
   });
 
-  it('unmounting the dialog component while open (harness)', () => {
+  it('unmounting the dialog component while open (harness)', async () => {
     function Harness() {
       const [on, setOn] = useState(true);
       return (
@@ -180,32 +291,42 @@ describe('Confirmation dialogs release the admin chrome on every close path', ()
       );
     }
     render(<Harness />);
-    const modal = currentModal();
-    expect(modal.shown).toBe(true);
+    await expectOpen();
     fireEvent.click(screen.getByText('remove'));
-    expect(modal.isConnected).toBe(false);
-    expect(modal.calls).toEqual([
-      { op: 'show', connected: true },
-      { op: 'hide', connected: true },
-    ]);
-    expect(chromeReleased()).toBe(true);
+    expect(dialogRoot()).toBeNull();
+    await expectClosed();
+    expect(lastClose()?.reason).toBe('unmount');
   });
 
   it('gives the focus back to the button that opened the dialog', async () => {
     await openEmergencyDialog();
+    press(screen.getByTestId('dialog-cancel'));
+    await expectClosed();
     const trigger = screen.getByTestId('emergency-toggle');
     // In the browser, the click focuses the trigger first; jsdom does not, so do it here.
     trigger.tabIndex = 0;
-    press(screen.getByTestId('dialog-cancel'));
-    await expectClosedAndReleased();
     trigger.focus();
     press(trigger);
-    await waitFor(() => expect(currentModal()?.shown).toBe(true));
-    (screen.getByTestId('dialog-cancel') as HTMLElement).tabIndex = 0;
-    (screen.getByTestId('dialog-cancel') as HTMLElement).focus();
+    await expectOpen();
+    screen.getByTestId('dialog-close').focus();
     press(screen.getByTestId('dialog-cancel'));
-    await expectClosedAndReleased();
+    await expectClosed();
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it('keeps Tab and Shift+Tab inside the dialog', async () => {
+    await openEmergencyDialog();
+    // Polaris is absent from jsdom: make its buttons focusable as the real ones are.
+    for (const id of ['dialog-cancel', 'dialog-confirm']) screen.getByTestId(id).tabIndex = 0;
+    const close = screen.getByTestId('dialog-close');
+    const confirm = screen.getByTestId('dialog-confirm');
+    confirm.focus();
+    fireEvent.keyDown(confirm, { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(confirm);
+    press(screen.getByTestId('dialog-cancel'));
+    await expectClosed();
   });
 });
 
@@ -214,16 +335,17 @@ describe('Escape closes the dialog without acting (15.7)', () => {
     const { mock } = await openEmergencyDialog();
     const pause = vi.spyOn(mock, 'pause');
     fireEvent.keyDown(screen.getByTestId('dialog-confirm'), { key: 'Escape' });
-    await expectClosedAndReleased();
+    await expectClosed();
+    expect(lastClose()?.reason).toBe('escape');
     expect(pause).not.toHaveBeenCalled();
     expect(mock.emergencyStop).toBe(false);
   });
 
-  it('from inside the Polaris modal (its own close button, in its shadow root: the event reaches the host)', async () => {
+  it('from inside a Polaris shadow root (composed event, received by the dialog)', async () => {
     const { mock } = await openEmergencyDialog();
     const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true, cancelable: true });
-    currentModal().dispatchEvent(event);
-    await expectClosedAndReleased();
+    screen.getByTestId('dialog-confirm').dispatchEvent(event);
+    await expectClosed();
     expect(event.defaultPrevented).toBe(true);
     expect(mock.emergencyStop).toBe(false);
   });
@@ -231,7 +353,7 @@ describe('Escape closes the dialog without acting (15.7)', () => {
   it('from the page behind while the dialog is open (focus lost to the document)', async () => {
     const { mock } = await openEmergencyDialog();
     fireEvent.keyDown(document.body, { key: 'Escape' });
-    await expectClosedAndReleased();
+    await expectClosed();
     expect(mock.emergencyStop).toBe(false);
   });
 
@@ -239,9 +361,9 @@ describe('Escape closes the dialog without acting (15.7)', () => {
     const { mock } = await openEmergencyDialog();
     const onKey = vi.fn();
     fireEvent.keyDown(screen.getByTestId('dialog-confirm'), { key: 'a' });
-    expect(currentModal().shown).toBe(true);
+    expect(dialogRoot()?.open).toBe(true);
     press(screen.getByTestId('dialog-cancel'));
-    await expectClosedAndReleased();
+    await expectClosed();
     document.addEventListener('keydown', onKey);
     const late = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
     document.body.dispatchEvent(late);
@@ -249,5 +371,35 @@ describe('Escape closes the dialog without acting (15.7)', () => {
     expect(late.defaultPrevented).toBe(false);
     expect(onKey).toHaveBeenCalledTimes(1);
     expect(mock.emergencyStop).toBe(false);
+  });
+});
+
+describe('safety net and diagnostics (decision 42)', () => {
+  it('exposes the dialog state on window.__serialisDialogs', async () => {
+    await openEmergencyDialog();
+    expect(window.__serialisDialogs?.open).toEqual([{ id: dialogRoot()!.id, heading: 'Activer l’arrêt d’urgence ?' }]);
+    press(screen.getByTestId('dialog-cancel'));
+    await expectClosed();
+    const log = window.__serialisDialogs!.log.map((e) => [e.type, e.reason]);
+    expect(log).toEqual([['open', undefined], ['close', 'cancel']]);
+  });
+
+  it('closes a dialog left open after a close and logs a warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await openEmergencyDialog();
+    // A dialog of the app that something failed to close (never expected).
+    const stuck = document.createElement('dialog');
+    stuck.className = 'serialis-dialog';
+    stuck.id = 'serialis-dialog-stuck';
+    document.body.append(stuck);
+    stuck.showModal();
+    press(screen.getByTestId('dialog-cancel'));
+    await waitFor(() => expect(screen.queryByTestId('dialog-confirm')).toBeNull());
+    await sleep(DIALOG_CHECK_MS + 20);
+    expect(stuck.open).toBe(false);
+    expect(dialogDiagnostics().warnings).toBe(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('still open'));
+    stuck.remove();
+    warn.mockRestore();
   });
 });

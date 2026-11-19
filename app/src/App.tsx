@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router';
+import { Navigate, Route, Routes, useLocation } from 'react-router';
 import type { Services } from './api';
 import { notifyingWrites, type Me } from './api/client';
 import { createDataChanges, DataChangesProvider, LiveProvider, ServicesProvider, SessionContext, useClient, useDataChanges, type SessionValue } from './context';
@@ -79,18 +79,30 @@ function SessionGate({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Unknown route (typed URL, old bookmark): says so and offers the usual destinations (15.7). */
 function NotFound() {
   const { t } = useI18n();
   return (
     <Page heading={t('shell.not_found.heading')}>
       <s-section>
-        <s-paragraph>{t('shell.not_found.body')}</s-paragraph>
-        <Link to="/">
-          <Button>{t('nav.home')}</Button>
-        </Link>
+        <s-paragraph data-testid="not-found">{t('shell.not_found.body')}</s-paragraph>
+        <s-stack direction="inline" gap="base">
+          <Link to="/">
+            <Button variant="primary">{t('nav.home')}</Button>
+          </Link>
+          <Link to="/settings/health">
+            <Button>{t('shell.not_found.health')}</Button>
+          </Link>
+        </s-stack>
       </s-section>
     </Page>
   );
+}
+
+/** Short URLs kept as aliases of a screen (the query string, App Bridge's `host` included, is kept). */
+function Alias({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={`${to}${search}`} replace />;
 }
 
 export function AppRoutes() {
@@ -100,6 +112,7 @@ export function AppRoutes() {
         {ROUTE_TABLE.map((r) => (
           <Route key={r.path} path={r.path} element={r.element} />
         ))}
+        <Route path="/health" element={<Alias to="/settings/health" />} />
         <Route path="*" element={<NotFound />} />
       </Route>
       <Route path="/index.html" element={<Navigate to="/" replace />} />

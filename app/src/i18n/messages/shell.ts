@@ -29,7 +29,8 @@ export const shell = defineMessages(
     'resume.dialog.confirm': 'Reprendre',
     'resume.done': 'Automatisation reprise.',
     'shell.not_found.heading': 'Page introuvable',
-    'shell.not_found.body': 'Cette page n’existe pas. Revenez à l’accueil.',
+    'shell.not_found.body': 'Cette page n’existe pas ou a changé d’adresse. Revenez à l’accueil, ou ouvrez la santé de Serialis.',
+    'shell.not_found.health': 'Réglages › Santé',
   },
   {
     'shell.skip': 'Skip to main content',
@@ -59,6 +60,7 @@ export const shell = defineMessages(
     'resume.dialog.confirm': 'Resume',
     'resume.done': 'Automation resumed.',
     'shell.not_found.heading': 'Page not found',
-    'shell.not_found.body': 'This page does not exist. Go back to the home page.',
+    'shell.not_found.body': 'This page does not exist or has moved. Go back to the home page, or open the health of Serialis.',
+    'shell.not_found.health': 'Settings › Health',
   },
 );

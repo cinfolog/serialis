@@ -5,8 +5,19 @@
  */
 import type { Env } from './env.js';
 
-/** Routes of the admin app (app/src/routes.tsx): the SPA answers them with index.html. */
-const APP_ROUTES = [/^\/$/, /^\/units\/?$/, /^\/units\/[^/]+\/?$/, /^\/tracked-items\/?$/, /^\/anomalies\/?$/, /^\/imports\/?$/, /^\/settings\/?$/, /^\/settings\/health\/?$/, /^\/start\/?$/];
+/** Routes of the admin app (app/src/routes.tsx, plus the `/health` alias): the SPA answers them with index.html. */
+const APP_ROUTES = [/^\/$/, /^\/units\/?$/, /^\/units\/[^/]+\/?$/, /^\/tracked-items\/?$/, /^\/anomalies\/?$/, /^\/imports\/?$/, /^\/settings\/?$/, /^\/settings\/health\/?$/, /^\/health\/?$/, /^\/start\/?$/];
+
+/**
+ * Any other path that does not name a file (no extension in its last segment, not under `/assets/`) is a
+ * navigation to an unknown screen: the SPA answers it too, with a 404 status, and shows its not-found
+ * screen with links (recette 2: `/health` typed by hand gave a blank page).
+ */
+function isUnknownNavigation(pathname: string): boolean {
+  if (pathname.startsWith('/assets/')) return false;
+  const last = pathname.split('/').pop() ?? '';
+  return !last.includes('.');
+}
 
 const CSP = [
   'frame-ancestors https://admin.shopify.com https://*.myshopify.com',
@@ -18,11 +29,13 @@ const CSP = [
 ].join('; ');
 
 export async function serveAdminApp(request: Request, env: Env, url: URL): Promise<Response> {
-  if (APP_ROUTES.some((r) => r.test(url.pathname))) {
+  const known = APP_ROUTES.some((r) => r.test(url.pathname));
+  if (known || isUnknownNavigation(url.pathname)) {
     const index = await env.ASSETS.fetch(new Request(new URL('/index.html', url), { method: 'GET' }));
     if (!index.ok) return new Response('Admin app not built', { status: 503, headers: { 'Cache-Control': 'no-store' } });
     const html = (await index.text()).replaceAll('%SHOPIFY_API_KEY%', env.SHOPIFY_API_KEY);
     return new Response(request.method === 'HEAD' ? null : html, {
+      status: known ? 200 : 404,
       headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': CSP },
     });
   }

@@ -9,16 +9,21 @@ export type ResourceState<T> =
 export function useResource<T>(
   load: (signal: AbortSignal) => Promise<T>,
   deps: readonly unknown[],
-): ResourceState<T> & { reload: () => void } {
+): ResourceState<T> & { reload: () => void; loads: number } {
   const [state, setState] = useState<ResourceState<T>>({ status: 'loading' });
   const [tick, setTick] = useState(0);
+  // Completed loads: changes even when a conditional GET hands back the same data object (304).
+  const [loads, setLoads] = useState(0);
   const loadRef = useRef(load);
   loadRef.current = load;
   useEffect(() => {
     const ctrl = new AbortController();
     loadRef.current(ctrl.signal).then(
       (data) => {
-        if (!ctrl.signal.aborted) setState({ status: 'ready', data });
+        if (!ctrl.signal.aborted) {
+          setState({ status: 'ready', data });
+          setLoads((n) => n + 1);
+        }
       },
       (error: unknown) => {
         if (!ctrl.signal.aborted) setState({ status: 'error', error });
@@ -28,7 +33,7 @@ export function useResource<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);
   const reload = useCallback(() => setTick((n) => n + 1), []);
-  return { ...state, reload };
+  return { ...state, reload, loads };
 }
 
 /** True when the browser reports being online (banner and blocked submissions otherwise, 15.7). */
@@ -96,4 +101,54 @@ export function useRefreshAfterAction(reload: () => void, intervalMs = ACTION_RE
     };
   }, [run, intervalMs, max]);
   return useCallback(() => setRun((n) => n + 1), []);
+}
+
+/** Background refresh of a visible block (extensions/DECISIONS.md 8): every 10 s for 10 min after mount, then every minute. */
+export const LIVE_POLL = { fastMs: 10_000, fastForMs: 10 * 60_000, slowMs: 60_000 } as const;
+export type LivePoll = { readonly fastMs: number; readonly fastForMs: number; readonly slowMs: number };
+
+/** Delay before the next background refresh, `elapsedMs` after mount. */
+export function livePollDelay(elapsedMs: number, p: LivePoll = LIVE_POLL): number {
+  return elapsedMs < p.fastForMs ? p.fastMs : p.slowMs;
+}
+
+/**
+ * Keeps a block up to date with what the merchant does in the native admin (fulfillment, order edit): Shopify does
+ * not notify the block, so it reloads on the `LIVE_POLL` rhythm while the document is visible; nothing runs while it
+ * is hidden, and it reloads at once when it becomes visible again. The reload should be cheap (conditional GET).
+ */
+export function useLivePolling(reload: () => void, p: LivePoll = LIVE_POLL): void {
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  useEffect(() => {
+    const start = Date.now();
+    const doc = (globalThis as { document?: EventTarget & { visibilityState?: string } }).document;
+    const hidden = () => doc?.visibilityState === 'hidden';
+    let id: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      if (id !== null) clearTimeout(id);
+      id = hidden() ? null : setTimeout(tick, livePollDelay(Date.now() - start, p));
+    };
+    const tick = () => {
+      id = null;
+      if (hidden()) return; // paused until visible again
+      reloadRef.current();
+      schedule();
+    };
+    const onVisibility = () => {
+      if (hidden()) {
+        if (id !== null) clearTimeout(id);
+        id = null;
+      } else if (id === null) {
+        reloadRef.current();
+        schedule();
+      }
+    };
+    schedule();
+    doc?.addEventListener?.('visibilitychange', onVisibility);
+    return () => {
+      if (id !== null) clearTimeout(id);
+      doc?.removeEventListener?.('visibilitychange', onVisibility);
+    };
+  }, [p.fastMs, p.fastForMs, p.slowMs]);
 }

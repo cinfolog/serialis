@@ -24,7 +24,7 @@ export function corsHeaders(request: Request): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': `Authorization, Content-Type, Idempotency-Key, If-Match, Accept, ${EXTENSION_HEADER}`,
+    'Access-Control-Allow-Headers': `Authorization, Content-Type, Idempotency-Key, If-Match, If-None-Match, Accept, ${EXTENSION_HEADER}`,
     'Access-Control-Expose-Headers': 'ETag, Idempotent-Replayed, Retry-After, X-Shopify-Retry-Invalid-Session-Request',
     'Access-Control-Max-Age': '600',
     Vary: 'Origin',
@@ -73,6 +73,7 @@ export async function handleInternalApi(request: Request, env: Env, url: URL): P
       headers: {
         idempotencyKey: request.headers.get('Idempotency-Key'),
         ifMatch: request.headers.get('If-Match'),
+        ifNoneMatch: request.headers.get('If-None-Match'),
         contentType: request.headers.get('Content-Type'),
         acceptLanguage: request.headers.get('Accept-Language'),
         extension: request.headers.get(EXTENSION_HEADER),

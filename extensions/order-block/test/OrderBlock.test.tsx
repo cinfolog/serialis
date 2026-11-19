@@ -123,6 +123,36 @@ describe('OrderBlock', () => {
     expect(pageText()).not.toContain('Expédiée');
   });
 
+  it('recette 3 — after an order edit 3 → 2 the header shows the current quantity and the quantity ordered', async () => {
+    const r = order();
+    r.lines[0] = { ...r.lines[0]!, quantity: 2, orderedQuantity: 3, missing: 0 };
+    setup([r]);
+    await see('Vélo test');
+    expect(pageText()).toContain('× 2 (3 commandés)');
+    expect(pageText()).not.toContain('× 3');
+    cleanup();
+    setup([r], tEn);
+    await see('× 2 (3 ordered)');
+  });
+
+  it('recette 3 — refreshes by itself while visible (native admin actions notify nothing), paused while hidden', async () => {
+    let i = 0;
+    const edited = order();
+    edited.lines[0] = { ...edited.lines[0]!, quantity: 2, orderedQuantity: 3 };
+    const m = mockFetch({ 'GET /api/v1/orders/9001/allocations': () => (i++ === 0 ? order() : edited) });
+    render(<OrderBlock api={createApiClient({ fetch: m.fetch })} t={t} orderGid={ORDER} onEdit={vi.fn()} livePoll={{ fastMs: 10, fastForMs: 60, slowMs: 40 }} />);
+    await see('× 3');
+    await see('× 2 (3 commandés)');
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    const paused = m.calls.length;
+    await new Promise((r) => setTimeout(r, 120));
+    expect(m.calls.length).toBe(paused);
+    visibility.mockReturnValue('visible');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await waitFor(() => expect(m.calls.length).toBeGreaterThan(paused));
+  });
+
   it('emergency stop: a unit to allocate shows the paused automation instead of the wait for a unit', async () => {
     setup([order({ automationPaused: true })]);
     await see('Vélo test');

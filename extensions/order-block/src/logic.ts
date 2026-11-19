@@ -48,9 +48,17 @@ export function buildLineViews(res: OrderAllocationsResponse): LineView[] {
     });
 }
 
-/** Quantity shown next to the line title: the quantity ordered, never the 0 left after a return or refund. */
-export function displayedQuantity(line: Line): number {
-  return line.orderedQuantity ?? line.quantity;
+/**
+ * Quantity shown next to the line title (recette 3): the current quantity, with the quantity ordered when an order
+ * edit or a refund lowered it (« × 2 (3 ordered) »). A line emptied by its return keeps the quantity ordered, its
+ * returned units being counted next to it (recette 2: never « × 0 »).
+ */
+export function quantityLabel(view: Pick<LineView, 'line' | 'returned' | 'returnPending'>): { current: number; ordered: number | null } {
+  const { line } = view;
+  const ordered = line.orderedQuantity ?? line.quantity;
+  if (line.quantity >= ordered) return { current: line.quantity, ordered: null };
+  if (line.quantity === 0 && view.returned + view.returnPending > 0) return { current: ordered, ordered: null };
+  return { current: line.quantity, ordered };
 }
 
 /** Tracked lines shown in the block, and unit rows shown in all (essential content within 300 px, DECISIONS.md). */

@@ -167,4 +167,18 @@ describe('createApiClient', () => {
     }
     expect(m.calls).toHaveLength(1);
   });
+
+  it('recette 3 — order allocations are polled with If-None-Match; a 304 hands back the same data', async () => {
+    let n = 0;
+    const m = mockFetch({
+      'GET /api/v1/orders/42/allocations': (c) =>
+        c.headers['if-none-match'] === 'W/"o1"' ? new Response(null, { status: 304, headers: { ETag: 'W/"o1"' } }) : json({ orderGid: 'x', n: ++n }, 200, { ETag: 'W/"o1"' }),
+    });
+    const api = createApiClient({ fetch: m.fetch });
+    const first = await api.orderAllocations('gid://shopify/Order/42');
+    const second = await api.orderAllocations('gid://shopify/Order/42');
+    expect(m.calls[0]!.headers['if-none-match']).toBeUndefined();
+    expect(m.calls[1]!.headers['if-none-match']).toBe('W/"o1"');
+    expect(second).toBe(first);
+  });
 });

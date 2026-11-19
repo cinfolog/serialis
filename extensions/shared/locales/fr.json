@@ -278,6 +278,7 @@
     "errorBody": "La synchronisation de cette commande a échoué. Consultez les anomalies dans l'app Serialis.",
     "syncedAt": "Synchronisée le {{when}}",
     "quantity": "× {{count}}",
+    "quantityOrdered": "× {{count}} ({{ordered}} commandés)",
     "returnPending": {
       "one": "{{count}} en attente de retour",
       "many": "{{count}} en attente de retour",

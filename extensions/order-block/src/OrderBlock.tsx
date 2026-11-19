@@ -4,8 +4,10 @@ import {
   ErrorBanner,
   Loading,
   OfflineBanner,
+  useLivePolling,
   useOnline,
   useRefreshAfterAction,
+  type LivePoll,
   useResource,
   type ApiClient,
   type Translate,
@@ -15,7 +17,7 @@ import {
   buildLineViews,
   canEdit,
   compactLines,
-  displayedQuantity,
+  quantityLabel,
   originKey,
   rowStatusView,
   shouldPoll,
@@ -37,13 +39,15 @@ export interface OrderBlockProps {
   onSummary?: (summary: string) => void;
   /** Reload rhythm after the action was opened (tests shorten it). */
   refreshMs?: number;
+  /** Background refresh while visible (native admin actions notify nothing; tests shorten it). */
+  livePoll?: LivePoll;
 }
 
 /**
  * Order block (spec 15.6): one row per unit under each tracked line, missing units, synchronization state.
  * Capped to 2 lines and 4 unit rows; the rest is counted next to « Modifier les unités » (DECISIONS.md).
  */
-export function OrderBlock({ api, t, orderGid, onEdit, formatDateTime, pollMs = POLL_INTERVAL_MS, onSummary, refreshMs }: OrderBlockProps) {
+export function OrderBlock({ api, t, orderGid, onEdit, formatDateTime, pollMs = POLL_INTERVAL_MS, onSummary, refreshMs, livePoll }: OrderBlockProps) {
   const res = useResource((signal) => api.orderAllocations(orderGid, { signal }), [orderGid]);
   // The action modal tells the block nothing when it closes: reload for a while after opening it (recette 2,
   // extensions/DECISIONS.md 5), as the variant block does.
@@ -52,6 +56,9 @@ export function OrderBlock({ api, t, orderGid, onEdit, formatDateTime, pollMs = 
     onEdit();
     refreshAfterAction();
   };
+  // Fulfillments and order edits made in the native admin notify nothing (recette 3): light background refresh,
+  // conditional (304 when unchanged), paused while the document is hidden (extensions/DECISIONS.md 8).
+  useLivePolling(res.reload, livePoll);
   const online = useOnline();
   const polls = useRef(0);
 
@@ -64,7 +71,7 @@ export function OrderBlock({ api, t, orderGid, onEdit, formatDateTime, pollMs = 
       reload();
     }, pollMs);
     return () => clearTimeout(id);
-  }, [syncState, res.status === 'ready' ? res.data : null, pollMs, reload]);
+  }, [syncState, res.loads, pollMs, reload]);
 
   const summary = res.status === 'ready' ? orderSummary(t, res.data) : '';
   useEffect(() => {
@@ -145,6 +152,12 @@ function SyncBanner(p: {
   return null;
 }
 
+/** « × 2 », or « × 2 (3 ordered) » once the order was edited down (recette 3). */
+function quantityText(t: Translate, view: LineView): string {
+  const q = quantityLabel(view);
+  return q.ordered === null ? t('orderBlock.quantity', { count: q.current }) : t('orderBlock.quantityOrdered', { count: q.current, ordered: q.ordered });
+}
+
 /** A tracked line: title, quantity and units to allocate on one row, then one compact row per shown unit. */
 function LineSection({ t, view, rows, paused }: { t: Translate; view: LineView; rows: UnitRow[]; paused: boolean }) {
   const { line } = view;
@@ -152,7 +165,7 @@ function LineSection({ t, view, rows, paused }: { t: Translate; view: LineView; 
     <s-stack gap="small-300">
       <s-stack direction="inline" gap="small-200" alignItems="center">
         <s-heading>{line.title}</s-heading>
-        <s-text color="subdued">{t('orderBlock.quantity', { count: displayedQuantity(line) })}</s-text>
+        <s-text color="subdued">{quantityText(t, view)}</s-text>
         {view.returnPending > 0 ? <s-text color="subdued">{t('orderBlock.returnPending', { count: view.returnPending })}</s-text> : null}
         {view.returned > 0 ? <s-text color="subdued">{t('orderBlock.returnedCount', { count: view.returned })}</s-text> : null}
         {view.missing > 0 ? <s-badge tone="warning">{t('orderBlock.missing', { count: view.missing })}</s-badge> : null}

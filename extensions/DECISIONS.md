@@ -240,3 +240,21 @@ Demande du marchand (admin réel) : voir, dans la fenêtre « Ajouter des refs �
 - `GET /orders/{id}/allocations` renvoie `automationPaused` (décision 77 de `workers/DECISIONS.md`). Quand il est vrai,
   une unité à attribuer affiche « Automatisation en pause (arrêt d'urgence) » au lieu de « En attente d'une unité » :
   la ligne attend la reprise, pas du stock. Test : `OrderBlock.test.tsx` (« emergency stop… »).
+
+### 8. Bloc commande : rafraîchissement en arrière-plan et quantité courante (recette 3)
+
+- **Constat** : après une expédition ou une modification de commande faite dans l'admin natif, le bloc ne changeait
+  qu'après F5 (rien au bout de 35 à 50 s) : Shopify ne prévient pas le bloc.
+- **Rafraîchissement** (`useLivePolling`, `extensions/shared/src/hooks.ts`) : tant que le document est visible, le bloc
+  se recharge toutes les 10 s pendant les 10 premières minutes après son affichage, puis toutes les minutes ; rien ne
+  part pendant que le document est masqué, et il se recharge aussitôt quand il redevient visible. La lecture est
+  conditionnelle : le client garde la dernière réponse et son `ETag`, envoie `If-None-Match` et rend le même objet sur
+  304 (décision 86 de `workers/DECISIONS.md`). Le rafraîchissement rapide « attribution en cours » (3 s, 20 fois) suit
+  désormais le nombre de lectures (`useResource().loads`) et non l'objet reçu, qui ne change plus sur 304.
+- **Quantité** : l'en-tête affichait « × 3 » après une modification 3 → 2 (quantité commandée, décision 5). Il affiche
+  la quantité courante, puis la quantité commandée quand elle est différente : « × 2 (3 commandés) » / « × 2 (3 ordered) ».
+  Une ligne vidée par son retour garde la quantité commandée à côté des unités retournées (jamais « × 0 », décision 5).
+- Tests : `order-block/test/logic.test.ts`, `OrderBlock.test.tsx`, `shared/test/api-client.test.ts` (« recette 3 — … »).
+  Paquet du bloc : 29 Ko.
+- **À vérifier dans l'admin réel** : délai d'apparition d'une expédition faite dans l'admin (≤ 10 s plus le délai des
+  webhooks) ; `visibilitychange` exposé par le bac à sable (sinon le bloc continue de se recharger au rythme lent).

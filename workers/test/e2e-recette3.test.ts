@@ -143,3 +143,26 @@ describe('recette 3, item 1 — one structured log line per webhook (17.1)', () 
     expect(raw.join('\n')).not.toContain(order.id);
   });
 });
+
+describe('recette 3, item 2 — order block polling is cheap (ETag / If-None-Match)', () => {
+  it('304 without body while the order is unchanged, 200 with a new ETag after a native fulfillment', async () => {
+    const { h, variant } = await setup('r3-etag');
+    const order = h.sim.merchant.createOrder({ lines: [{ variantId: variant, quantity: 1 }] });
+    await h.drain();
+    const path = `/orders/${numeric(order.id)}/allocations`;
+    const first = await h.api('GET', path);
+    expect(first.status).toBe(200);
+    const etag = first.headers.get('ETag')!;
+    expect(etag).toMatch(/^W\/"o[0-9a-f]{20}"$/);
+    const same = await h.api('GET', path, undefined, { 'If-None-Match': etag });
+    expect(same.status).toBe(304);
+    expect(await same.text()).toBe('');
+    order.fulfill();
+    await h.drain();
+    const changed = await h.api('GET', path, undefined, { 'If-None-Match': etag });
+    expect(changed.status).toBe(200);
+    expect(changed.headers.get('ETag')).not.toBe(etag);
+    const cors = await h.api('OPTIONS', path, undefined, { Origin: 'https://extensions.shopifycdn.com' });
+    expect(cors.headers.get('Access-Control-Allow-Headers')).toContain('If-None-Match');
+  });
+});

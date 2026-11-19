@@ -75,6 +75,12 @@ export interface CallOptions {
   signal?: AbortSignal;
 }
 
+/** Last answer of a conditional GET: sent back as `If-None-Match`, reused on 304 (polled order block). */
+interface Cached {
+  etag: string;
+  data: unknown;
+}
+
 function randomKey(): string {
   return newUuid();
 }
@@ -100,13 +106,18 @@ export function createApiClient(options: ApiClientOptions = {}) {
   const doFetch = (input: string, init: RequestInit): Promise<Response> =>
     (options.fetch ?? globalThis.fetch)(input, init);
 
+  const conditional = new Map<string, Cached>();
+
   async function request<T>(
     method: 'GET' | 'POST' | 'DELETE',
     path: string,
     body: unknown,
     call: CallOptions = {},
+    useEtag = false,
   ): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json, application/problem+json' };
+    const cached = useEtag ? conditional.get(path) : undefined;
+    if (cached) headers['If-None-Match'] = cached.etag;
     const target = options.extensionTarget ?? currentTarget();
     if (target) headers[EXTENSION_HEADER] = target;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -123,9 +134,14 @@ export function createApiClient(options: ApiClientOptions = {}) {
       throw new ApiError(0, 'network_error', cause instanceof Error ? cause.message : 'network error');
     }
     if (res.status === 204) return undefined as T;
+    // Unchanged since the last answer: the same object, so a polled view does not re-render for nothing.
+    if (res.status === 304 && cached) return cached.data as T;
     if (res.ok) {
       try {
-        return (await res.json()) as T;
+        const data = (await res.json()) as T;
+        const etag = useEtag ? res.headers.get('ETag') : null;
+        if (etag) conditional.set(path, { etag, data });
+        return data;
       } catch {
         throw new ApiError(res.status, 'unknown', 'Invalid JSON in a successful response');
       }
@@ -178,7 +194,7 @@ export function createApiClient(options: ApiClientOptions = {}) {
     // --- orders and allocations ----------------------------------------
     /** `orderGid` may be a GID or a bare numeric id: the route carries the numeric id (public API `{order_id}`). */
     orderAllocations: (orderGid: Gid, call?: CallOptions) =>
-      request<OrderAllocationsResponse>('GET', `/orders/${encodeURIComponent(gidToId(orderGid))}/allocations`, undefined, call),
+      request<OrderAllocationsResponse>('GET', `/orders/${encodeURIComponent(gidToId(orderGid))}/allocations`, undefined, call, true),
     createAllocation: (req: CreateAllocationRequest, call?: CallOptions) =>
       request<Allocation>('POST', '/allocations', req, call),
     replaceAllocation: (id: string, req: ReplaceAllocationRequest, call?: CallOptions) =>

@@ -20,7 +20,7 @@ export interface ApiCall {
   /** Path below the API base, e.g. `/units/123`. */
   path: string;
   query: Record<string, string[]>;
-  headers: { idempotencyKey?: string | null; ifMatch?: string | null; contentType?: string | null; acceptLanguage?: string | null; extension?: string | null };
+  headers: { idempotencyKey?: string | null; ifMatch?: string | null; ifNoneMatch?: string | null; contentType?: string | null; acceptLanguage?: string | null; extension?: string | null };
   body: string | null;
   principal: Principal;
 }

@@ -107,9 +107,20 @@ describe('VariantAction — form', () => {
     typeInto(area(), 'NEW-1\nnew-1, NEW-2; AB-001\nTOO' + 'X'.repeat(200));
     await see('2 prêtes, 1 doublon dans la liste, 1 déjà enregistrée, 1 au format invalide.');
     expect(text()).toContain('Doublon dans la liste');
-    expect(text()).toContain('Déjà enregistrée — Entrepôt · Disponible');
+    expect(text()).toContain('AB-001 Déjà enregistrée Entrepôt · Disponible');
     expect(text()).toContain('Format invalide');
     expect(disabled(button('Ajouter 2 refs'))).toBe(false);
+  });
+
+  it('recette 3 — typing never changes the registered count; the live count is introduced as the typed list', async () => {
+    setup();
+    await ready();
+    await see('Déjà enregistrées à Entrepôt (3)');
+    typeInto(area(), 'AB-001\nAB-002\nNEW-1');
+    await see('Liste saisie : 1 prête, 2 déjà enregistrées.');
+    expect(text()).toContain('Déjà enregistrées à Entrepôt (3)');
+    expect(text()).not.toContain('(4)');
+    expect(text()).not.toContain('(5)');
   });
 
   it('blocks "already counted" when Shopify shows no gap and suggests « Reçues »', async () => {
@@ -211,8 +222,15 @@ describe('VariantAction — submit', () => {
     await see("Confirmer l'ajout");
     fireEvent.click(button("Confirmer l'ajout de 2 refs"));
     await see('1 ref ajoutée');
-    expect(text()).toContain('N2 : Cette ref existe déjà. (used by another variant)');
     await waitFor(() => expect(valueOf(area())).toBe('N2'));
+    // Recette 3: the summary follows the server's answer (no « 1 prête » left), the refused line shows ref and reason on its own row.
+    await see('Liste saisie : 0 prête, 1 refusée par Serialis.');
+    const row = document.querySelector('[data-line-status="rejected"]')!;
+    expect(row.textContent).toBe('N2RefuséeCette ref existe déjà. (used by another variant)');
+    expect(disabled(button('Ajouter 0 ref'))).toBe(true);
+    // Changing the line makes it a new ref, ready again.
+    typeInto(area(), 'N3');
+    await see('Liste saisie : 1 prête.');
     expect(button('Fermer').getAttribute('slot')).toBe('secondary-actions'); // something was added: « Fermer », not « Annuler »
   });
 
@@ -364,8 +382,8 @@ describe('VariantAction — refs already registered', () => {
     await ready();
     typeInto(area(), 'NEW-1\nX-9\nAB-001');
     // the variant's own ref is flagged at once, from the loaded list
-    await see('Déjà enregistrée — Entrepôt · Disponible');
-    await see('Déjà enregistrée — autre variante · Boutique · Réservée');
+    await see('AB-001 Déjà enregistrée Entrepôt · Disponible');
+    await see('X-9 Déjà enregistrée autre variante · Boutique · Réservée');
     expect(disabled(button('Ajouter 1 ref'))).toBe(false);
     // one check for the refs the client could not rule out, nothing written
     const checks = m.callsTo('POST /api/v1/units/batch/check');

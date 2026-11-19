@@ -137,6 +137,8 @@ export interface ReverseLine {
   lineItemId: string;
   totalQuantity: number;
   dispositions: { type: DispositionType; quantity: number; locationId: string | null }[];
+  /** `fulfillmentLineItem` read as null (the field is nullable in the Admin API). */
+  unlinked?: boolean;
 }
 
 export interface ReverseFulfillmentOrder {
@@ -205,4 +207,6 @@ export interface MetafieldDefinition {
   type: string;
   name: string;
   description: string | null;
+  /** Position among the pinned definitions of the owner type (`pin: true`, `metafieldDefinitionPin`), null when unpinned. */
+  pinnedPosition?: number | null;
 }

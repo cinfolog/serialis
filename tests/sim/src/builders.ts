@@ -291,7 +291,7 @@ export function gqlReverseFulfillmentOrder(ctx: Ctx, r: Return, o: Return['rever
           id: l.id,
           totalQuantity: l.totalQuantity,
           dispositions: l.dispositions.map((d) => ({ __typename: 'ReverseFulfillmentOrderDisposition', type: d.type, quantity: d.quantity, location: () => locationNode(ctx, d.locationId) })),
-          fulfillmentLineItem: () => fulfillmentLineItem(l.lineItemId, l.totalQuantity),
+          fulfillmentLineItem: () => (l.unlinked ? null : fulfillmentLineItem(l.lineItemId, l.totalQuantity)),
         })),
         b,
       ),
@@ -491,5 +491,5 @@ export function gqlBulk(b: import('./model.js').BulkOperation): Obj {
 }
 
 export function gqlMetafieldDefinition(d: import('./model.js').MetafieldDefinition): Obj {
-  return { __typename: 'MetafieldDefinition', id: d.id, ownerType: d.ownerType, namespace: d.namespace, key: d.key, name: d.name, description: d.description, type: { __typename: 'MetafieldDefinitionType', name: d.type } };
+  return { __typename: 'MetafieldDefinition', id: d.id, ownerType: d.ownerType, namespace: d.namespace, key: d.key, name: d.name, description: d.description, pinnedPosition: d.pinnedPosition ?? null, type: { __typename: 'MetafieldDefinitionType', name: d.type } };
 }

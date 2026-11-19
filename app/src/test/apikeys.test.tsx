@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MockClient } from '../api/mock';
+import { createI18n, parseInstant } from '../i18n';
 import { pageHeading, press, renderApp, screen, setChecked, text, typeIn, waitFor, within } from './utils';
 
 async function openApiKeys(options: Parameters<typeof renderApp>[1] = {}) {
@@ -37,6 +38,28 @@ describe('Réglages › Clés d’API (15.4, 14.1)', () => {
     await waitFor(() => expect(screen.queryByTestId('api-key-created')).toBeNull());
     expect(document.body.innerHTML).not.toContain(fullKey);
     expect(screen.queryByTestId('api-key-secret')).toBeNull();
+  });
+
+  it('recette 3 — the new key shows its own creation date at once, even if the list read right after is stale', async () => {
+    const { mock } = await openApiKeys();
+    await waitFor(() => expect(screen.getByTestId('api-keys-empty')).toBeInTheDocument());
+    // The list read after the creation answers what it had before (replica or race): the row must not depend on it.
+    const list = mock.listApiKeys.bind(mock);
+    let stale = true;
+    mock.listApiKeys = async () => (stale ? ((stale = false), { items: [], nextCursor: null }) : list());
+    typeIn(screen.getByTestId('api-key-name'), 'ERP');
+    press(screen.getByTestId('api-key-create'));
+    await waitFor(() => expect(screen.getByTestId('api-key-created')).toBeInTheDocument());
+    const key = mock.apiKeys[0]!;
+    const row = await waitFor(() => screen.getByTestId(`api-key-${key.prefix}`));
+    expect(text(row)).toContain(`Créée le ${createI18n('fr').dateTime(key.createdAt)}`);
+  });
+
+  it('recette 3 — API dates without a zone are read as UTC, never as local time', () => {
+    expect(parseInstant('2026-11-18T23:30:00').toISOString()).toBe('2026-11-18T23:30:00.000Z');
+    expect(parseInstant('2026-11-19').toISOString()).toBe('2026-11-19T00:00:00.000Z');
+    expect(parseInstant('2026-11-18T23:30:00.000Z').toISOString()).toBe('2026-11-18T23:30:00.000Z');
+    expect(parseInstant('2026-11-19T00:30:00+01:00').toISOString()).toBe('2026-11-18T23:30:00.000Z');
   });
 
   it('asks for a name and at least one scope before creating anything', async () => {

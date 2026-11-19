@@ -443,13 +443,41 @@ export function metafieldDefinitionCreate(env: MutationEnv, args: Obj): Mutation
   if ([...shop.metafieldDefinitions.values()].some((x) => x.ownerType === ownerType && x.namespace === namespace && x.key === key)) {
     return fail([{ field: ['definition', 'key'], message: 'Key is in use for Order metafields on the \'' + namespace + '\' namespace.', code: 'TAKEN' }], { createdDefinition: null });
   }
-  const def = { id: shop.nextId('MetafieldDefinition'), ownerType, namespace, key, type: String(d['type']), name: String(d['name']), description: d['description'] == null ? null : String(d['description']) };
+  const def = {
+    id: shop.nextId('MetafieldDefinition'),
+    ownerType,
+    namespace,
+    key,
+    type: String(d['type']),
+    name: String(d['name']),
+    description: d['description'] == null ? null : String(d['description']),
+    pinnedPosition: d['pin'] === true ? nextPinnedPosition(shop, ownerType) : null,
+  };
   shop.metafieldDefinitions.set(def.id, def);
   return { payload: { __typename: 'Payload', createdDefinition: gqlMetafieldDefinition(def), userErrors: [] }, failed: false };
 }
 
+function nextPinnedPosition(shop: MutationEnv['ctx']['shop'], ownerType: string): number {
+  return Math.max(0, ...[...shop.metafieldDefinitions.values()].filter((x) => x.ownerType === ownerType).map((x) => x.pinnedPosition ?? 0)) + 1;
+}
+
+/** `metafieldDefinitionPin` (by `definitionId` or `identifier`): `ALREADY_PINNED` when pinned, `NOT_FOUND` when unknown. */
+export function metafieldDefinitionPin(env: MutationEnv, args: Obj): MutationResult {
+  const shop = env.ctx.shop;
+  const ident = args['identifier'] == null ? null : asObj(args['identifier']);
+  const def = ident
+    ? [...shop.metafieldDefinitions.values()].find((x) => x.ownerType === ident['ownerType'] && x.namespace === ident['namespace'] && x.key === ident['key'])
+    : shop.metafieldDefinitions.get(String(args['definitionId'] ?? ''));
+  if (!def) return fail([{ field: ['definitionId'], message: 'Definition not found.', code: 'NOT_FOUND' }], { pinnedDefinition: null });
+  env.ctx.requireAny([DEFINITION_SCOPES[def.ownerType] ?? 'write_orders']);
+  if (def.pinnedPosition != null) return fail([{ field: ['definitionId'], message: 'Definition is already pinned.', code: 'ALREADY_PINNED' }], { pinnedDefinition: null });
+  def.pinnedPosition = nextPinnedPosition(shop, def.ownerType);
+  return { payload: { __typename: 'Payload', pinnedDefinition: gqlMetafieldDefinition(def), userErrors: [] }, failed: false };
+}
+
 export const MUTATIONS: Record<string, (env: MutationEnv, args: Obj) => MutationResult> = {
   metafieldDefinitionCreate,
+  metafieldDefinitionPin,
   inventoryAdjustQuantities,
   inventorySetQuantities,
   inventoryMoveQuantities,
@@ -479,6 +507,7 @@ export const NULL_PAYLOAD: Record<string, Obj> = {
   metafieldsSet: { metafields: [] },
   metafieldsDelete: { deletedMetafields: [] },
   metafieldDefinitionCreate: { createdDefinition: null },
+  metafieldDefinitionPin: { pinnedDefinition: null },
   fulfillmentOrderHold: { fulfillmentHold: null, fulfillmentOrder: null, remainingFulfillmentOrder: null },
   fulfillmentOrderReleaseHold: { fulfillmentOrder: null },
   bulkOperationRunQuery: { bulkOperation: null },

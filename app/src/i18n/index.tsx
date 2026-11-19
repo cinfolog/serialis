@@ -34,14 +34,24 @@ export interface I18n {
   percent: (ratio: number) => string;
 }
 
+/**
+ * Instant of an API date (recette 3). The contract sends UTC ISO strings (`…Z`); a value without a zone (date only, or
+ * a date-time without offset) is read as UTC too, never as the browser's local time, and shown in the user's zone.
+ */
+export function parseInstant(iso: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return new Date(`${iso}T00:00:00Z`);
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(iso)) return new Date(`${iso.replace(' ', 'T')}Z`);
+  return new Date(iso);
+}
+
 export function createI18n(locale: Locale): I18n {
   const dict = dictionaries[locale];
   return {
     locale,
     t: (key, params) => translate(dict, locale, key, params),
     tMaybe: (key, params) => (hasMessage(dict, key) ? translate(dict, locale, key, params) : undefined),
-    date: (iso) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(iso)),
-    dateTime: (iso) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso)),
+    date: (iso) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(parseInstant(iso)),
+    dateTime: (iso) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(parseInstant(iso)),
     number: (n) => new Intl.NumberFormat(locale).format(n),
     percent: (ratio) => new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1 }).format(ratio),
   };

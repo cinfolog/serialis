@@ -111,21 +111,30 @@ function AddRefsForm(p: {
   const keeper = useMemo(() => new IdempotencyKeeper(), []);
 
   const [added, setAdded] = useState<Unit[]>([]);
+  // Refs refused by the server when the batch was sent (normalized ref -> reason): flagged on their line, never
+  // « ready » again while the line is unchanged (recette 3: « 1 ready » stayed after the refusal).
+  const [serverRejected, setServerRejected] = useState<ReadonlyMap<string, { code: BatchOutcome['rejected'][number]['code']; detail?: string }>>(new Map());
 
   // Duplicates: first against the variant's loaded units, then the server check for the shop (decision 3).
   const unitByRef = useMemo(() => new Map(p.units.map((u) => [normalizeRef(u.ref), u] as const)), [p.units]);
-  const localPlan = useMemo(() => buildAddPlan({ text, knownRefs: unitByRef.keys(), kind, gap }), [text, unitByRef, kind, gap]);
+  const rejectedRefs = useMemo(() => [...serverRejected.keys()], [serverRejected]);
+  const localPlan = useMemo(() => buildAddPlan({ text, knownRefs: unitByRef.keys(), rejectedRefs, kind, gap }), [text, unitByRef, rejectedRefs, kind, gap]);
   const check = useRefCheck(p.api, p.variantGid, locationId, localPlan.readyRefs);
   const plan = useMemo(
     () => (check.known.length === 0 && check.invalid.length === 0
       ? localPlan
-      : buildAddPlan({ text, knownRefs: [...unitByRef.keys(), ...check.known], invalidRefs: check.invalid, kind, gap })),
-    [localPlan, check.known, check.invalid, text, unitByRef, kind, gap],
+      : buildAddPlan({ text, knownRefs: [...unitByRef.keys(), ...check.known], invalidRefs: check.invalid, rejectedRefs, kind, gap })),
+    [localPlan, check.known, check.invalid, rejectedRefs, text, unitByRef, kind, gap],
   );
   const stateLabel = (state: Unit['state']) => t(`states.${state}`);
   /** Where a known ref is registered: « Entrepôt · Disponible », « autre variante · … », or nothing when unread. */
-  const knownDetail = (ref: string): string => {
+  const lineDetail = (ref: string, status: string): string => {
     const n = normalizeRef(ref);
+    if (status === 'rejected') {
+      const r = serverRejected.get(n);
+      return r ? codeMessage(t, r.code, r.detail) : '';
+    }
+    if (status !== 'known') return '';
     const u = unitByRef.get(n) ?? check.units.get(n);
     if (!u) return '';
     const where = u.locationId ? (p.locations.find((l) => l.id === u.locationId)?.name ?? u.locationId) : null;
@@ -162,6 +171,12 @@ function AddRefsForm(p: {
       keeper.done();
       const result = summarizeBatch(plan, res);
       setOutcome(result);
+      // The summary follows the server's answer: the refused refs leave « ready » (recette 3).
+      setServerRejected((prev) => {
+        const next = new Map(prev);
+        for (const r of result.rejected) if (r.ref) next.set(normalizeRef(r.ref), { code: r.code, ...(r.detail ? { detail: r.detail } : {}) });
+        return next;
+      });
       if (res.created.length > 0) setAdded((prev) => [...res.created, ...prev]);
       setText(result.remainingText);
       // Everything added: show the result and offer to close; refused refs stay in the field for correction.
@@ -240,7 +255,7 @@ function AddRefsForm(p: {
               }}
             />
 
-            {plan.lines.length > 0 ? <LinePreview t={t} plan={plan} detail={knownDetail} checking={check.checking} /> : null}
+            {plan.lines.length > 0 ? <LinePreview t={t} plan={plan} detail={lineDetail} checking={check.checking} /> : null}
             {blockedMessage ? (
               <s-banner tone="warning">
                 <s-text>{blockedMessage}</s-text>
@@ -315,57 +330,51 @@ function AddRefsForm(p: {
   );
 }
 
-/** Live count of the pasted lines and the lines that will not be sent (duplicate, known, invalid). */
-function LinePreview({ t, plan, detail, checking }: { t: Translate; plan: AddPlan; detail: (ref: string) => string; checking: boolean }) {
+/**
+ * Live count of the typed list (introduced as such: it is not the registered count shown below, recette 3), then one
+ * row per line that will not be sent: ref, status and reason (duplicate, known with its location, invalid, refused
+ * by the server with its message).
+ */
+function LinePreview({ t, plan, detail, checking }: { t: Translate; plan: AddPlan; detail: (ref: string, status: string) => string; checking: boolean }) {
   const { counts } = plan;
   const flagged = plan.lines.filter((l) => l.status !== 'ready');
   return (
     <s-stack gap="small-300">
       <s-text {...({ 'aria-live': 'polite' } as Record<string, unknown>)}>
         {/* One plural form per count (Shopify's translate pluralizes on `count` only). */}
-        {`${[
+        {`${t('variantAction.previewIntro')} ${[
           t('variantAction.previewReady', { count: counts.ready }),
           ...(counts.duplicate > 0 ? [t('variantAction.previewDuplicate', { count: counts.duplicate })] : []),
           ...(counts.known > 0 ? [t('variantAction.previewKnown', { count: counts.known })] : []),
           ...(counts.invalid > 0 ? [t('variantAction.previewInvalid', { count: counts.invalid })] : []),
+          ...(counts.rejected > 0 ? [t('variantAction.previewRejected', { count: counts.rejected })] : []),
         ].join(', ')}.`}
       </s-text>
       {checking ? <s-text color="subdued">{t('variantAction.checking')}</s-text> : null}
       {flagged.length > 0 ? (
-        <s-table>
-          <s-table-header-row>
-            <s-table-header>{t('variantAction.colRef')}</s-table-header>
-            <s-table-header>{t('variantAction.colStatus')}</s-table-header>
-          </s-table-header-row>
-          <s-table-body>
-            {flagged.map((l) => (
-              <s-table-row key={l.index}>
-                <s-table-cell>{l.ref}</s-table-cell>
-                <s-table-cell>
-                  <s-badge tone="warning">{t(`variantAction.line_${l.status}`)}</s-badge>
-                  {l.status === 'known' && detail(l.ref) ? ` — ${detail(l.ref)}` : ''}
-                </s-table-cell>
-              </s-table-row>
-            ))}
-          </s-table-body>
-        </s-table>
+        <s-stack gap="small-200">
+          {flagged.map((l) => {
+            const why = detail(l.ref, l.status);
+            return (
+              <s-stack key={l.index} direction="inline" gap="small-200" alignItems="center" data-line-status={l.status}>
+                <s-text type="strong">{l.ref}</s-text>
+                <s-badge tone={l.status === 'rejected' || l.status === 'invalid' ? 'critical' : 'warning'}>{t(`variantAction.line_${l.status}`)}</s-badge>
+                {why ? <s-text color="subdued">{why}</s-text> : null}
+              </s-stack>
+            );
+          })}
+        </s-stack>
       ) : null}
     </s-stack>
   );
 }
 
 function OutcomeView({ t, outcome, done }: { t: Translate; outcome: BatchOutcome; done: boolean }) {
+  // The refused refs are listed one per row, with their reason, under the field (LinePreview).
   return (
     <s-banner tone={outcome.rejected.length === 0 ? 'success' : 'warning'} heading={t('variantAction.outcomeTitle', { count: outcome.created })}>
       {outcome.rejected.length > 0 ? (
-        <s-stack gap="small-300">
-          <s-text>{t('variantAction.outcomeRejected', { count: outcome.rejected.length })}</s-text>
-          {outcome.rejected.map((r, i) => (
-            <s-text key={`${r.ref}-${i}`}>
-              {r.ref} : {codeMessage(t, r.code, r.detail)}
-            </s-text>
-          ))}
-        </s-stack>
+        <s-text>{t('variantAction.outcomeRejected', { count: outcome.rejected.length })}</s-text>
       ) : done ? (
         <s-text>{t('variantAction.doneHint')}</s-text>
       ) : null}

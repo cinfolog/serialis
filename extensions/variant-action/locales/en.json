@@ -100,6 +100,7 @@
     "kindReceived": "Received now (Shopify stock +1 per unit)",
     "addRefs": "Refs to add",
     "addRefsHelp": "One ref per line; spaces, commas and semicolons are also accepted.",
+    "previewIntro": "Your list:",
     "previewReady": {
       "one": "{{count}} ready",
       "other": "{{count}} ready"
@@ -116,9 +117,14 @@
       "one": "{{count}} with an invalid format",
       "other": "{{count}} with an invalid format"
     },
+    "previewRejected": {
+      "one": "{{count}} rejected by Serialis",
+      "other": "{{count}} rejected by Serialis"
+    },
     "line_duplicate": "Duplicate in the list",
     "line_known": "Already registered",
     "line_invalid": "Invalid format",
+    "line_rejected": "Rejected",
     "addNoGap": "No gap in Shopify: use “Received” to add stock.",
     "addTooMany": "1,000 refs at most per add: split the list.",
     "addExceedsGap": {
@@ -143,8 +149,8 @@
       "other": "{{count}} refs added"
     },
     "outcomeRejected": {
-      "one": "{{count}} ref rejected, left in the field for correction:",
-      "other": "{{count}} refs rejected, left in the field for correction:"
+      "one": "{{count}} ref rejected, left in the field with its reason.",
+      "other": "{{count}} refs rejected, left in the field with their reason."
     },
     "addAt": "Location: {{location}}",
     "colRef": "Ref",

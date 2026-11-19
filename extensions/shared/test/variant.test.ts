@@ -18,7 +18,7 @@ describe('buildAddPlan', () => {
   it('classifies lines and announces the stock effect of "received"', () => {
     const plan = buildAddPlan({ text: 'A1\nA2, a1 K9 !'.replace('!', 'x'.repeat(200)), knownRefs: ['k9'], kind: 'received', gap: 0 });
     expect(plan.readyRefs).toEqual(['A1', 'A2']);
-    expect(plan.counts).toEqual({ ready: 2, duplicate: 1, known: 1, invalid: 1 });
+    expect(plan.counts).toEqual({ ready: 2, duplicate: 1, known: 1, invalid: 1, rejected: 0 });
     expect(plan.stockDelta).toBe(2);
     expect(plan.blocked).toBeNull();
   });

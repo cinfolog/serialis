@@ -27,7 +27,7 @@ export function parseRefList(text: string): string[] {
   return text.split(/[\s,;]+/).filter((s) => s.length > 0);
 }
 
-export type RefLineStatus = 'ready' | 'duplicate' | 'known' | 'invalid';
+export type RefLineStatus = 'ready' | 'duplicate' | 'known' | 'invalid' | 'rejected';
 
 export interface RefLine {
   /** 0-based position in the pasted list (matches `rejected[].index` of the batch response). */
@@ -42,14 +42,18 @@ const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 /**
  * Status of each pasted ref: `invalid` (too long, control characters, or refused by the server check),
  * `duplicate` (same normalized ref earlier in the list), `known` (already registered: for this variant, or for the
- * shop when the server check said so), otherwise `ready`.
+ * shop when the server check said so), `rejected` (refused by the server when the batch was sent: never « ready »
+ * again until the line is changed, recette 3), otherwise `ready`.
  */
 export function classifyRefs(
   refs: string[],
   knownRefs: Iterable<string>,
   opts: NormalizeOptions = {},
   invalidRefs: Iterable<string> = [],
+  rejectedRefs: Iterable<string> = [],
 ): RefLine[] {
+  const rejected = new Set<string>();
+  for (const k of rejectedRefs) rejected.add(normalizeRef(k, opts));
   const known = new Set<string>();
   for (const k of knownRefs) known.add(normalizeRef(k, opts));
   const invalid = new Set<string>();
@@ -61,13 +65,14 @@ export function classifyRefs(
     if (n.length === 0 || invalid.has(n)) return { index, ref, status: 'invalid' };
     if (seen.has(n)) return { index, ref, status: 'duplicate' };
     seen.add(n);
+    if (rejected.has(n)) return { index, ref, status: 'rejected' };
     if (known.has(n)) return { index, ref, status: 'known' };
     return { index, ref, status: 'ready' };
   });
 }
 
 export function countByStatus(lines: RefLine[]): Record<RefLineStatus, number> {
-  const out: Record<RefLineStatus, number> = { ready: 0, duplicate: 0, known: 0, invalid: 0 };
+  const out: Record<RefLineStatus, number> = { ready: 0, duplicate: 0, known: 0, invalid: 0, rejected: 0 };
   for (const l of lines) out[l.status]++;
   return out;
 }

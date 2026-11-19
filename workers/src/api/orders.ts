@@ -15,7 +15,7 @@ import type {
 import type { UnitRecord } from '../domain/repo.js';
 import { readLevel } from '../domain/shopify-read.js';
 import { requestLevelCheck, requestOrderSync } from '../domain/sync-order.js';
-import { newId } from '../domain/util.js';
+import { newId, sha256Hex } from '../domain/util.js';
 import { stockWriteInput } from '../domain/writes.js';
 import { evaluateLevel, storeLevel } from '../domain/levels.js';
 import { allocationEtag, ApiError, checkIfMatch, decodeCursor, encodeCursor, iso, json, noContent, orderGidOf, pageLimit, parseBody, queryOne, type ApiResult } from './http.js';
@@ -83,7 +83,18 @@ export function orderAllocations(ctx: ApiContext, orderParam: string): ApiResult
     syncedAt: iso(sync?.last_synced_at ?? null),
     automationPaused: ctx.d.repo.automationPaused(),
   };
-  return json(response);
+  // The order block polls this route (workers/DECISIONS.md 86): a weak ETag of the content lets an unchanged
+  // order answer 304 without a body.
+  const body = JSON.stringify(response);
+  const etag = `W/"o${sha256Hex(body).slice(0, 20)}"`;
+  if (ifNoneMatches(ctx.call.headers.ifNoneMatch, etag)) return { status: 304, headers: { ETag: etag }, body: null };
+  return { status: 200, headers: { 'Content-Type': 'application/json', ETag: etag }, body };
+}
+
+function ifNoneMatches(header: string | null | undefined, etag: string): boolean {
+  if (!header) return false;
+  const bare = (v: string) => v.trim().replace(/^W\//, '');
+  return header.split(',').some((v) => v.trim() === '*' || bare(v) === bare(etag));
 }
 
 // ------------------------------------------------------------------------------------- designation (15.5)
@@ -366,6 +377,8 @@ function finishConfirmation(ctx: ApiContext, scope: { orderGid: string; lineItem
   const left = repo.orderAllocations(scope.orderGid).filter((a) => a.lineItemGid === scope.lineItemGid && a.locationId === scope.locationId && a.status === 'fulfilled' && a.toConfirm).length;
   const anomaly = repo.liveAnomaly('shipped_unit_to_confirm', { orderGid: scope.orderGid, lineItemGid: scope.lineItemGid, locationId: scope.locationId });
   if (anomaly && left === 0) repo.closeAnomaly(anomaly.id, 'resolved', { by: ctx.call.principal.actor }, now);
+  // One unit confirmed, others left: the anomaly says how many remain until the next synchronization confirms it.
+  else if (anomaly && left > 0) repo.updateAnomalyDetails(anomaly.id, { ...anomaly.details, quantity: left }, now);
   requestOrderSync(ctx.d, scope.orderGid, 0, now);
 }
 

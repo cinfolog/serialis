@@ -1,6 +1,6 @@
 % Serialis — Spécification technique de réalisation
 % App Shopify de gestion des stocks sérialisés
-% Version 1.16 — 19 novembre 2026 — Thomas Cadalen (Cinfolog)
+% Version 1.17 — 19 novembre 2026 — Thomas Cadalen (Cinfolog)
 
 # 1. Objet du document
 
@@ -1096,7 +1096,7 @@ Points dont le comportement exact ne peut être établi qu'en conditions réelle
 |---|---|---|---|
 | PV-1 | Liste exacte des sujets de webhook acceptés avec les scopes du lot | Lot 0, au premier `shopify app deploy`, puis à chaque lot qui ajoute un scope | Remplacer le sujet manquant par un sujet voisin (par exemple `returns/update` pour `returns/process`, que le filtre de la section 12.1 relit aussi pour une commande `ignored`) et par la réconciliation R1 |
 | PV-2 | Accord d'accès aux données clients protégées de niveau 1 | Lot 0 (demande), lot 5 (revue) | Aucun pour une app publique : c'est bloquant, d'où la demande précoce et la minimisation stricte |
-| PV-3 | Effet sur le stock de la disposition de retour « contrôle requis » | MVP | Les deux branches sont écrites dans la machine à états ; la bonne est activée |
+| PV-3 | Levée le 19/11/2026 (recette 3) : la disposition « contrôle requis » (`PROCESSING_REQUIRED`, posée par `reverseFulfillmentOrderDispose`) ne change aucune quantité de Shopify, à aucun emplacement ; la branche par défaut est confirmée (l'app passe l'unité en QUALITY_CONTROL et écrit `quality_control` +1) | — | Les deux branches restent écrites dans le code ; `processingRequiredAddsAvailable` reste désactivée |
 | PV-4 | Blocage du « prêt pour le retrait » par une mise en attente | Lot 1 | Détection a posteriori (F4) |
 | PV-5 | Levée le 17/11/2026 : la fonction de validation du panier et du paiement n'est pas prise en charge par la caisse (tableau de compatibilité de l'API) ; régularisation par anomalie (DO-4 tranchée) | — | — |
 | PV-6 | Compteur d'usage « unités actives » couvert par Shopify App Pricing | Lot 5 | Billing API avec enregistrements d'usage |
@@ -1972,6 +1972,7 @@ Chaque version a été relue critère par critère avec la grille de l'annexe A.
 | 1.14 (réalisation) | — | Retours de la réalisation des lots 0 et MVP (workers/DECISIONS.md 1 à 67, app/DECISIONS.md, extensions/DECISIONS.md). | Anomalies `task_dead`, `reconnect_required` et `consistency_violation` ajoutées à 12.7 ; propriétaire = premier utilisateur de l'app dans le MVP ; S-25 réglable à la portée boutique (B, A) ; contrôle de cohérence en fin de transaction plutôt qu'un déclencheur SQLite sur l'état des unités (états intermédiaires légitimes d'un plan) ; PV-1 levée (abonnements du MVP acceptés au déploiement), PV-2 déclarée pour le développement, PV-18 reportée sur l'app de production (le choix de distribution est irréversible). |
 | 1.15 (réalisation) | — | Fin de la réalisation du MVP (workers/DECISIONS.md 68 à 71, app/DECISIONS.md 27 à 31). | Route `POST /health/tasks/{key}/revive` et écran Santé ; abandon d'une écriture = statut `failed` + `abandoned_at`/`abandoned_by` (migration additive) ; désignation des administrateurs par le propriétaire seul, conformément à 15.8 (le code l'autorisait à tout administrateur) ; T-MVP-05 hors boutique de développement (plafond de commandes). |
 | 1.16 (réalisation) | — | Recette navigateur 3 : après la fermeture de tout dialogue, l'admin Shopify restait grisé (barre du haut et menu inutilisables jusqu'au rechargement), malgré la correction de la décision 33 (app/DECISIONS.md 42). | 13.7 et 15.1 : confirmations dessinées dans le cadre de l'app (`<dialog>` natif à l'apparence Polaris) au lieu de `s-modal` ; choix à revoir avant la soumission Built for Shopify (critère 4.1.6). |
+| 1.17 (réalisation) | — | Recette navigateur 3 : `reverseFulfillmentOrderDispose` avec `PROCESSING_REQUIRED` ne change aucune quantité de Shopify ; dans l'app, la disposition sans emplacement était ignorée (workers/DECISIONS.md 84). | 13.8 : PV-3 levée, branche par défaut confirmée (QUALITY_CONTROL, `quality_control` +1). |
 
 # Annexe C — Glossaire
 

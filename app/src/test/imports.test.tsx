@@ -32,6 +32,8 @@ describe('Import CSV : simulation puis confirmation', () => {
     expect(report).toContain('Lignes au-delà de l’écart avec Shopify : 1');
     expect(text(screen.getByTestId('import-effect'))).toBe('Effet prévu sur le stock : 2 écritures dans Shopify ; les 2 autres lignes valides sont déjà comptées (aucune écriture).');
     const errors = screen.getByTestId('import-errors').textContent ?? '';
+    // Recette 3: the number is the line of the file (header = line 1), labelled as such.
+    expect(screen.getByTestId('import-errors').querySelector('s-table-header')?.textContent).toBe('Ligne du fichier');
     // Worker detail keys, shown as specific messages and never raw (recette 2).
     expect(errors).toContain('Aucun écart dans Shopify à cet emplacement : choisissez « Reçues maintenant » (stock Shopify +1 par ref).');
     expect(errors).toContain('Cette ref est déjà enregistrée.');

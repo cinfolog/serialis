@@ -24,6 +24,15 @@ describe('Textes fr / en (15.9)', () => {
     for (const key of Object.keys(fr)) expect(placeholderNames(en[key] as string), key).toEqual(placeholderNames(fr[key] as string));
   });
 
+  it('recette 3 — unit states: one term everywhere, the same as the admin extensions (« Mise au rebut » / « Scrapped »)', () => {
+    for (const locale of ['fr', 'en'] as const) {
+      const ext = JSON.parse(readFileSync(join(SRC, '..', '..', 'extensions', 'shared', 'locales', `${locale}.json`), 'utf8')) as { states: Record<string, string> };
+      for (const [state, label] of Object.entries(ext.states)) expect(dictionaries[locale][`state.${state}`], `${locale} ${state}`).toBe(label);
+    }
+    expect(dictionaries.fr['state.SCRAPPED']).toBe('Mise au rebut');
+    expect(dictionaries.en['state.SCRAPPED']).toBe('Scrapped');
+  });
+
   it('French is the default language and plurals follow the language', () => {
     const fr = createI18n('fr');
     const en = createI18n('en');

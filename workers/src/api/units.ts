@@ -535,7 +535,10 @@ function parseBool(v: string | undefined): boolean | null {
 }
 
 function parseCsv(ctx: ApiContext, csv: string): ImportRow[] {
-  const lines = csv.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim() !== '');
+  // `row` of the report is the line of the file (header = its line, blank lines counted), as an editor shows it
+  // (recette 3: « Row 5 » for the 4th data row read as a row count).
+  const numbered = csv.replace(/^﻿/, '').split(/\r?\n/).map((text, i) => ({ text, line: i + 1 })).filter((l) => l.text.trim() !== '');
+  const lines = numbered.map((l) => l.text);
   if (lines.length < 2) throw new ApiError(422, 'validation_failed', 'CSV needs a header and at least one row');
   if (lines.length - 1 > MAX_IMPORT_ROWS) throw new ApiError(422, 'validation_failed', `at most ${MAX_IMPORT_ROWS} rows per import`);
   const sep = (lines[0]!.match(/;/g)?.length ?? 0) > (lines[0]!.match(/,/g)?.length ?? 0) ? ';' : ',';
@@ -549,7 +552,7 @@ function parseCsv(ctx: ApiContext, csv: string): ImportRow[] {
   const locations = repo.locations();
   return lines.slice(1).map((line, i) => {
     const cells = splitCsvLine(line, sep);
-    const row = i + 2;
+    const row = numbered[i + 1]!.line;
     const ref = cells[col('ref')] ?? '';
     const variantCell = col('variant_id') >= 0 ? (cells[col('variant_id')] ?? '') : '';
     const skuCell = col('sku') >= 0 ? (cells[col('sku')] ?? '') : '';
@@ -615,7 +618,7 @@ function checkImport(ctx: ApiContext, rows: ImportRow[], groups: ImportSimulatio
       const r = g.rows[i]!;
       const dupRow = seen.get(pr.valueNorm);
       if (pr.status === 'ready' && dupRow !== undefined) {
-        errors.push({ row: r.row, code: 'identifier_conflict', detail: `duplicate_in_file (row ${dupRow})` });
+        errors.push({ row: r.row, code: 'identifier_conflict', detail: `duplicate_in_file (line ${dupRow})` });
         return;
       }
       seen.set(pr.valueNorm, r.row);

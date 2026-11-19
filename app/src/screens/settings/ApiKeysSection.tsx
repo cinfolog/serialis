@@ -71,6 +71,9 @@ function ApiKeysAdmin() {
       const response = await client.createApiKey({ name: trimmed, scopes });
       setCreated(response);
       setName('');
+      // The new key is listed at once from the creation response (its own `createdAt`), then the list is read again
+      // (recette 3: a wrong creation date until F5).
+      keys.replace({ items: [response.apiKey, ...(keys.data?.items ?? []).filter((k) => k.prefix !== response.apiKey.prefix)], nextCursor: keys.data?.nextCursor ?? null });
       keys.reload();
       announce(t('apikeys.created.announce'));
     } catch (e) {

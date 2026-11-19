@@ -111,8 +111,14 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
   try {
     const routing = await resolveRouting(env, shop);
     // Unknown or uninstalled shop: acknowledged and ignored, except the compliance topics (spec 10.5).
-    if (!routing) return Response.json({ stored: false, reason: 'unknown_shop' });
-    if (routing.status === 'inactive' && !isComplianceTopic(topic)) return Response.json({ stored: false, reason: 'inactive' });
+    if (!routing) {
+      logEvent('info', 'webhook', { shop, topic, webhook_id: webhookId, outcome: 'ignored', reason: 'unknown_shop' });
+      return Response.json({ stored: false, reason: 'unknown_shop' });
+    }
+    if (routing.status === 'inactive' && !isComplianceTopic(topic)) {
+      logEvent('info', 'webhook', { shop, topic, webhook_id: webhookId, outcome: 'ignored', reason: 'inactive' });
+      return Response.json({ stored: false, reason: 'inactive' });
+    }
 
     const result = await shopStub(env, routing).ingest({
       webhookId,
@@ -127,7 +133,7 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
     return Response.json(result, { status: 200 });
   } catch (error) {
     // Not stored: 5xx so that Shopify retries (spec 12.1 step 3).
-    logEvent('error', 'webhook.failed', { shop, topic, error: errorMessage(error) });
+    logEvent('error', 'webhook', { shop, topic, webhook_id: webhookId, outcome: 'error', error: errorMessage(error) });
     return new Response('Retry later', { status: 503 });
   }
 }

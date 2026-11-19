@@ -149,5 +149,6 @@ export function presentAnomaly(ctx: ApiContext, a: CoreAnomaly & { resolution?: 
     actions: a.status === 'open' || a.status === 'acknowledged' ? anomalyActions(a.type, ctx.locale) : [],
     openedAt: new Date(a.detectedAt).toISOString(),
     resolvedAt: iso(a.resolvedAt),
+    ...(typeof a.details.quantity === 'number' ? { remaining: a.status === 'open' || a.status === 'acknowledged' ? a.details.quantity : 0 } : {}),
   };
 }

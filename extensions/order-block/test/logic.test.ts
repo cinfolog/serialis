@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { OrderAllocationsResponse } from '@serialis/contract';
 import { LINE, ORDER, VARIANT, makeAllocation } from '@serialis/extensions-shared/testing';
-import { MAX_POLLS, buildLineViews, canEdit, compactLines, displayedQuantity, type LineView, originKey, rowStatusView, shouldPoll, statusView, untrackedLineCount } from '../src/logic';
+import { MAX_POLLS, buildLineViews, canEdit, compactLines, quantityLabel, type LineView, originKey, rowStatusView, shouldPoll, statusView, untrackedLineCount } from '../src/logic';
 
 const response = (over: Partial<OrderAllocationsResponse> = {}): OrderAllocationsResponse => ({
   orderGid: ORDER,
@@ -39,11 +39,19 @@ describe('buildLineViews', () => {
     const v = buildLineViews(r)[0]!;
     expect(v.rows.map((x) => (x.kind === 'allocation' ? x.allocation.ref : '-'))).toEqual(['PEND', 'BACK']);
     expect(v).toMatchObject({ current: 1, returnPending: 1, returned: 1 });
-    expect(displayedQuantity(v.line)).toBe(2);
+    expect(quantityLabel(v)).toEqual({ current: 2, ordered: null });
     expect(rowStatusView(r.lines[0]!.allocations[1]!)).toEqual({ key: 'states.RETURN_PENDING', tone: 'warning' });
     expect(rowStatusView(r.lines[0]!.allocations[0]!)).toEqual({ key: 'states.SCRAPPED', tone: 'neutral' });
     expect(rowStatusView(makeAllocation('S', { status: 'fulfilled', unitState: 'SHIPPED' }))).toEqual(statusView('fulfilled'));
-    expect(displayedQuantity({ ...v.line, orderedQuantity: undefined } as never)).toBe(0);
+    expect(quantityLabel({ ...v, line: { ...v.line, orderedQuantity: undefined } } as never)).toEqual({ current: 0, ordered: null });
+  });
+
+  it('recette 3 — order edited 3 → 2: current quantity, then the quantity ordered', () => {
+    const r = response();
+    r.lines[0] = { ...r.lines[0]!, quantity: 2, orderedQuantity: 3, missing: 0, allocations: [makeAllocation('A'), makeAllocation('B')] };
+    expect(quantityLabel(buildLineViews(r)[0]!)).toEqual({ current: 2, ordered: 3 });
+    r.lines[0] = { ...r.lines[0]!, quantity: 3, orderedQuantity: 3 };
+    expect(quantityLabel(buildLineViews(r)[0]!)).toEqual({ current: 3, ordered: null });
   });
 
   it('recette 2 — « +N more units » counts the units on the line only (7 units and 7 released: +3)', () => {

@@ -809,8 +809,11 @@ export class OrderHandle {
    * Records dispositions on the reverse fulfillment order (reverse_fulfillment_orders/dispose, then returns/update
    * unless `returnUpdate: false`).
    * RESTOCKED adds to `available` at the location; PROCESSING_REQUIRED follows `MerchantOptions.processingRequiredStock`.
+   * `recordLocation: false`: a PROCESSING_REQUIRED disposition is stored without a location (the location given to
+   * the mutation is not kept, nothing being stocked there; `ReverseFulfillmentOrderDisposition.location` is nullable).
+   * `unlinked: true`: the reverse fulfillment order lines read `fulfillmentLineItem` as null (nullable field).
    */
-  dispose(returnId: string, dispositions: DispositionInput[], opts: { returnUpdate?: boolean } = {}): this {
+  dispose(returnId: string, dispositions: DispositionInput[], opts: { returnUpdate?: boolean; recordLocation?: boolean; unlinked?: boolean } = {}): this {
     const shop = this.shop;
     const ret = this.returnById(returnId);
     if (ret.status !== 'OPEN') throw new Error(`Return ${returnId} is ${ret.status}, dispositions need OPEN`);
@@ -823,7 +826,9 @@ export class OrderHandle {
       const disposed = rl.dispositions.reduce((s, x) => s + x.quantity, 0);
       if (d.quantity <= 0 || disposed + d.quantity > rl.totalQuantity) throw new Error(`Cannot dispose ${d.quantity} of ${line.id}: ${disposed}/${rl.totalQuantity} already disposed`);
       const locationId = d.locationId ?? this.merchant.fulfilledLocation(this.data, line);
-      rl.dispositions.push({ type: d.disposition, quantity: d.quantity, locationId: d.disposition === 'RESTOCKED' || d.disposition === 'PROCESSING_REQUIRED' ? locationId : null });
+      const keepsLocation = d.disposition === 'RESTOCKED' || (d.disposition === 'PROCESSING_REQUIRED' && opts.recordLocation !== false);
+      rl.dispositions.push({ type: d.disposition, quantity: d.quantity, locationId: keepsLocation ? locationId : null });
+      if (opts.unlinked) rl.unlinked = true;
       if (d.disposition === 'RESTOCKED') shop.effectRestock(line.variantId, locationId, d.quantity);
       if (d.disposition === 'PROCESSING_REQUIRED' && this.merchant.options.processingRequiredStock === 'available') shop.effectRestock(line.variantId, locationId, d.quantity);
       done.push({ id: rl.id, line_item_id: numericId(line.id), disposition_type: d.disposition.toLowerCase(), quantity: d.quantity, location_id: numericId(locationId) });
@@ -838,7 +843,7 @@ export class OrderHandle {
         reverse_fulfillment_order_line_item: { id: numericId(d.id), admin_graphql_api_id: d.id },
         reverse_delivery_line_item: null,
         type: d.disposition_type,
-        location: d.location_id && (d.disposition_type === 'restocked' || d.disposition_type === 'processing_required') ? { id: d.location_id } : null,
+        location: d.location_id && (d.disposition_type === 'restocked' || (d.disposition_type === 'processing_required' && opts.recordLocation !== false)) ? { id: d.location_id } : null,
       })),
       total_dispositions: done.length,
     });

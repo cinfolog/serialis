@@ -166,6 +166,8 @@ export interface Allocation {
   source: 'auto' | 'pick' | 'pos' | 'draft' | 'api' | 'late' | 'migration';
   toConfirm: boolean;
   allocatedAt: IsoDateTime;
+  /** Current state of the unit (a shipped allocation may be RETURN_PENDING, a returned one AVAILABLE, SCRAPPED…). */
+  unitState?: UnitState;
 }
 
 /** GET /orders/{orderId}/allocations */
@@ -177,7 +179,10 @@ export interface OrderAllocationsResponse {
     variantGid: Gid;
     title: string;
     tracked: boolean;
+    /** Current quantity of the line in Shopify (after edits, refunds and returns). */
     quantity: number;
+    /** Quantity ordered (Shopify `quantity`, before edits and refunds). */
+    orderedQuantity?: number;
     allocations: Allocation[];
     /** Units still missing for this line (awaiting_unit / insufficient_units). */
     missing: number;

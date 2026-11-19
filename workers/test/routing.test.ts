@@ -81,7 +81,7 @@ describe('uninstall and reinstall (spec 9.14, 10.5, 16.1)', () => {
     await runInDurableObject(stub, async (_s: ShopStore, state: DurableObjectState) => {
       expect(await state.storage.getAlarm()).toBeNull();
       // Data kept until shop/redact: the inbox and the pending task are still there.
-      expect(state.storage.sql.exec("SELECT count(*) AS n FROM tasks WHERE key NOT IN ('purge', 'recon:R4')").one().n).toBe(1);
+      expect(state.storage.sql.exec("SELECT count(*) AS n FROM tasks WHERE key NOT IN ('purge', 'recon:R4', 'definitions')").one().n).toBe(1);
     });
 
     // Ordinary topics are acknowledged and ignored.

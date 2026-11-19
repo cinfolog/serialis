@@ -45,7 +45,7 @@ export const ORDER_QUERY = `query SerialisOrder($id: ID!) {
     returns(first: 3) {
       nodes {
         id status
-        returnLineItems(first: 5) { nodes { id quantity ... on ReturnLineItem { fulfillmentLineItem { lineItem { id } } } } }
+        returnLineItems(first: 5) { nodes { id quantity ... on ReturnLineItem { processedQuantity fulfillmentLineItem { lineItem { id } } } } }
         reverseFulfillmentOrders(first: 2) {
           nodes { lineItems(first: 5) { nodes { dispositions { type quantity location { id } } fulfillmentLineItem { lineItem { id } } } } }
         }
@@ -80,7 +80,7 @@ interface OrderData {
     returns: Conn<{
       id: string;
       status: string;
-      returnLineItems: Conn<{ id: string; quantity: number; fulfillmentLineItem?: { lineItem: Id } | null }>;
+      returnLineItems: Conn<{ id: string; quantity: number; processedQuantity?: number | null; fulfillmentLineItem?: { lineItem: Id } | null }>;
       reverseFulfillmentOrders: Conn<{
         lineItems: Conn<{ dispositions: { type: string; quantity: number; location: Id }[] | null; fulfillmentLineItem: { lineItem: Id } | null }>;
       }>;
@@ -141,7 +141,7 @@ export async function readOrder(client: AdminGraphqlClient, orderGid: string, ed
   const returns = o.returns.nodes.map((r) => {
     const lineItems = r.returnLineItems.nodes
       .filter((l) => l.fulfillmentLineItem?.lineItem)
-      .map((l) => ({ gid: l.id, lineItemGid: l.fulfillmentLineItem!.lineItem!.id, quantity: l.quantity }));
+      .map((l) => ({ gid: l.id, lineItemGid: l.fulfillmentLineItem!.lineItem!.id, quantity: l.quantity, processedQuantity: l.processedQuantity ?? 0 }));
     for (const l of lineItems) returnLines.push({ gid: l.gid, returnGid: r.id, lineItemGid: l.lineItemGid, quantity: l.quantity });
     // Reverse fulfillment order lines point to the order line; the return line is found through it.
     const dispositions: OrderSnapshot['returns'][number]['dispositions'][number][] = [];
@@ -150,9 +150,12 @@ export async function readOrder(client: AdminGraphqlClient, orderGid: string, ed
         const lineItemGid = rl.fulfillmentLineItem?.lineItem?.id;
         const target = lineItems.find((l) => l.lineItemGid === lineItemGid);
         if (!target) continue;
+        // NOT_RESTOCKED and MISSING carry no location (nothing is restocked anywhere): kept with a null location,
+        // the unit keeps the location it left from (recette 2, workers/DECISIONS.md 74).
         for (const d of rl.dispositions ?? []) {
-          if (!d.location?.id) continue;
-          dispositions.push({ returnLineItemGid: target.gid, type: d.type as DispositionType, quantity: d.quantity, locationId: d.location.id });
+          const locationId = d.location?.id ?? null;
+          if (locationId === null && (d.type === 'RESTOCKED' || d.type === 'PROCESSING_REQUIRED')) continue;
+          dispositions.push({ returnLineItemGid: target.gid, type: d.type as DispositionType, quantity: d.quantity, locationId });
         }
       }
     }

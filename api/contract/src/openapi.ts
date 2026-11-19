@@ -85,11 +85,11 @@ const schemas: Record<string, Schema> = {
     id: str(), unitId: str(), ref: str(), orderGid: str(), lineItemGid: str(), variantGid: str(), locationId: str(),
     status: str({ enum: ['active', 'fulfilled', 'released', 'returned'] }),
     source: str({ enum: ['auto', 'pick', 'pos', 'draft', 'api', 'late', 'migration'] }),
-    toConfirm: { type: 'boolean' }, allocatedAt: dateTime,
+    toConfirm: { type: 'boolean' }, allocatedAt: dateTime, unitState: str({ enum: UNIT_STATES }),
   }),
   OrderAllocationsResponse: obj({
     orderGid: str(),
-    lines: { type: 'array', items: obj({ lineItemGid: str(), variantGid: str(), title: str(), tracked: { type: 'boolean' }, quantity: { type: 'integer' }, allocations: { type: 'array', items: ref('Allocation') }, missing: { type: 'integer' } }) },
+    lines: { type: 'array', items: obj({ lineItemGid: str(), variantGid: str(), title: str(), tracked: { type: 'boolean' }, quantity: { type: 'integer' }, orderedQuantity: { type: 'integer' }, allocations: { type: 'array', items: ref('Allocation') }, missing: { type: 'integer' } }) },
     syncState: str({ enum: ['pending', 'synced', 'error'] }),
     syncedAt: nullable(dateTime),
   }),

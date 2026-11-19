@@ -14,6 +14,7 @@ import type {
   SettingScope,
   SettingsResponse,
   SettingsSimulation,
+  SettingsSimulationSummary,
   SettingValue,
   SimulateSettingsRequest,
   StatusBanner,
@@ -323,7 +324,7 @@ export function simulateSettings(ctx: ApiContext): ApiResult {
   const warnings: string[] = [];
   for (const c of changes) {
     let count = 0;
-    let summary = 'no_object_affected';
+    let summary: SettingsSimulationSummary = 'no_object_affected';
     if (c.key === 'S-35') {
       count = c.value === 'shop' ? scopeConflicts(ctx) : 0;
       summary = count > 0 ? 'duplicates_block_shop_scope' : 'identifiers_rescoped';

@@ -220,10 +220,13 @@ export class MockClient implements ApiClient {
     };
     this.units.push(unit);
     this.events.set(id, [
-      { id: `${id}-e1`, at: unit.createdAt, actor: 'Camille', type: 'unit.received', fromState: null, toState: 'AVAILABLE', reason: 'Réception', stockEffect: '+1 en stock' },
-      ...(state !== 'AVAILABLE'
-        ? [{ id: `${id}-e2`, at: unit.updatedAt, actor: 'système', type: 'unit.status_changed', fromState: 'AVAILABLE' as UnitState, toState: state, reason: 'Changement d’état', stockEffect: 'aucune écriture' }]
-        : []),
+      // Same keys as the Worker (`UNIT_EVENT_TYPES`, `UNIT_EVENT_REASONS`), translated by the app.
+      { id: `${id}-e1`, at: unit.createdAt, actor: 'Camille', type: 'created', fromState: null, toState: 'AVAILABLE', reason: 'received', stockEffect: '+1 available', stockDelta: 1, stockQuantity: 'available' },
+      ...(state === 'TO_VERIFY'
+        ? [{ id: `${id}-e2`, at: unit.updatedAt, actor: 'system', type: 'to_verify', fromState: 'ALLOCATED' as UnitState, toState: state, reason: 'not_restocked', stockEffect: null, stockDelta: null, stockQuantity: null }]
+        : state !== 'AVAILABLE'
+          ? [{ id: `${id}-e2`, at: unit.updatedAt, actor: 'system', type: state === 'SHIPPED' ? 'shipped' : 'allocated', fromState: 'AVAILABLE' as UnitState, toState: state, reason: null, stockEffect: 'no write', stockDelta: null, stockQuantity: null }]
+          : []),
     ]);
     return unit;
   }
@@ -606,7 +609,16 @@ export class MockClient implements ApiClient {
       this.simulations.set(simulationId, req);
       const effects = Object.keys(req.values)
         .filter((k) => SIMULATED_KEYS.has(k))
-        .map((key) => ({ key, count: key === 'S-17' ? 1 : 4, summary: key === 'S-17' ? '1 retour en attente d’identification sera traité sans saisie de ref.' : '4 objets seront traités autrement à la prochaine synchronisation.' }));
+        // Same stable keys as the Worker (`SETTINGS_SIMULATION_SUMMARIES`), translated by the app.
+        .map((key): SettingsSimulation['effects'][number] =>
+          key === 'S-11'
+            ? { key, count: 4, summary: 'applies_to_next_synchronizations' }
+            : key === 'S-38'
+              ? { key, count: 1, summary: req.values[key] === false ? 'metafields_removed_at_next_sync' : 'metafields_written_at_next_sync' }
+              : key === 'S-35'
+                ? { key, count: 0, summary: 'identifiers_rescoped' }
+                : { key, count: 0, summary: 'applies_to_next_events' },
+        );
       const warnings: string[] = [];
       if (req.values['S-17'] === false) warnings.push('S-17 = non : une unité mal désignée au retour n’est plus détectable par l’app.');
       if (req.values['S-09'] === 'auto_resolve') warnings.push('S-09 = résolution automatique : peut consommer un ajout manuel sans rapport fait dans Shopify.');

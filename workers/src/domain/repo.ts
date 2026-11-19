@@ -20,9 +20,26 @@ import {
   type UnitLock,
   type UnitState,
 } from '@serialis/core';
+import type { StockQuantityName, UnitEventReason, UnitEventType } from '@serialis/contract';
 import { chunks, newId, parseJson, placeholders, sha256Hex } from './util.js';
 
 type Row = Record<string, SqlStorageValue>;
+
+
+/**
+ * Data of a unit event. The fields read by `GET /units/{id}/events` are typed with the contract keys
+ * (`UNIT_EVENT_REASONS`, `STOCK_QUANTITY_NAMES`) so that the Worker cannot write a cause the
+ * interfaces do not translate (15.9).
+ */
+export interface UnitEventData {
+  reason?: UnitEventReason;
+  releaseKind?: UnitEventReason;
+  disposition?: UnitEventReason;
+  stockDelta?: number;
+  quantityName?: StockQuantityName;
+  stockWrite?: boolean;
+  [key: string]: unknown;
+}
 
 export interface Actor {
   type: 'user' | 'api_key' | 'system' | 'shopify';
@@ -368,14 +385,15 @@ export class DomainRepo {
 
   insertEvent(e: {
     unitId: string;
-    type: string;
+    /** Contract keys only: the interfaces translate them (15.9, `UNIT_EVENT_TYPES`). */
+    type: UnitEventType;
     from: UnitState | null;
     to: UnitState | null;
     actor: Actor;
     cause: Cause;
     orderGid?: string | null;
     locationId?: string | null;
-    data?: Record<string, unknown>;
+    data?: UnitEventData;
     now: number;
   }): void {
     this.sql.exec(

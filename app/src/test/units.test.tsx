@@ -24,6 +24,25 @@ describe('Unités : liste', () => {
     await waitFor(() => expect(screen.getByTestId('unit-events')).toBeInTheDocument());
   });
 
+  it('shows the history with readable causes and stock effects, never the Worker keys (15.9)', async () => {
+    const mock = new MockClient();
+    const unit = mock.units.find((u) => u.ref === 'SN-UR500-M-51203')!;
+    mock.events.set(unit.id, [
+      { id: 'e1', at: unit.createdAt, actor: 'system', type: 'lost', fromState: 'TO_VERIFY', toState: 'LOST', reason: 'unit_to_verify:lose', stockEffect: null },
+      { id: 'e2', at: unit.createdAt, actor: 'system', type: 'to_verify', fromState: 'ALLOCATED', toState: 'TO_VERIFY', reason: 'not_restocked', stockEffect: null },
+      { id: 'e3', at: unit.createdAt, actor: 'system', type: 'returned', fromState: 'RETURN_PENDING', toState: 'AVAILABLE', reason: 'RESTOCKED', stockEffect: 'no write' },
+      { id: 'e4', at: unit.createdAt, actor: 'Camille', type: 'created', fromState: null, toState: 'AVAILABLE', reason: 'received', stockEffect: '+1 available', stockDelta: 1, stockQuantity: 'available' },
+      { id: 'e5', at: unit.createdAt, actor: 'api', type: 'future_event', fromState: null, toState: null, reason: 'future_cause', stockEffect: 'future effect' },
+    ]);
+    renderApp(`/units/${unit.id}`, { mock });
+    await waitFor(() => expect(screen.getByTestId('unit-events')).toBeInTheDocument());
+    const history = text(screen.getByTestId('unit-events'));
+    for (const raw of ['unit_to_verify', 'not_restocked', 'RESTOCKED', 'no write', 'available', 'future_event', 'future_cause', 'system']) expect(history).not.toContain(raw);
+    for (const label of ['Vérifiée : introuvable', 'Commande modifiée ou annulée sans remise en stock', 'Retour remis en stock', 'Aucune écriture', '+1 en stock « disponible »', 'Déclarée perdue', 'Autre événement', 'Autre cause', 'Écriture dans Shopify', 'Serialis (automatique)', 'Camille']) {
+      expect(history).toContain(label);
+    }
+  });
+
   it('keeps a ref typed right after the search field appears (decision 29)', async () => {
     actOnFirstAppearance('units-q', (el) => typeIn(el, 'sn-ur500-m-51203'));
     renderApp('/units');

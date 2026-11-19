@@ -1,8 +1,9 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import type { ErrorCode } from '@serialis/contract';
+import { SETTINGS_SIMULATION_SUMMARIES, STOCK_QUANTITY_NAMES, UNIT_EVENT_REASONS, UNIT_EVENT_TYPES, type ErrorCode } from '@serialis/contract';
 import { describe, expect, it } from 'vitest';
 import { createI18n, dictionaries } from '../i18n';
+import { simulationEffectLabel, unitEventActorLabel, unitEventReasonLabel, unitEventStockLabel, unitEventTypeLabel } from '../labels';
 import { translate } from '../i18n/core';
 import { FIXED_SETTINGS, SETTINGS, THEMES } from '../settings/catalogue';
 
@@ -58,6 +59,47 @@ describe('Textes fr / en (15.9)', () => {
     for (const locale of ['fr', 'en'] as const) {
       for (const key of keys) expect(dictionaries[locale][key], `${locale}:${key}`).toBeTypeOf('string');
     }
+  });
+
+  it('translates every simulation effect, event type, event cause and stock quantity the Worker can return (no raw key)', () => {
+    for (const locale of ['fr', 'en'] as const) {
+      const i18n = createI18n(locale);
+      const dict = dictionaries[locale];
+      for (const summary of SETTINGS_SIMULATION_SUMMARIES) {
+        const known = `settings.simulation.effect.${summary}` in dict || `settings.simulation.effect.${summary}_other` in dict;
+        expect(known, `${locale}:${summary}`).toBe(true);
+        for (const count of [0, 1, 3]) {
+          const text = simulationEffectLabel(i18n, { key: 'S-38', count, summary });
+          expect(text).not.toBe(i18n.t('settings.simulation.effect.unknown'));
+          expect(text).not.toContain(summary);
+        }
+      }
+      for (const type of UNIT_EVENT_TYPES) {
+        expect(dict[`unit.event.${type}`], `${locale}:event ${type}`).toBeTypeOf('string');
+        expect(unitEventTypeLabel(i18n, type)).not.toBe(type);
+        expect(unitEventTypeLabel(i18n, type)).not.toBe(i18n.t('unit.event.unknown'));
+      }
+      for (const reason of UNIT_EVENT_REASONS) {
+        expect(dict[`unit.reason.${reason}`], `${locale}:reason ${reason}`).toBeTypeOf('string');
+        expect(unitEventReasonLabel(i18n, reason)).not.toBe(reason);
+        expect(unitEventReasonLabel(i18n, reason)).not.toBe(i18n.t('unit.reason.unknown'));
+      }
+      for (const q of STOCK_QUANTITY_NAMES) expect(dict[`unit.quantity.${q}`], `${locale}:quantity ${q}`).toBeTypeOf('string');
+      for (const actor of ['system', 'api', 'pos', 'user']) expect(unitEventActorLabel(i18n, actor)).not.toBe(actor);
+      expect(unitEventActorLabel(i18n, 'Camille')).toBe('Camille');
+      // Unknown values (newer Worker): a readable generic label, never the raw key.
+      expect(simulationEffectLabel(i18n, { key: 'S-99', count: 2, summary: 'brand_new_effect' as never })).toBe(i18n.t('settings.simulation.effect.unknown'));
+      expect(unitEventTypeLabel(i18n, 'brand_new_event')).toBe(i18n.t('unit.event.unknown'));
+      expect(unitEventReasonLabel(i18n, 'brand_new:reason')).toBe(i18n.t('unit.reason.unknown'));
+      expect(unitEventReasonLabel(i18n, null)).toBeNull();
+      expect(unitEventStockLabel(i18n, { stockEffect: 'no write', stockDelta: null, stockQuantity: null })).toBe(i18n.t('unit.stock.no_write'));
+      expect(unitEventStockLabel(i18n, { stockEffect: 'something odd', stockDelta: null, stockQuantity: null })).toBe(i18n.t('unit.stock.unknown'));
+    }
+    const fr = createI18n('fr');
+    expect(unitEventStockLabel(fr, { stockEffect: '+1 available', stockDelta: 1, stockQuantity: 'available' })).toBe('+1 en stock « disponible »');
+    expect(unitEventStockLabel(fr, { stockEffect: '+1 available' })).toBe('+1 en stock « disponible »');
+    expect(unitEventReasonLabel(fr, 'unit_to_verify:lose')).toBe('Vérifiée : introuvable');
+    expect(unitEventReasonLabel(fr, 'RESTOCKED')).toBe('Retour remis en stock');
   });
 
   it('labels every anomaly type of the catalogue 12.7', () => {

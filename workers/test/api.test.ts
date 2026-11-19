@@ -101,6 +101,9 @@ describe('Idempotency-Key, If-Match, problem+json, pagination (14.1, T-API-01)',
     const unit = await h.api('GET', `/units/${created[0].id}`);
     expect(unit.headers.get('ETag')).toBe('"u0"');
     expect((await h.api('GET', `/units/${created[0].id}`, undefined, { 'If-Match': '"u9"' })).status).toBe(412);
+    // Received refs: the history gives the structured stock effect next to the text (unit history, 15.9).
+    const received = await json(await h.api('GET', `/units/${created[0].id}/events`), 200);
+    expect(received.items[0]).toMatchObject({ type: 'created', reason: 'received', stockEffect: '+1 available', stockDelta: 1, stockQuantity: 'available' });
     await h.drain();
     const order = h.sim.merchant.createOrder({ lines: [{ variantId: variant, quantity: 1 }] });
     await h.drain();
@@ -172,7 +175,7 @@ describe('resources', () => {
     expect((await json(await h.api('GET', '/lookup?identifier=q 1'), 200)).unit).toBeNull();
     expect((await json(await h.api('GET', '/lookup?identifier=%20q-1'), 200)).unit).toMatchObject({ id: created[0].id, state: 'AVAILABLE' });
     const events = await json(await h.api('GET', `/units/${created[0].id}/events`), 200);
-    expect(events.items).toEqual([expect.objectContaining({ type: 'created', fromState: null, toState: 'AVAILABLE', actor: 'user', reason: 'already_counted', stockEffect: 'no write' })]);
+    expect(events.items).toEqual([expect.objectContaining({ type: 'created', fromState: null, toState: 'AVAILABLE', actor: 'user', reason: 'already_counted', stockEffect: 'no write', stockDelta: null, stockQuantity: null })]);
     const stats = await json(await h.api('GET', '/stats/home'), 200);
     expect(stats.unitsByState).toEqual([{ locationId: loc, state: 'AVAILABLE', count: 2 }]);
     expect(stats.sync).toMatchObject({ pendingWrites: 0 });

@@ -343,7 +343,7 @@ export function confirmShippedUnit(ctx: ApiContext, scope: { orderGid: string; l
     repo.patchAllocation(chosen.id, { status: 'fulfilled', fulfilledAt: x.fulfilledAt ?? now, toConfirm: false, fulfillmentOrderGid: x.fulfillmentOrderGid, fulfillmentOrderLineItemGid: x.fulfillmentOrderLineItemGid });
     if (!repo.transitionUnit(xUnit.id, 'SHIPPED', 'ALLOCATED', xUnit.locationId, now)) throw new ApiError(409, 'invalid_transition', 'unit changed');
     if (!repo.transitionUnit(yUnit.id, 'ALLOCATED', 'SHIPPED', yUnit.locationId, now)) throw new ApiError(409, 'invalid_transition', 'unit changed');
-    const data = { reason: 'shipment_designation_fix', stockWrite: false };
+    const data = { reason: 'shipment_designation_fix', stockWrite: false } as const;
     repo.insertEvent({ unitId: xUnit.id, type: 'shipment_designation_fixed', from: 'SHIPPED', to: 'ALLOCATED', actor: ctx.call.principal.actor, cause: ctx.cause, orderGid: scope.orderGid, locationId: scope.locationId, data: { ...data, allocationId: x.id }, now });
     repo.insertEvent({ unitId: yUnit.id, type: 'shipment_designation_fixed', from: 'ALLOCATED', to: 'SHIPPED', actor: ctx.call.principal.actor, cause: ctx.cause, orderGid: scope.orderGid, locationId: scope.locationId, data: { ...data, allocationId: chosen.id }, now });
     finishConfirmation(ctx, scope, now);

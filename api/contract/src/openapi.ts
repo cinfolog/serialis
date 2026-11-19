@@ -71,8 +71,8 @@ const schemas: Record<string, Schema> = {
   UnitEvent: obj({
     id: str(), at: dateTime, actor: str(), type: str(),
     fromState: nullable(str({ enum: UNIT_STATES })), toState: nullable(str({ enum: UNIT_STATES })),
-    reason: nullable(str()), stockEffect: nullable(str()),
-  }),
+    reason: nullable(str()), stockEffect: nullable(str()), stockDelta: nullable({ type: 'integer' }), stockQuantity: nullable(str()),
+  }, ['id', 'at', 'actor', 'type', 'fromState', 'toState', 'reason', 'stockEffect']),
   UnitEventPage: pageOf('UnitEvent'),
   TrackedItem: obj({
     variantGid: str(), productGid: str(), title: str(), variantTitle: nullable(str()), sku: nullable(str()), mode: str({ enum: ['interchangeable'] }),

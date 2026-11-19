@@ -400,6 +400,10 @@ export interface UnitEvent {
   reason: string | null;
   /** Effect on the Shopify stock, e.g. "+1 at location X" or "no write". */
   stockEffect: string | null;
+  /** Structured form of `stockEffect` (additive): signed quantity written in Shopify, `null` when none. */
+  stockDelta?: number | null;
+  /** Shopify quantity name written by `stockDelta` (one of `STOCK_QUANTITY_NAMES`). */
+  stockQuantity?: string | null;
 }
 
 /** POST /anomalies/{id}/acknowledge ("je m'en occupe", 15.4) → Anomaly */
@@ -413,7 +417,8 @@ export interface SimulateSettingsRequest {
 export interface SettingsSimulation {
   simulationId: string;
   expiresAt: IsoDateTime;
-  effects: Array<{ key: string; count: number; summary: string }>;
+  /** `summary` is a stable key of `SETTINGS_SIMULATION_SUMMARIES` (the interfaces translate it, 15.9). */
+  effects: Array<{ key: string; count: number; summary: SettingsSimulationSummary }>;
   /** Values that weaken a guarantee, with their exact effect (6.6.1). */
   warnings: string[];
 }
@@ -574,3 +579,45 @@ export const PUBLIC_ROUTES = {
   resume: { route: 'POST /automation/resume', scope: 'admin' },
 } as const satisfies Record<string, { route: string; scope: ApiScope }>;
 export type PublicRouteName = keyof typeof PUBLIC_ROUTES;
+
+// ---------------------------------------------------------------------------
+// Stable keys shown translated by the interfaces (15.9: no technical key on screen)
+// ---------------------------------------------------------------------------
+
+/** Every `summary` the Worker returns in `SettingsSimulation.effects` (6.6.1 "Ce qui va changer"). */
+export const SETTINGS_SIMULATION_SUMMARIES = [
+  'no_object_affected',
+  'duplicates_block_shop_scope',
+  'identifiers_rescoped',
+  'applies_to_next_synchronizations',
+  'metafields_removed_at_next_sync',
+  'metafields_written_at_next_sync',
+  'applies_to_next_events',
+] as const;
+export type SettingsSimulationSummary = (typeof SETTINGS_SIMULATION_SUMMARIES)[number];
+
+/** Every `type` of `UnitEvent` the Worker writes (unit history). */
+export const UNIT_EVENT_TYPES = [
+  'created', 'allocated', 'released', 'to_verify', 'shipped', 'shipment_cancelled', 'return_pending', 'return_cancelled', 'returned',
+  'shipment_confirmed', 'shipment_designation_fixed', 'verified_restocked', 'lost', 'scrapped', 'untracked',
+] as const;
+export type UnitEventType = (typeof UNIT_EVENT_TYPES)[number];
+
+/**
+ * Every `reason` of `UnitEvent`: event causes, release kinds (`restocked`…) and return dispositions
+ * reported by Shopify (`RESTOCKED`…, in capitals as Shopify spells them).
+ */
+export const UNIT_EVENT_REASONS = [
+  'received', 'already_counted', 'late_designation', 'replaced', 'replacement', 'shipment_designation_fix',
+  'unit_to_verify:restock', 'unit_to_verify:lose', 'unit_to_verify:scrap',
+  'restocked', 'not_restocked', 'relocated', 'ignored_order', 'manual',
+  'RESTOCKED', 'PROCESSING_REQUIRED', 'NOT_RESTOCKED', 'MISSING',
+] as const;
+export type UnitEventReason = (typeof UNIT_EVENT_REASONS)[number];
+
+/** `UnitEvent.stockEffect` when the event wrote nothing in Shopify. */
+export const UNIT_EVENT_NO_WRITE = 'no write';
+
+/** Shopify inventory quantity names an event can write (`UnitEvent.stockQuantity`). */
+export const STOCK_QUANTITY_NAMES = ['available', 'reserved', 'committed', 'quality_control', 'damaged'] as const;
+export type StockQuantityName = (typeof STOCK_QUANTITY_NAMES)[number];

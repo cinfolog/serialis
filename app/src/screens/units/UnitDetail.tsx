@@ -2,6 +2,7 @@ import { useParams } from 'react-router';
 import { useClient } from '../../context';
 import { useLocations, variantLabel } from '../../data';
 import { useI18n } from '../../i18n';
+import { unitEventActorLabel, unitEventReasonLabel, unitEventStockLabel, unitEventTypeLabel } from '../../labels';
 import { adminUrl, gidNumber } from '../../shopify';
 import { StateBadge } from '../../ui/badges';
 import { Section, Stack } from '../../ui/components';
@@ -13,7 +14,8 @@ import { ErrorState, Loading } from '../../ui/states';
 /** Unit sheet (EF-34, reduced): situation, identifiers and timeline of events. No customer data (15.1). */
 export function UnitDetail() {
   const { id = '' } = useParams();
-  const { t, dateTime } = useI18n();
+  const i18n = useI18n();
+  const { t, dateTime } = i18n;
   const client = useClient();
   const locations = useLocations();
   const unit = useAsync(() => client.getUnit(id), [client, id]);
@@ -83,13 +85,13 @@ export function UnitDetail() {
               {events.data.items.map((e) => (
                 <s-table-row key={e.id}>
                   <s-table-cell>{dateTime(e.at)}</s-table-cell>
-                  <s-table-cell>{e.actor}</s-table-cell>
-                  <s-table-cell>{e.type}</s-table-cell>
+                  <s-table-cell>{unitEventActorLabel(i18n, e.actor)}</s-table-cell>
+                  <s-table-cell>{unitEventTypeLabel(i18n, e.type)}</s-table-cell>
                   <s-table-cell>
                     {e.fromState ? t(`state.${e.fromState}`) : '—'} → {e.toState ? t(`state.${e.toState}`) : '—'}
                   </s-table-cell>
-                  <s-table-cell>{e.reason ?? '—'}</s-table-cell>
-                  <s-table-cell>{e.stockEffect ?? '—'}</s-table-cell>
+                  <s-table-cell>{unitEventReasonLabel(i18n, e.reason) ?? '—'}</s-table-cell>
+                  <s-table-cell>{unitEventStockLabel(i18n, e) ?? '—'}</s-table-cell>
                 </s-table-row>
               ))}
             </s-table-body>

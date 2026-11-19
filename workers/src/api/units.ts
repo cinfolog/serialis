@@ -24,6 +24,7 @@ import type {
   UnitEvent,
   UntrackItemsRequest,
 } from '@serialis/contract';
+import { UNIT_EVENT_NO_WRITE } from '@serialis/contract';
 import { UNIT_STATES } from '@serialis/core';
 import { evaluateLevel, storeLevel } from '../domain/levels.js';
 import { ensureReconciliation } from '../domain/reconcile.js';
@@ -293,7 +294,9 @@ export function unitEvents(ctx: ApiContext, id: string): ApiResult {
       fromState: r.from_status,
       toState: r.to_status,
       reason: typeof data.reason === 'string' ? data.reason : typeof data.releaseKind === 'string' ? data.releaseKind : typeof data.disposition === 'string' ? data.disposition : null,
-      stockEffect: delta === null ? (data.stockWrite === false ? 'no write' : null) : `${delta > 0 ? '+' : ''}${delta} ${String(data.quantityName ?? 'available')}`,
+      stockEffect: delta === null ? (data.stockWrite === false ? UNIT_EVENT_NO_WRITE : null) : `${delta > 0 ? '+' : ''}${delta} ${String(data.quantityName ?? 'available')}`,
+      stockDelta: delta,
+      stockQuantity: delta === null ? null : String(data.quantityName ?? 'available'),
     };
   });
   return json({ items, nextCursor: rows.length > limit ? encodeCursor(String(page[page.length - 1]!.id)) : null });

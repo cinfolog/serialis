@@ -166,3 +166,31 @@ describe('recette 3, item 2 — order block polling is cheap (ETag / If-None-Mat
     expect(cors.headers.get('Access-Control-Allow-Headers')).toContain('If-None-Match');
   });
 });
+
+describe('recette 3, item 3 — order metafield definition pinned', () => {
+  it('pinned at creation; an existing unpinned definition is pinned once (idempotent)', async () => {
+    const h = await createHarness('r3-pin');
+    harnesses.push(h);
+    await h.drain();
+    const defs = [...h.sim.shop.metafieldDefinitions.values()];
+    expect(defs).toHaveLength(1);
+    expect(defs[0]!.pinnedPosition).toBe(1);
+    expect(h.sim.callCount('metafieldDefinitionPin')).toBe(0);
+
+    // A shop of an earlier version: definition known, unpinned.
+    defs[0]!.pinnedPosition = null;
+    await h.run("DELETE FROM meta WHERE key = 'order_metafield_definition_pinned'");
+    await h.run("INSERT INTO tasks (key, kind, priority, payload, status, run_at, deadline_at, attempts, created_at, updated_at) VALUES ('definitions', 'definitions', 45, '{}', 'pending', 0, 0, 0, 0, 0) ON CONFLICT (key) DO UPDATE SET status = 'pending', run_at = 0");
+    await h.drain();
+    expect(defs[0]!.pinnedPosition).toBe(1);
+    expect(h.sim.callCount('metafieldDefinitionPin')).toBe(1);
+    expect(h.sim.callCount('metafieldDefinitionCreate')).toBe(1);
+
+    // Done once: a later unpinning by the merchant is not overruled, the task is not scheduled again.
+    defs[0]!.pinnedPosition = null;
+    await h.run("UPDATE tasks SET status = 'pending', run_at = 0 WHERE key = 'definitions'");
+    await h.drain();
+    expect(h.sim.callCount('metafieldDefinitionPin')).toBe(1);
+    expect(defs[0]!.pinnedPosition).toBeNull();
+  });
+});

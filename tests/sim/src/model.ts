@@ -207,4 +207,6 @@ export interface MetafieldDefinition {
   type: string;
   name: string;
   description: string | null;
+  /** Position among the pinned definitions of the owner type (`pin: true`, `metafieldDefinitionPin`), null when unpinned. */
+  pinnedPosition?: number | null;
 }

@@ -329,7 +329,23 @@ export type RouteName = keyof typeof ROUTES;
 export type StatusBanner = 'frozen' | 'reconnect_required' | 'restoring' | 'read_only';
 
 /** Admin UI extensions that report their first render to the server (15.4 "Démarrage", T-UX-08). */
-export type ExtensionKey = 'variant_block' | 'product_block' | 'order_block' | 'order_action';
+export type ExtensionKey = 'variant_block' | 'product_block' | 'order_block' | 'order_action' | 'variant_action';
+export const EXTENSION_KEYS: readonly ExtensionKey[] = ['variant_block', 'product_block', 'order_block', 'order_action', 'variant_action'];
+
+/**
+ * Header each admin extension sends on every call with its Shopify target (`shopify.extension.target`):
+ * the server records the first render of the extension from it (15.4 "l'extension le signale au serveur
+ * à son premier rendu"), whatever call the extension makes first.
+ */
+export const EXTENSION_HEADER = 'X-Serialis-Extension';
+/** Shopify targets of the extensions (`shopify.extension.toml`) and the key each one reports. */
+export const EXTENSION_TARGETS: Readonly<Record<string, ExtensionKey>> = {
+  'admin.product-variant-details.block.render': 'variant_block',
+  'admin.product-details.block.render': 'product_block',
+  'admin.order-details.block.render': 'order_block',
+  'admin.order-details.action.render': 'order_action',
+  'admin.product-variant-details.action.render': 'variant_action',
+};
 
 /**
  * Optional fields of `MeResponse` added for the admin app, returned by `GET /me` next to the

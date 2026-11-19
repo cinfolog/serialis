@@ -1,4 +1,4 @@
-import type { HomeStatsResponse, ExtensionKey, TrackedItem, UnitState } from '@serialis/contract';
+import { EXTENSION_KEYS, type HomeStatsResponse, type ExtensionKey, type TrackedItem, type UnitState } from '@serialis/contract';
 import { useMemo } from 'react';
 import { useClient, useSession } from '../../context';
 import { UNIT_STATES, variantLabel } from '../../data';
@@ -10,7 +10,7 @@ import { Page } from '../../ui/Page';
 import { EmptyState, ErrorState, Loading } from '../../ui/states';
 
 export const WIZARD_STEPS = ['products', 'refs', 'gap', 'blocks', 'done'] as const;
-export const EXTENSIONS: ExtensionKey[] = ['variant_block', 'product_block', 'order_block', 'order_action'];
+export const EXTENSIONS: readonly ExtensionKey[] = EXTENSION_KEYS;
 
 function Sparkline({ history, label }: { history: HomeStatsResponse['assignedUnder60s']['history30d']; label: string }) {
   const points = history.map((h, i) => ({ i, rate: h.rate }));

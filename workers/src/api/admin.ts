@@ -20,6 +20,7 @@ import type {
   StatusBanner,
   UnitState,
 } from '@serialis/contract';
+import { EXTENSION_KEYS } from '@serialis/contract';
 import { readLocations } from '../domain/shopify-read.js';
 import { requestOrderSync } from '../domain/sync-order.js';
 import { newId, parseJson } from '../domain/util.js';
@@ -30,7 +31,7 @@ import { healthCounters, type HealthInfo } from './health.js';
 
 const LOCATIONS_TTL_MS = 10 * 60_000;
 const SIMULATION_TTL_MS = 10 * 60_000;
-const EXTENSIONS: readonly ExtensionKey[] = ['variant_block', 'product_block', 'order_block', 'order_action'];
+const EXTENSIONS: readonly ExtensionKey[] = EXTENSION_KEYS;
 
 // ------------------------------------------------------------------------------------- me, home
 

@@ -64,7 +64,7 @@ describe('authentication and CORS (16, 11.3, T-SEC-01)', () => {
     });
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe('https://extensions.shopifycdn.com');
-    for (const header of ['Authorization', 'Content-Type', 'Idempotency-Key', 'If-Match', 'Accept']) {
+    for (const header of ['Authorization', 'Content-Type', 'Idempotency-Key', 'If-Match', 'Accept', 'X-Serialis-Extension']) {
       expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain(header);
     }
     // ID token of an extension: same signature rules, no `sub`.
@@ -74,6 +74,27 @@ describe('authentication and CORS (16, 11.3, T-SEC-01)', () => {
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://extensions.shopifycdn.com');
     const other = await SELF.fetch(`${BASE}/locations`, { headers: { Authorization: `Bearer ${idToken}`, Origin: 'https://evil.example' } });
     expect(other.headers.get('Access-Control-Allow-Origin')).toBeNull();
+  });
+
+  it('records the first render of each extension from the target it names, whatever its first call (T-UX-08, recette 2)', async () => {
+    const { h } = await setup('ext-seen');
+    const shown = async () => (await json(await h.api('GET', '/me'), 200)).extensionsShown;
+    expect(await shown()).toEqual({ variant_block: false, product_block: false, order_block: false, order_action: false, variant_action: false });
+    const idToken = await sessionToken(h.shop, { sub: undefined, sid: undefined });
+    const call = (path: string, target: string) => SELF.fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${idToken}`, 'X-Serialis-Extension': target } });
+    // The order action opens on GET /orders/{id}/allocations, which alone used to mark the order block only.
+    expect((await call('/locations', 'admin.order-details.action.render')).status).toBe(200);
+    expect((await call('/units?limit=1', 'admin.product-variant-details.action.render')).status).toBe(200);
+    // Unknown or inherited names are ignored.
+    expect((await call('/locations', 'toString')).status).toBe(200);
+    expect((await call('/locations', 'admin.something.render')).status).toBe(200);
+    expect(await shown()).toEqual({ variant_block: false, product_block: false, order_block: false, order_action: true, variant_action: true });
+    // Older extension versions without the header: still recognised by their calls.
+    await h.api('GET', '/tracked-items?variant=gid%3A%2F%2Fshopify%2FProductVariant%2F1');
+    expect((await shown()).variant_block).toBe(true);
+    expect(await h.query("SELECT key FROM meta WHERE key LIKE 'extension_render:%' ORDER BY key")).toEqual([
+      { key: 'extension_render:order_action' }, { key: 'extension_render:variant_action' }, { key: 'extension_render:variant_block' },
+    ]);
   });
 });
 

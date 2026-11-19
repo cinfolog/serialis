@@ -19,7 +19,12 @@ Preact et composants web Polaris (`s-*`), un dossier par extension, code commun 
 - **Le jeton est un jeton d'identité OpenID Connect (ID token)** en API 2026-10, pas le jeton de session d'App Bridge
   de l'app intégrée. Le Worker doit accepter ce jeton sur `/api/v1/*` (même clé de signature, `aud` = client_id).
 - **CORS** : le Worker doit répondre aux requêtes (et au préalable `OPTIONS`) de l'origine `https://extensions.shopifycdn.com`,
-  avec les en-têtes `Authorization, Content-Type, Idempotency-Key, If-Match, Accept`.
+  avec les en-têtes `Authorization, Content-Type, Idempotency-Key, If-Match, Accept, X-Serialis-Extension`.
+- **Premier rendu signalé (15.4 « Démarrage », T-UX-08)** : le client commun envoie à chaque appel `X-Serialis-Extension` avec la cible
+  Shopify de l'extension (`shopify.extension.target`, ou l'option `extensionTarget`) ; le Worker en déduit l'extension affichée
+  (`EXTENSION_TARGETS` du contrat), quel que soit le premier appel. Avant, l'action commande n'était reconnue qu'à une écriture
+  (sa lecture `GET /orders/{id}/allocations` marquait le bloc commande) et l'action variante jamais. Aucun fichier d'extension
+  ne change : seul `extensions/shared/src/api-client.ts`.
 - L'identifiant de commande dans la route est **numérique** (`GET /orders/{id}/allocations`, comme `order_id` de l'API publique,
   spec 9.15 point 3), extrait du GID `gid://shopify/Order/{id}`.
 

@@ -143,6 +143,7 @@ export class MockClient implements ApiClient {
       product_block: options.extensionsShown ?? false,
       order_block: options.extensionsShown ?? false,
       order_action: options.extensionsShown ?? false,
+      variant_action: options.extensionsShown ?? false,
     };
     if (!options.empty) this.seed();
     this.appUsers = this.seedUsers();

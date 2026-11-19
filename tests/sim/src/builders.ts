@@ -291,7 +291,7 @@ export function gqlReverseFulfillmentOrder(ctx: Ctx, r: Return, o: Return['rever
           id: l.id,
           totalQuantity: l.totalQuantity,
           dispositions: l.dispositions.map((d) => ({ __typename: 'ReverseFulfillmentOrderDisposition', type: d.type, quantity: d.quantity, location: () => locationNode(ctx, d.locationId) })),
-          fulfillmentLineItem: () => fulfillmentLineItem(l.lineItemId, l.totalQuantity),
+          fulfillmentLineItem: () => (l.unlinked ? null : fulfillmentLineItem(l.lineItemId, l.totalQuantity)),
         })),
         b,
       ),

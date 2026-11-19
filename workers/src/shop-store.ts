@@ -303,7 +303,10 @@ export class ShopStore extends DurableObject<Env> {
   }
 
   private async ingestImpl(input: IngestInput): Promise<IngestResult> {
-    if (this.schemaVersion() === 0) return { stored: false, reason: 'not_installed' };
+    if (this.schemaVersion() === 0) {
+      logWebhook(input, { outcome: 'ignored', reason: 'not_installed' });
+      return { stored: false, reason: 'not_installed' };
+    }
     let body: unknown = null;
     try {
       body = JSON.parse(input.payload);
@@ -313,9 +316,13 @@ export class ShopStore extends DurableObject<Env> {
     const action = topicAction(input.topic, body);
     const state = this.shopState() ?? 'active';
     // An uninstalled shop only receives the compliance topics (spec 10.5).
-    if (state === 'uninstalled' && action.type !== 'compliance') return { stored: false, reason: 'inactive', shopState: state };
+    if (state === 'uninstalled' && action.type !== 'compliance') {
+      logWebhook(input, { outcome: 'ignored', reason: 'uninstalled' });
+      return { stored: false, reason: 'inactive', shopState: state };
+    }
 
     const now = Date.now();
+    let outcome: WebhookOutcome = { outcome: 'ignored', reason: 'duplicate' };
     const stored = this.ctx.storage.transactionSync(() => {
       const payload = action.type === 'compliance' ? minimalCompliancePayload(action) : input.payload;
       const inserted = this.sql.exec(
@@ -327,26 +334,27 @@ export class ShopStore extends DurableObject<Env> {
         payload,
       ).rowsWritten;
       if (inserted === 0) return false;
-      this.applyAction(action, input, now);
+      outcome = this.applyAction(action, input, now);
       this.sql.exec('UPDATE inbox SET processed_at = ? WHERE webhook_id = ?', new Date(now).toISOString(), input.webhookId);
       return true;
     });
 
+    logWebhook(input, { ...webhookSubject(action), ...outcome });
     const shopState = this.shopState() ?? 'active';
     await this.armAlarm();
     if (!stored) return { stored: false, reason: 'duplicate', shopState };
     return { stored: true, action: action.type, shopState };
   }
 
-  private applyAction(action: TopicAction, input: IngestInput, now: number): void {
+  private applyAction(action: TopicAction, input: IngestInput, now: number): WebhookOutcome {
     switch (action.type) {
       case 'task': {
         const body = parseBody(input.payload);
         if (input.topic === 'orders/edited') recordOrderEdit(this.domain, body, now);
         // 12.1: a task only when the event may concern a tracked item.
-        if (!shouldSchedule(this.domain, action, input.topic, body, now)) return;
+        if (!shouldSchedule(this.domain, action, input.topic, body, now)) return { outcome: 'ignored', reason: 'not_tracked' };
         this.tasks.enqueue({ key: action.key, kind: action.kind, priority: action.priority, payload: action.payload, delayMs: WEBHOOK_TASK_DELAY_MS }, now);
-        return;
+        return { outcome: 'handled', task_kind: action.kind };
       }
       case 'compliance':
         // Processing (data request export, deferred redaction, shop/redact) comes with lot 5 / F14.
@@ -358,12 +366,12 @@ export class ShopStore extends DurableObject<Env> {
           action.dataRequestId,
           now,
         );
-        return;
+        return { outcome: 'handled' };
       case 'uninstall':
         this.uninstall(input.triggeredAt, now);
-        return;
+        return { outcome: 'handled' };
       case 'none':
-        return;
+        return { outcome: 'ignored', reason: action.reason };
     }
   }
 
@@ -511,6 +519,7 @@ export class ShopStore extends DurableObject<Env> {
       );
       orderGid = data[field]?.order?.id ?? null;
     }
+    logEvent(orderGid ? 'info' : 'warn', 'resolve.done', { subject: gid, order: orderGid, outcome: orderGid ? 'handled' : 'ignored', reason: orderGid ? null : 'order_not_found' });
     if (!orderGid) return;
     const target = orderGid;
     this.ctx.storage.transactionSync(() => requestOrderSync(this.domain, target));
@@ -763,4 +772,27 @@ export class ShopStore extends DurableObject<Env> {
       expectedVersion,
     );
   }
+}
+
+/** Outcome of one webhook delivery, as logged (17.1). */
+type WebhookOutcome = { outcome: 'handled' | 'ignored'; reason?: string; task_kind?: string };
+
+/** Shopify ids resolved from the body (identifiers only; order ids are digested by `logEvent`). */
+function webhookSubject(action: TopicAction): Record<string, string | null> {
+  if (action.type !== 'task') return {};
+  const p = action.payload;
+  const subject = typeof p.gid === 'string' ? p.gid : null;
+  return {
+    order: typeof p.orderGid === 'string' ? p.orderGid : null,
+    return: subject && /\/(Return|ReverseFulfillmentOrder)\//.test(subject) ? subject : null,
+    subject: subject && !/\/(Return|ReverseFulfillmentOrder)\//.test(subject) ? subject : null,
+  };
+}
+
+/**
+ * One structured line per webhook delivery (17.1): topic, webhook id, shop (log context), resolved ids and outcome.
+ * Never the body: no customer data.
+ */
+function logWebhook(input: IngestInput, fields: WebhookOutcome & Record<string, string | null | undefined>): void {
+  logEvent('info', 'webhook', { topic: input.topic, webhook_id: input.webhookId, ...fields });
 }

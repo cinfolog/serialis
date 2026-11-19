@@ -1096,7 +1096,7 @@ Points dont le comportement exact ne peut être établi qu'en conditions réelle
 |---|---|---|---|
 | PV-1 | Liste exacte des sujets de webhook acceptés avec les scopes du lot | Lot 0, au premier `shopify app deploy`, puis à chaque lot qui ajoute un scope | Remplacer le sujet manquant par un sujet voisin (par exemple `returns/update` pour `returns/process`, que le filtre de la section 12.1 relit aussi pour une commande `ignored`) et par la réconciliation R1 |
 | PV-2 | Accord d'accès aux données clients protégées de niveau 1 | Lot 0 (demande), lot 5 (revue) | Aucun pour une app publique : c'est bloquant, d'où la demande précoce et la minimisation stricte |
-| PV-3 | Effet sur le stock de la disposition de retour « contrôle requis » | MVP | Les deux branches sont écrites dans la machine à états ; la bonne est activée |
+| PV-3 | Levée le 19/11/2026 (recette 3) : la disposition « contrôle requis » (`PROCESSING_REQUIRED`, posée par `reverseFulfillmentOrderDispose`) ne change aucune quantité de Shopify, à aucun emplacement ; la branche par défaut est confirmée (l'app passe l'unité en QUALITY_CONTROL et écrit `quality_control` +1) | — | Les deux branches restent écrites dans le code ; `processingRequiredAddsAvailable` reste désactivée |
 | PV-4 | Blocage du « prêt pour le retrait » par une mise en attente | Lot 1 | Détection a posteriori (F4) |
 | PV-5 | Levée le 17/11/2026 : la fonction de validation du panier et du paiement n'est pas prise en charge par la caisse (tableau de compatibilité de l'API) ; régularisation par anomalie (DO-4 tranchée) | — | — |
 | PV-6 | Compteur d'usage « unités actives » couvert par Shopify App Pricing | Lot 5 | Billing API avec enregistrements d'usage |

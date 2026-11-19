@@ -69,7 +69,8 @@ l'information de remise en stock d'une ligne a déjà été consommée.
   par `returnProcess`.
 - `NOT_RESTOCKED` → SCRAPPED (S-19 hors MVP, valeur par défaut) ; `PROCESSING_REQUIRED` →
   QUALITY_CONTROL avec `quality_control` +1, ou déplacement `available` → `quality_control` si
-  `options.processingRequiredAddsAvailable` (porte PV-3).
+  `options.processingRequiredAddsAvailable` (porte PV-3, levée le 19/11/2026 : Shopify n'ajoute rien, la
+  branche par défaut reste active ; une disposition sans emplacement s'applique à l'emplacement de l'unité).
 - S-17 = non : seulement pour une ligne de quantité 1 avec exactement une attribution vendue.
 
 ## D-07 — Anomalies (11.2, 12.7)

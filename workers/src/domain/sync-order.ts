@@ -93,6 +93,7 @@ export async function runSyncOrder(ctx: DomainContext, orderGid: string, task: P
     logEvent('warn', 'sync_order.order_missing', { order: orderGid });
     return;
   }
+  for (const u of read.unmatchedDispositions) logEvent('warn', 'sync_order.disposition_unmatched', { order: orderGid, return: u.returnGid, dispositions: u.dispositions, reason: u.reason });
   const now = Date.now();
   let outcome: ReturnType<typeof applyOrderSync> | null;
   try {

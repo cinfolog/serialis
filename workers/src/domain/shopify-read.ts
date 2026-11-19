@@ -47,7 +47,7 @@ export const ORDER_QUERY = `query SerialisOrder($id: ID!) {
         id status
         returnLineItems(first: 5) { nodes { id quantity ... on ReturnLineItem { processedQuantity fulfillmentLineItem { lineItem { id } } } } }
         reverseFulfillmentOrders(first: 2) {
-          nodes { lineItems(first: 5) { nodes { dispositions { type quantity location { id } } fulfillmentLineItem { lineItem { id } } } } }
+          nodes { lineItems(first: 5) { nodes { totalQuantity dispositions { type quantity location { id } } fulfillmentLineItem { lineItem { id } } } } }
         }
       }
     }
@@ -82,7 +82,7 @@ interface OrderData {
       status: string;
       returnLineItems: Conn<{ id: string; quantity: number; processedQuantity?: number | null; fulfillmentLineItem?: { lineItem: Id } | null }>;
       reverseFulfillmentOrders: Conn<{
-        lineItems: Conn<{ dispositions: { type: string; quantity: number; location: Id }[] | null; fulfillmentLineItem: { lineItem: Id } | null }>;
+        lineItems: Conn<{ totalQuantity?: number; dispositions: { type: string; quantity: number; location: Id }[] | null; fulfillmentLineItem: { lineItem: Id } | null }>;
       }>;
     }>;
   };
@@ -94,6 +94,18 @@ export interface OrderRead {
   lines: { gid: string; title: string; variantGid: string | null; quantity: number; currentQuantity: number }[];
   returnLines: { gid: string; returnGid: string; lineItemGid: string; quantity: number }[];
   fulfillmentOrders: { gid: string; locationId: string; status: string }[];
+  /** Dispositions that could not be attached to a return line (logged by the sync, never silently dropped). */
+  unmatchedDispositions: { returnGid: string; dispositions: number; reason: 'line_not_in_return' | 'unlinked_ambiguous' }[];
+}
+
+/**
+ * Return line of a reverse fulfillment order line whose `fulfillmentLineItem` is null: the only return line, or the
+ * only one of that quantity. Null when ambiguous (the caller logs it).
+ */
+function unlinkedTarget<T extends { quantity: number }>(lines: readonly T[], totalQuantity: number | undefined): T | undefined {
+  if (lines.length === 1) return lines[0];
+  const same = lines.filter((l) => l.quantity === totalQuantity);
+  return same.length === 1 ? same[0] : undefined;
 }
 
 export class OrderTooLargeError extends Error {
@@ -138,25 +150,27 @@ export async function readOrder(client: AdminGraphqlClient, orderGid: string, ed
     }));
 
   const returnLines: OrderRead['returnLines'] = [];
+  const unmatched: OrderRead['unmatchedDispositions'] = [];
   const returns = o.returns.nodes.map((r) => {
     const lineItems = r.returnLineItems.nodes
       .filter((l) => l.fulfillmentLineItem?.lineItem)
       .map((l) => ({ gid: l.id, lineItemGid: l.fulfillmentLineItem!.lineItem!.id, quantity: l.quantity, processedQuantity: l.processedQuantity ?? 0 }));
     for (const l of lineItems) returnLines.push({ gid: l.gid, returnGid: r.id, lineItemGid: l.lineItemGid, quantity: l.quantity });
-    // Reverse fulfillment order lines point to the order line; the return line is found through it.
+    // Reverse fulfillment order lines point to the order line; the return line is found through it. Both
+    // `fulfillmentLineItem` and the disposition's `location` are nullable in the Admin API: a disposition is never
+    // dropped for that (recette 3, workers/DECISIONS.md 84) — an unlinked line falls back on the only return line of
+    // that quantity, a missing location on the location the unit left from.
     const dispositions: OrderSnapshot['returns'][number]['dispositions'][number][] = [];
     for (const rfo of r.reverseFulfillmentOrders.nodes) {
       for (const rl of rfo.lineItems.nodes) {
         const lineItemGid = rl.fulfillmentLineItem?.lineItem?.id;
-        const target = lineItems.find((l) => l.lineItemGid === lineItemGid);
-        if (!target) continue;
-        // NOT_RESTOCKED and MISSING carry no location (nothing is restocked anywhere): kept with a null location,
-        // the unit keeps the location it left from (recette 2, workers/DECISIONS.md 79).
-        for (const d of rl.dispositions ?? []) {
-          const locationId = d.location?.id ?? null;
-          if (locationId === null && (d.type === 'RESTOCKED' || d.type === 'PROCESSING_REQUIRED')) continue;
-          dispositions.push({ returnLineItemGid: target.gid, type: d.type as DispositionType, quantity: d.quantity, locationId });
+        const target = lineItemGid ? lineItems.find((l) => l.lineItemGid === lineItemGid) : unlinkedTarget(lineItems, rl.totalQuantity);
+        const ds = rl.dispositions ?? [];
+        if (!target) {
+          if (ds.length > 0) unmatched.push({ returnGid: r.id, dispositions: ds.length, reason: lineItemGid ? 'line_not_in_return' : 'unlinked_ambiguous' });
+          continue;
         }
+        for (const d of ds) dispositions.push({ returnLineItemGid: target.gid, type: d.type as DispositionType, quantity: d.quantity, locationId: d.location?.id ?? null });
       }
     }
     return { gid: r.id, status: r.status as ReturnStatus, lineItems, dispositions };
@@ -204,6 +218,7 @@ export async function readOrder(client: AdminGraphqlClient, orderGid: string, ed
     lines: o.lineItems.nodes.map((l) => ({ gid: l.id, title: l.title, variantGid: l.variant?.id ?? null, quantity: l.quantity, currentQuantity: l.currentQuantity })),
     returnLines,
     fulfillmentOrders: fos.map((fo) => ({ gid: fo.gid, locationId: fo.locationId, status: fo.status })),
+    unmatchedDispositions: unmatched,
   };
 }
 

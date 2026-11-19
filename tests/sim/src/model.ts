@@ -137,6 +137,8 @@ export interface ReverseLine {
   lineItemId: string;
   totalQuantity: number;
   dispositions: { type: DispositionType; quantity: number; locationId: string | null }[];
+  /** `fulfillmentLineItem` read as null (the field is nullable in the Admin API). */
+  unlinked?: boolean;
 }
 
 export interface ReverseFulfillmentOrder {

@@ -144,14 +144,19 @@ export function refund(
 export function ret(
   n: number,
   status: ReturnSnapshot['status'],
-  lines: readonly { line: number; quantity: number }[],
-  dispositions: readonly { line: number; type: ReturnSnapshot['dispositions'][number]['type']; quantity: number; locationId: string }[] = [],
+  lines: readonly { line: number; quantity: number; processed?: number }[],
+  dispositions: readonly { line: number; type: ReturnSnapshot['dispositions'][number]['type']; quantity: number; locationId: string | null }[] = [],
 ): ReturnSnapshot {
   const rlGid = (l: number) => `gid://shopify/ReturnLineItem/${n}-${l}`;
   return {
     gid: `gid://shopify/Return/${n}`,
     status,
-    lineItems: lines.map((l) => ({ gid: rlGid(l.line), lineItemGid: `gid://shopify/LineItem/${l.line}`, quantity: l.quantity })),
+    lineItems: lines.map((l) => ({
+      gid: rlGid(l.line),
+      lineItemGid: `gid://shopify/LineItem/${l.line}`,
+      quantity: l.quantity,
+      ...(l.processed !== undefined ? { processedQuantity: l.processed } : {}),
+    })),
     dispositions: dispositions.map((d) => ({ returnLineItemGid: rlGid(d.line), type: d.type, quantity: d.quantity, locationId: d.locationId })),
   };
 }

@@ -153,7 +153,8 @@ export interface Return {
   orderId: string;
   name: string;
   status: ReturnStatus;
-  lines: { id: string; lineItemId: string; quantity: number; returnReason: string }[];
+  /** `processedQuantity`: quantity processed by `returnProcess` (API 2025-07+). */
+  lines: { id: string; lineItemId: string; quantity: number; returnReason: string; processedQuantity: number }[];
   reverseFulfillmentOrders: ReverseFulfillmentOrder[];
   createdAt: string;
 }
@@ -193,4 +194,15 @@ export interface WebhookEvent {
   apiVersion: string;
   triggeredAt: string;
   payload: unknown;
+}
+
+/** Metafield definition (`metafieldDefinitionCreate`, `metafieldDefinitions`). */
+export interface MetafieldDefinition {
+  id: string;
+  ownerType: string;
+  namespace: string;
+  key: string;
+  type: string;
+  name: string;
+  description: string | null;
 }

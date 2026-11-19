@@ -1,6 +1,6 @@
 import type { Ctx } from './engine.js';
 import { SimAbort } from './engine.js';
-import { gqlBulk, gqlFulfillmentOrder, gqlItem, gqlLevel } from './builders.js';
+import { gqlBulk, gqlFulfillmentOrder, gqlItem, gqlLevel, gqlMetafieldDefinition } from './builders.js';
 import type { InventoryItem, InventoryLevel, Metafield, StoredQuantityName } from './model.js';
 import { ON_HAND_COMPONENTS, WRITABLE_QUANTITY_NAMES } from './model.js';
 import { orderPayload } from './payloads.js';
@@ -427,7 +427,29 @@ export function bulkOperationCancel(env: MutationEnv, args: Obj): MutationResult
   return { payload: { __typename: 'Payload', bulkOperation: gqlBulk(op), userErrors: [] }, failed: false };
 }
 
+const DEFINITION_SCOPES: Record<string, string> = { ORDER: 'write_orders', PRODUCTVARIANT: 'write_products', PRODUCT: 'write_products' };
+
+/** `metafieldDefinitionCreate`: one definition per owner type, namespace and key (`TAKEN` otherwise). */
+export function metafieldDefinitionCreate(env: MutationEnv, args: Obj): MutationResult {
+  const shop = env.ctx.shop;
+  const d = asObj(args['definition']);
+  const ownerType = String(d['ownerType'] ?? '');
+  const scope = DEFINITION_SCOPES[ownerType];
+  if (!scope) return fail([{ field: ['definition', 'ownerType'], message: 'Owner type is not supported.', code: 'INVALID' }], { createdDefinition: null });
+  env.ctx.requireAny([scope]);
+  const namespace = String(d['namespace'] ?? '');
+  const key = String(d['key'] ?? '');
+  if (!d['name'] || !namespace || !key || !d['type']) return fail([{ field: ['definition'], message: 'name, namespace, key and type are required.', code: 'BLANK' }], { createdDefinition: null });
+  if ([...shop.metafieldDefinitions.values()].some((x) => x.ownerType === ownerType && x.namespace === namespace && x.key === key)) {
+    return fail([{ field: ['definition', 'key'], message: 'Key is in use for Order metafields on the \'' + namespace + '\' namespace.', code: 'TAKEN' }], { createdDefinition: null });
+  }
+  const def = { id: shop.nextId('MetafieldDefinition'), ownerType, namespace, key, type: String(d['type']), name: String(d['name']), description: d['description'] == null ? null : String(d['description']) };
+  shop.metafieldDefinitions.set(def.id, def);
+  return { payload: { __typename: 'Payload', createdDefinition: gqlMetafieldDefinition(def), userErrors: [] }, failed: false };
+}
+
 export const MUTATIONS: Record<string, (env: MutationEnv, args: Obj) => MutationResult> = {
+  metafieldDefinitionCreate,
   inventoryAdjustQuantities,
   inventorySetQuantities,
   inventoryMoveQuantities,
@@ -456,6 +478,7 @@ export const NULL_PAYLOAD: Record<string, Obj> = {
   inventoryItemUpdate: { inventoryItem: null },
   metafieldsSet: { metafields: [] },
   metafieldsDelete: { deletedMetafields: [] },
+  metafieldDefinitionCreate: { createdDefinition: null },
   fulfillmentOrderHold: { fulfillmentHold: null, fulfillmentOrder: null, remainingFulfillmentOrder: null },
   fulfillmentOrderReleaseHold: { fulfillmentOrder: null },
   bulkOperationRunQuery: { bulkOperation: null },

@@ -682,7 +682,7 @@ export class OrderHandle {
         .filter((rl) => rl.lineItemId === line.id)
         .reduce((s, rl) => s + rl.quantity, 0);
       if (l.quantity <= 0 || l.quantity + already > line.fulfilledQuantity) throw new Error(`Cannot return ${l.quantity} of ${line.id}: ${line.fulfilledQuantity} fulfilled, ${already} already in returns`);
-      return { id: shop.nextId('ReturnLineItem'), lineItemId: line.id, quantity: l.quantity, returnReason: l.reason ?? 'UNKNOWN' };
+      return { id: shop.nextId('ReturnLineItem'), lineItemId: line.id, quantity: l.quantity, returnReason: l.reason ?? 'UNKNOWN', processedQuantity: 0 };
     });
     const ret: Return = {
       id: shop.nextId('Return'),
@@ -739,17 +739,78 @@ export class OrderHandle {
     this.setReturnStatus(id, ['REQUESTED', 'OPEN'], 'CANCELED', 'returns/cancel');
     return this;
   }
-  closeReturn(id: string): this {
+  /**
+   * Closes the return (`returnClose`). `minimalPayload`: the webhook carries only the return's identifiers, not
+   * the order (the sync must find the order itself).
+   */
+  closeReturn(id: string, opts: { minimalPayload?: boolean } = {}): this {
+    if (opts.minimalPayload) {
+      const ret = this.returnById(id);
+      if (ret.status !== 'OPEN') throw new Error(`Return ${id} is ${ret.status}, expected OPEN`);
+      ret.status = 'CLOSED';
+      for (const r of ret.reverseFulfillmentOrders) r.status = 'CLOSED';
+      this.shop.touchOrder(this.data);
+      this.shop.emit('returns/close', { id: numericId(ret.id), admin_graphql_api_id: ret.id, status: 'closed' });
+      return this;
+    }
     const ret = this.setReturnStatus(id, ['OPEN'], 'CLOSED', 'returns/close');
     for (const r of ret.reverseFulfillmentOrders) r.status = 'CLOSED';
     return this;
   }
 
   /**
-   * Records dispositions on the reverse fulfillment order (reverse_fulfillment_orders/dispose, then returns/update).
+   * Admin "receive / process return" (`returnProcess`, API 2025-07+): marks quantities processed. RESTOCKED and
+   * PROCESSING_REQUIRED record a disposition with a location (and restock like `dispose`); NOT_RESTOCKED and
+   * MISSING record a disposition without location only when `recordDisposition` is set — real Shopify may leave
+   * the dispositions empty for an item not restocked. Emits `reverse_fulfillment_orders/dispose` (payload naming
+   * the reverse fulfillment order only) when a disposition was recorded, then `returns/process` (return
+   * identifiers only), then `returns/close` once every line is processed. No `returns/update`.
+   */
+  processReturn(returnId: string, lines: (DispositionInput & { recordDisposition?: boolean })[]): this {
+    const shop = this.shop;
+    const ret = this.returnById(returnId);
+    if (ret.status !== 'OPEN') throw new Error(`Return ${returnId} is ${ret.status}, processing needs OPEN`);
+    const rfo = this.merchant.reverseOrderOf(ret);
+    const recorded: Record<string, unknown>[] = [];
+    for (const d of lines) {
+      const line = this.merchant.lineOf(this.data, d.line);
+      const rl = ret.lines.find((l) => l.lineItemId === line.id);
+      const rfl = rfo.lines.find((l) => l.lineItemId === line.id);
+      if (!rl || !rfl) throw new Error(`Line ${line.id} is not part of return ${returnId}`);
+      if (d.quantity <= 0 || rl.processedQuantity + d.quantity > rl.quantity) throw new Error(`Cannot process ${d.quantity} of ${line.id}: ${rl.processedQuantity}/${rl.quantity} already processed`);
+      rl.processedQuantity += d.quantity;
+      const restocks = d.disposition === 'RESTOCKED' || d.disposition === 'PROCESSING_REQUIRED';
+      if (!restocks && !d.recordDisposition) continue;
+      const locationId = restocks ? (d.locationId ?? this.merchant.fulfilledLocation(this.data, line)) : null;
+      rfl.dispositions.push({ type: d.disposition, quantity: d.quantity, locationId });
+      if (d.disposition === 'RESTOCKED' && locationId) shop.effectRestock(line.variantId, locationId, d.quantity);
+      if (d.disposition === 'PROCESSING_REQUIRED' && locationId && this.merchant.options.processingRequiredStock === 'available') shop.effectRestock(line.variantId, locationId, d.quantity);
+      recorded.push({
+        reverse_fulfillment_order_line_item: { id: numericId(rfl.id), admin_graphql_api_id: rfl.id },
+        reverse_delivery_line_item: null,
+        type: d.disposition.toLowerCase(),
+        location: locationId ? { id: numericId(locationId), admin_graphql_api_id: locationId } : null,
+      });
+    }
+    shop.touchOrder(this.data);
+    if (recorded.length > 0) {
+      shop.emit('reverse_fulfillment_orders/dispose', { id: numericId(rfo.id), admin_graphql_api_id: rfo.id, dispositions: recorded, total_dispositions: recorded.length });
+    }
+    shop.emit('returns/process', { id: numericId(ret.id), admin_graphql_api_id: ret.id });
+    if (ret.lines.every((l) => l.processedQuantity === l.quantity)) {
+      ret.status = 'CLOSED';
+      for (const r of ret.reverseFulfillmentOrders) r.status = 'CLOSED';
+      shop.emit('returns/close', { id: numericId(ret.id), admin_graphql_api_id: ret.id, status: 'closed' });
+    }
+    return this;
+  }
+
+  /**
+   * Records dispositions on the reverse fulfillment order (reverse_fulfillment_orders/dispose, then returns/update
+   * unless `returnUpdate: false`).
    * RESTOCKED adds to `available` at the location; PROCESSING_REQUIRED follows `MerchantOptions.processingRequiredStock`.
    */
-  dispose(returnId: string, dispositions: DispositionInput[]): this {
+  dispose(returnId: string, dispositions: DispositionInput[], opts: { returnUpdate?: boolean } = {}): this {
     const shop = this.shop;
     const ret = this.returnById(returnId);
     if (ret.status !== 'OPEN') throw new Error(`Return ${returnId} is ${ret.status}, dispositions need OPEN`);
@@ -769,13 +830,19 @@ export class OrderHandle {
     }
     if (rfo.lines.every((l) => l.dispositions.reduce((s, x) => s + x.quantity, 0) === l.totalQuantity)) rfo.status = 'CLOSED';
     shop.touchOrder(this.data);
+    // Like Shopify's, the payload names the reverse fulfillment order, not the order (recette 2).
     shop.emit('reverse_fulfillment_orders/dispose', {
+      id: numericId(rfo.id),
       admin_graphql_api_id: rfo.id,
-      return: { admin_graphql_api_id: ret.id },
-      order: { admin_graphql_api_id: this.id },
-      reverse_fulfillment_order_line_items: done,
+      dispositions: done.map((d) => ({
+        reverse_fulfillment_order_line_item: { id: numericId(d.id), admin_graphql_api_id: d.id },
+        reverse_delivery_line_item: null,
+        type: d.disposition_type,
+        location: d.location_id && (d.disposition_type === 'restocked' || d.disposition_type === 'processing_required') ? { id: d.location_id } : null,
+      })),
+      total_dispositions: done.length,
     });
-    shop.emit('returns/update', returnPayload(ret));
+    if (opts.returnUpdate !== false) shop.emit('returns/update', returnPayload(ret));
     return this;
   }
 }

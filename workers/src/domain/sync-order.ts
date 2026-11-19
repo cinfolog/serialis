@@ -128,7 +128,7 @@ export function applyOrderSync(ctx: DomainContext, read: OrderRead, now: number,
   const locations = new Set<string>();
   for (const fo of snapshot.fulfillmentOrders) locations.add(fo.locationId);
   for (const f of snapshot.fulfillments) locations.add(f.locationId);
-  for (const r of snapshot.returns) for (const d of r.dispositions) locations.add(d.locationId);
+  for (const r of snapshot.returns) for (const d of r.dispositions) if (d.locationId) locations.add(d.locationId);
   for (const r of snapshot.refunds) for (const l of r.lineItems) if (l.locationId) locations.add(l.locationId);
   for (const loc of locations) repo.ensureLocation(loc, now);
 

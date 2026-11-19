@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { OrderAllocationsResponse } from '@serialis/contract';
 import { LINE, ORDER, VARIANT, makeAllocation } from '@serialis/extensions-shared/testing';
-import { MAX_POLLS, buildLineViews, canEdit, compactLines, type LineView, originKey, shouldPoll, statusView, untrackedLineCount } from '../src/logic';
+import { MAX_POLLS, buildLineViews, canEdit, compactLines, displayedQuantity, type LineView, originKey, rowStatusView, shouldPoll, statusView, untrackedLineCount } from '../src/logic';
 
 const response = (over: Partial<OrderAllocationsResponse> = {}): OrderAllocationsResponse => ({
   orderGid: ORDER,
@@ -20,11 +20,43 @@ const response = (over: Partial<OrderAllocationsResponse> = {}): OrderAllocation
 });
 
 describe('buildLineViews', () => {
-  it('keeps tracked lines only, one row per unit: active first by date, history after, then missing units', () => {
+  it('keeps tracked lines only, one row per unit: current units by date, then missing units; released history is left out', () => {
     const views = buildLineViews(response());
     expect(views).toHaveLength(1);
-    expect(views[0]!.rows.map((r) => (r.kind === 'allocation' ? r.allocation.ref : `missing#${r.position}`))).toEqual(['R1', 'R2', 'OLD', 'missing#1']);
-    expect(views[0]!.missing).toBe(1);
+    expect(views[0]!.rows.map((r) => (r.kind === 'allocation' ? r.allocation.ref : `missing#${r.position}`))).toEqual(['R1', 'R2', 'missing#1']);
+    expect(views[0]!).toMatchObject({ missing: 1, current: 2, returnPending: 0, returned: 0 });
+  });
+
+  it('recette 2 — returned line: real unit state, quantity ordered, returned units after the current ones', () => {
+    const r = response();
+    r.lines[0] = {
+      ...r.lines[0]!, quantity: 0, orderedQuantity: 2, missing: 0,
+      allocations: [
+        makeAllocation('BACK', { status: 'returned', unitState: 'SCRAPPED', allocatedAt: '2026-03-01T09:00:00Z' }),
+        makeAllocation('PEND', { status: 'fulfilled', unitState: 'RETURN_PENDING' }),
+      ],
+    };
+    const v = buildLineViews(r)[0]!;
+    expect(v.rows.map((x) => (x.kind === 'allocation' ? x.allocation.ref : '-'))).toEqual(['PEND', 'BACK']);
+    expect(v).toMatchObject({ current: 1, returnPending: 1, returned: 1 });
+    expect(displayedQuantity(v.line)).toBe(2);
+    expect(rowStatusView(r.lines[0]!.allocations[1]!)).toEqual({ key: 'states.RETURN_PENDING', tone: 'warning' });
+    expect(rowStatusView(r.lines[0]!.allocations[0]!)).toEqual({ key: 'states.SCRAPPED', tone: 'neutral' });
+    expect(rowStatusView(makeAllocation('S', { status: 'fulfilled', unitState: 'SHIPPED' }))).toEqual(statusView('fulfilled'));
+    expect(displayedQuantity({ ...v.line, orderedQuantity: undefined } as never)).toBe(0);
+  });
+
+  it('recette 2 — « +N more units » counts the units on the line only (7 units and 7 released: +3)', () => {
+    const r = response();
+    r.lines[0] = {
+      ...r.lines[0]!, quantity: 7, missing: 0,
+      allocations: [
+        ...Array.from({ length: 7 }, (_, i) => makeAllocation(`U${i}`, { id: `u${i}`, status: i < 3 ? 'fulfilled' : 'active' })),
+        ...Array.from({ length: 7 }, (_, i) => makeAllocation(`OLD${i}`, { id: `o${i}`, status: 'released' })),
+        makeAllocation('RET', { id: 'ret', status: 'returned', unitState: 'AVAILABLE' }),
+      ],
+    };
+    expect(compactLines(buildLineViews(r)).hiddenUnits).toBe(3);
   });
 
   it('never shows a negative number of missing units', () => {
@@ -60,6 +92,9 @@ describe('compactLines', () => {
     line: { lineItemGid: id, variantGid: VARIANT, title: id, tracked: true, quantity: rows, missing, allocations: [] },
     rows: Array.from({ length: rows }, (_, i) => ({ kind: 'missing' as const, position: i + 1 })),
     missing,
+    current: 0,
+    returnPending: 0,
+    returned: 0,
   });
 
   it('a single line shows up to 4 rows', () => {

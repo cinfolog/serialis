@@ -3,6 +3,7 @@ import { designateUnit } from '../src/designation.js';
 import type { OrderSnapshot } from '../src/snapshot.js';
 import type { StoredSetting } from '../src/settings.js';
 import type { SyncState } from '../src/sync/plan.js';
+import { returnLineSlots } from '../src/sync/planOrderSync.js';
 import {
   LOC_A,
   LOC_B,
@@ -125,7 +126,24 @@ describe('simple returns — F6, S-17 = yes (T-E2E-06 simple part, T-MVP-06)', (
     expect(unitStatus(r.state, 'z1')).toBe('SHIPPED');
     expect(r.plan.stockWrites).toEqual([]);
     expect(openAnomalies(r.state, 'return_unit_mismatch')).toEqual([expect.objectContaining({ subject: expect.objectContaining({ unitId: 'z1' }) })]);
-    expect(openAnomalies(r.state, 'return_unidentified')).toHaveLength(1);
+    // Recette 2: the identification took place, return_unit_mismatch takes over (F6 1 bis); the restock stays explained.
+    expect(openAnomalies(r.state, 'return_unidentified')).toEqual([]);
+    expect(r.plan.explainedQuantities).toEqual([expect.objectContaining({ sourceType: 'return_unidentified', direction: 'deficit', quantity: 1 })]);
+  });
+
+  it('recette 2 — a mismatch closes the open return_unidentified; on a line of several units only the identified quantity leaves it', () => {
+    const shipped = shippedOrder(3);
+    const withStranger = { ...shipped.state, units: [...shipped.state.units, ...units('z', I1.id, LOC_A, 1, 'SHIPPED')] };
+    const snap = { ...shipped.snapshot, returns: [ret(1, 'OPEN', [{ line: 1, quantity: 2 }], [{ line: 1, type: 'RESTOCKED', quantity: 2, locationId: LOC_A }])] };
+    const waiting = sync(snap, withStranger, T0 + 30_000);
+    expect(openAnomalies(waiting.state, 'return_unidentified')).toEqual([expect.objectContaining({ details: { quantity: 2 } })]);
+    const one = sync(snap, identify(waiting.state, RL(1, 1), 'SN-Z1'), T0 + 40_000);
+    expect(openAnomalies(one.state, 'return_unidentified')).toEqual([expect.objectContaining({ details: { quantity: 1 } })]);
+    expect(openAnomalies(one.state, 'return_unit_mismatch')).toHaveLength(1);
+    const two = sync(snap, identify(one.state, RL(1, 1), 'SN-A2'), T0 + 50_000);
+    expect(unitStatus(two.state, 'a2')).toBe('AVAILABLE');
+    expect(openAnomalies(two.state, 'return_unidentified')).toEqual([]);
+    expect(openAnomalies(two.state, 'return_unit_mismatch')).toHaveLength(1);
   });
 
   it('an unknown ref also opens return_unit_mismatch', () => {
@@ -133,6 +151,63 @@ describe('simple returns — F6, S-17 = yes (T-E2E-06 simple part, T-MVP-06)', (
     const snap = { ...shipped.snapshot, returns: [ret(1, 'OPEN', [{ line: 1, quantity: 1 }])] };
     const r = sync(snap, identify(shipped.state, RL(1, 1), 'NOPE-0000'), T0 + 30_000);
     expect(openAnomalies(r.state, 'return_unit_mismatch')).toHaveLength(1);
+  });
+
+  describe('recette 2 — not restocked as Shopify reports it (no location, or no disposition at all)', () => {
+    const run = (r: ReturnType<typeof ret>, typed = true) => {
+      const shipped = shippedOrder(1);
+      const approved = sync({ ...shipped.snapshot, returns: [ret(1, 'OPEN', [{ line: 1, quantity: 1 }])] }, shipped.state, T0 + 30_000);
+      expect(unitStatus(approved.state, 'a1')).toBe('RETURN_PENDING');
+      const s = typed ? identify(approved.state, RL(1, 1), 'SN-A1') : approved.state;
+      return sync({ ...shipped.snapshot, returns: [r] }, s, T0 + 40_000);
+    };
+
+    it('NOT_RESTOCKED and MISSING dispositions without a location: scrapped / lost at the shipping location, no write', () => {
+      for (const [type, to] of [['NOT_RESTOCKED', 'SCRAPPED'], ['MISSING', 'LOST']] as const) {
+        const r = run(ret(1, 'OPEN', [{ line: 1, quantity: 1 }], [{ line: 1, type, quantity: 1, locationId: null }]));
+        const u = r.state.units.find((x) => x.id === 'a1');
+        expect(u?.status, type).toBe(to);
+        expect(u?.locationId).toBe(LOC_A);
+        expect(r.plan.stockWrites).toEqual([]);
+        expect(r.plan.explainedQuantities).toEqual([]);
+        expect(openAnomalies(r.state)).toEqual([]);
+      }
+    });
+
+    it('processed by returnProcess without a disposition: not restocked (scrapped), even while the return is open', () => {
+      const r = run(ret(1, 'OPEN', [{ line: 1, quantity: 1, processed: 1 }]));
+      expect(unitStatus(r.state, 'a1')).toBe('SCRAPPED');
+      expect(r.plan.unitTransitions).toEqual([expect.objectContaining({ to: 'SCRAPPED', data: { disposition: 'NOT_RESTOCKED', inferredFrom: 'processed' } })]);
+      expect(r.plan.stockWrites).toEqual([]);
+    });
+
+    it('closed without any disposition: not restocked (scrapped), no write; replay is a no-op', () => {
+      const r = run(ret(1, 'CLOSED', [{ line: 1, quantity: 1 }]));
+      expect(unitStatus(r.state, 'a1')).toBe('SCRAPPED');
+      expect(r.plan.unitTransitions).toEqual([expect.objectContaining({ data: { disposition: 'NOT_RESTOCKED', inferredFrom: 'closed' } })]);
+      const replay = sync(r.snapshot, r.state, T0 + 50_000);
+      expect(replay.plan.unitTransitions).toEqual([]);
+    });
+
+    it('unit not identified (S-17): return_unidentified opens, no explained quantity; the typed ref finishes it', () => {
+      const r = run(ret(1, 'CLOSED', [{ line: 1, quantity: 1 }], [{ line: 1, type: 'NOT_RESTOCKED', quantity: 1, locationId: null }]), false);
+      expect(unitStatus(r.state, 'a1')).toBe('RETURN_PENDING');
+      expect(openAnomalies(r.state, 'return_unidentified')).toHaveLength(1);
+      expect(r.plan.explainedQuantities).toEqual([]);
+      const done = sync(r.snapshot, identify(r.state, RL(1, 1), 'SN-A1'), T0 + 60_000);
+      expect(unitStatus(done.state, 'a1')).toBe('SCRAPPED');
+      expect(openAnomalies(done.state)).toEqual([]);
+    });
+
+    it('restocked part and not-restocked rest of a processed line: each quantity is applied once', () => {
+      const s = returnLineSlots(ret(1, 'CLOSED', [{ line: 1, quantity: 3, processed: 3 }], [{ line: 1, type: 'RESTOCKED', quantity: 1, locationId: LOC_A }]), {
+        gid: RL(1, 1),
+        lineItemGid: 'gid://shopify/LineItem/1',
+        quantity: 3,
+        processedQuantity: 3,
+      });
+      expect(s.map((x) => `${x.type}:${x.quantity}:${x.inferred ?? '-'}`)).toEqual(['RESTOCKED:1:-', 'NOT_RESTOCKED:2:processed']);
+    });
   });
 
   it('return declined or cancelled: RETURN_PENDING → SHIPPED, return no longer expected', () => {

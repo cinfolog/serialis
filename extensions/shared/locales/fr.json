@@ -278,6 +278,16 @@
     "errorBody": "La synchronisation de cette commande a échoué. Consultez les anomalies dans l'app Serialis.",
     "syncedAt": "Synchronisée le {{when}}",
     "quantity": "× {{count}}",
+    "returnPending": {
+      "one": "{{count}} en attente de retour",
+      "many": "{{count}} en attente de retour",
+      "other": "{{count}} en attente de retour"
+    },
+    "returnedCount": {
+      "one": "{{count}} retournée",
+      "many": "{{count}} retournées",
+      "other": "{{count}} retournées"
+    },
     "missing": {
       "one": "{{count}} unité à attribuer",
       "many": "{{count}} unités à attribuer",
@@ -291,6 +301,7 @@
     "status_released": "Libérée",
     "status_returned": "Retournée",
     "status_missing": "En attente d'une unité",
+    "status_paused": "Automatisation en pause (arrêt d'urgence)",
     "origin_auto": "Commande (automatique)",
     "origin_pick": "Manuelle",
     "origin_pos": "Caisse",

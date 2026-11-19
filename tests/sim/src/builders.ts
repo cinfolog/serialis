@@ -253,32 +253,47 @@ export function gqlReturn(ctx: Ctx, r: Return): Obj {
       connection(
         'ReturnLineItem',
         'returnLineItems',
-        r.lines.map((l) => ({ __typename: 'ReturnLineItem', id: l.id, quantity: l.quantity, returnReason: l.returnReason, fulfillmentLineItem: () => fulfillmentLineItem(l.lineItemId, l.quantity) })),
+        r.lines.map((l) => ({
+          __typename: 'ReturnLineItem',
+          id: l.id,
+          quantity: l.quantity,
+          returnReason: l.returnReason,
+          processedQuantity: l.processedQuantity,
+          unprocessedQuantity: l.quantity - l.processedQuantity,
+          processableQuantity: l.quantity - l.processedQuantity,
+          fulfillmentLineItem: () => fulfillmentLineItem(l.lineItemId, l.quantity),
+        })),
         a,
       ),
     reverseFulfillmentOrders: (a: Obj) =>
       connection(
         'ReverseFulfillmentOrder',
         'reverseFulfillmentOrders',
-        r.reverseFulfillmentOrders.map((o) => ({
-          __typename: 'ReverseFulfillmentOrder',
-          id: o.id,
-          status: o.status,
-          lineItems: (b: Obj) =>
-            connection(
-              'ReverseFulfillmentOrderLineItem',
-              'lineItems',
-              o.lines.map((l) => ({
-                __typename: 'ReverseFulfillmentOrderLineItem',
-                id: l.id,
-                totalQuantity: l.totalQuantity,
-                dispositions: l.dispositions.map((d) => ({ __typename: 'ReverseFulfillmentOrderDisposition', type: d.type, quantity: d.quantity, location: () => locationNode(ctx, d.locationId) })),
-                fulfillmentLineItem: () => fulfillmentLineItem(l.lineItemId, l.totalQuantity),
-              })),
-              b,
-            ),
-        })),
+        r.reverseFulfillmentOrders.map((o) => gqlReverseFulfillmentOrder(ctx, r, o)),
         a,
+      ),
+  };
+}
+
+export function gqlReverseFulfillmentOrder(ctx: Ctx, r: Return, o: Return['reverseFulfillmentOrders'][number]): Obj {
+  const fulfillmentLineItem = (lineItemId: string, quantity: number): Obj => ({ __typename: 'FulfillmentLineItem', id: `gid://shopify/FulfillmentLineItem/${numericId(lineItemId)}`, quantity, lineItem: () => lineById(ctx, r.orderId, lineItemId) });
+  return {
+    __typename: 'ReverseFulfillmentOrder',
+    id: o.id,
+    status: o.status,
+    order: () => ({ __typename: 'Order', id: r.orderId }),
+    lineItems: (b: Obj) =>
+      connection(
+        'ReverseFulfillmentOrderLineItem',
+        'lineItems',
+        o.lines.map((l) => ({
+          __typename: 'ReverseFulfillmentOrderLineItem',
+          id: l.id,
+          totalQuantity: l.totalQuantity,
+          dispositions: l.dispositions.map((d) => ({ __typename: 'ReverseFulfillmentOrderDisposition', type: d.type, quantity: d.quantity, location: () => locationNode(ctx, d.locationId) })),
+          fulfillmentLineItem: () => fulfillmentLineItem(l.lineItemId, l.totalQuantity),
+        })),
+        b,
       ),
   };
 }
@@ -364,6 +379,14 @@ export function nodeById(ctx: Ctx, id: string): Obj | null {
       const r = shop.returns.get(id);
       return r ? gqlReturn(ctx, r) : null;
     }
+    case 'ReverseFulfillmentOrder': {
+      ctx.requireAny(['read_returns']);
+      for (const r of shop.returns.values()) {
+        const o = r.reverseFulfillmentOrders.find((x) => x.id === id);
+        if (o) return gqlReverseFulfillmentOrder(ctx, r, o);
+      }
+      return null;
+    }
     default:
       return null;
   }
@@ -431,6 +454,13 @@ export function queryRoot(ctx: Ctx): Obj {
     },
     fulfillmentOrder: (a: Obj) => nodeByTyped(ctx, String(a['id']), 'FulfillmentOrder'),
     return: (a: Obj) => nodeByTyped(ctx, String(a['id']), 'Return'),
+    reverseFulfillmentOrder: (a: Obj) => nodeByTyped(ctx, String(a['id']), 'ReverseFulfillmentOrder'),
+    metafieldDefinitions: (a: Obj) => {
+      const list = [...shop.metafieldDefinitions.values()].filter(
+        (d) => d.ownerType === a['ownerType'] && (a['namespace'] === undefined || d.namespace === a['namespace']) && (a['key'] === undefined || d.key === a['key']),
+      );
+      return connection('MetafieldDefinition', 'metafieldDefinitions', list.map(gqlMetafieldDefinition), a);
+    },
     shop: { __typename: 'Shop', id: 'gid://shopify/Shop/1', name: 'Sim Shop', myshopifyDomain: shop.domain },
     currentAppInstallation: {
       __typename: 'AppInstallation',
@@ -458,4 +488,8 @@ function nodeByTyped(ctx: Ctx, id: string, type: string): Obj | null {
 
 export function gqlBulk(b: import('./model.js').BulkOperation): Obj {
   return { __typename: 'BulkOperation', id: b.id, status: b.status, type: b.type, query: b.query, createdAt: b.createdAt, completedAt: b.completedAt, url: b.url, objectCount: String(b.objectCount), errorCode: null };
+}
+
+export function gqlMetafieldDefinition(d: import('./model.js').MetafieldDefinition): Obj {
+  return { __typename: 'MetafieldDefinition', id: d.id, ownerType: d.ownerType, namespace: d.namespace, key: d.key, name: d.name, description: d.description, type: { __typename: 'MetafieldDefinitionType', name: d.type } };
 }
